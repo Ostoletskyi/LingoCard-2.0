@@ -8,6 +8,7 @@ import {
   validateCardsImport,
   type ImportErrorLog
 } from "../io/importExport";
+import { normalizeCard } from "../model/cardSchema";
 
 type Props = {
   side: ListSide;
@@ -50,9 +51,11 @@ export const CardListPanel = ({ side }: Props) => {
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    startExport("Импорт...");
     const text = await file.text();
     const validation = validateCardsImport(text, { fileName: file.name, size: file.size });
     if (validation.status === "error") {
+      finishExport();
       setImportModalType("error");
       setImportErrorLog(validation.errorLog ?? null);
       event.target.value = "";
@@ -67,6 +70,7 @@ export const CardListPanel = ({ side }: Props) => {
         ? `Импортировано: ${validation.cards.length}. Есть предупреждения.`
         : `Импортировано: ${validation.cards.length} карточек.`
     );
+    finishExport();
     event.target.value = "";
   };
 
@@ -107,6 +111,22 @@ export const CardListPanel = ({ side }: Props) => {
     URL.revokeObjectURL(link.href);
   };
 
+  const downloadSample = () => {
+    const sample = normalizeCard({
+      inf: "machen",
+      tr_1_ru: "делать",
+      tags: ["praesens"]
+    });
+    const blob = new Blob([JSON.stringify({ cards: [sample] }, null, 2)], {
+      type: "application/json"
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "lingocard_sample.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   return (
     <div className="rounded-2xl bg-white p-4 shadow-soft flex flex-col gap-3 dark:bg-slate-900/80">
       <div className="flex items-center justify-between">
@@ -130,26 +150,32 @@ export const CardListPanel = ({ side }: Props) => {
       <div className="flex flex-wrap gap-2 text-xs text-slate-600 dark:text-slate-300">
         <button
           onClick={handleCreate}
-          className="px-3 py-1.5 rounded-full bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
           + Новая карточка
         </button>
         <label className="cursor-pointer">
           <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
-          <span className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition">
+          <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition">
             Импорт JSON
           </span>
         </label>
         <button
+          onClick={downloadSample}
+          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700"
+        >
+          Пример файла
+        </button>
+        <button
           onClick={handleTextImport}
-          className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition"
+          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition"
         >
           Импорт TXT
         </button>
         <button
           onClick={handleExport}
           disabled={isExporting}
-          className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition disabled:opacity-50"
+          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition disabled:opacity-50"
         >
           Экспорт
         </button>
