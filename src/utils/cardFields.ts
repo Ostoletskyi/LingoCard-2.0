@@ -22,6 +22,21 @@ const fieldLabels: Record<string, string> = {
 
 export const getFieldLabel = (fieldId: string) => fieldLabels[fieldId] ?? `Поле: ${fieldId}`;
 
+export const getFieldEditValue = (card: Card | null, fieldId: string): string => {
+  if (!card) return "";
+  if (fieldId === "tags") {
+    return card.tags.join(", ");
+  }
+  if (fieldId === "freq") {
+    return String(card.freq ?? "");
+  }
+  if (fieldId in card) {
+    const value = card[fieldId as keyof Card];
+    return typeof value === "string" ? value : "";
+  }
+  return "";
+};
+
 export const getFieldText = (card: Card | null, fieldId: string): FieldTextResult => {
   if (!card) {
     return { text: "Введите текст…", isPlaceholder: true };

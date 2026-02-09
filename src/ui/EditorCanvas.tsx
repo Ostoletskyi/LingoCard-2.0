@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
-import { getFieldLabel, getFieldText } from "../utils/cardFields";
+import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
 import type { Card } from "../model/cardSchema";
 
@@ -76,6 +76,7 @@ export const EditorCanvas = () => {
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [originalValue, setOriginalValue] = useState("");
+  const editRef = useRef<HTMLTextAreaElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
 
@@ -175,10 +176,10 @@ export const EditorCanvas = () => {
 
   const handleBeginEdit = (box: Box) => {
     if (!card) return;
-    const fieldText = getFieldText(card, box.fieldId);
+    const fieldValue = getFieldEditValue(card, box.fieldId);
     setEditingBoxId(box.id);
-    setOriginalValue(fieldText.text);
-    setEditValue(fieldText.text);
+    setOriginalValue(fieldValue);
+    setEditValue(fieldValue);
   };
 
   const updateCardField = (current: Card, fieldId: string, value: string): Card => {
@@ -220,6 +221,12 @@ export const EditorCanvas = () => {
     }
     setEditingBoxId(null);
   };
+
+  useEffect(() => {
+    if (!editingBoxId) return;
+    const id = window.requestAnimationFrame(() => editRef.current?.focus());
+    return () => window.cancelAnimationFrame(id);
+  }, [editingBoxId]);
 
   const handlePointerLeave = () => {
     setCursorMm(null);
@@ -445,17 +452,24 @@ export const EditorCanvas = () => {
                   </div>
                   {isEditing ? (
                     <textarea
+                      ref={editRef}
                       className="w-full h-full resize-none bg-white/80 text-sm outline-none cursor-text"
                       value={editValue}
                       onChange={(event) => setEditValue(event.target.value)}
                       onBlur={() => commitEdit(true)}
                       onKeyDown={(event) => {
+                        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                          event.preventDefault();
+                          commitEdit(true);
+                          return;
+                        }
                         if (event.key === "Escape") {
                           event.preventDefault();
                           setEditValue(originalValue);
                           commitEdit(false);
                         }
                       }}
+                      onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : (
                     <div className={fieldText.isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
