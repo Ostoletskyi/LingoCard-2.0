@@ -26,6 +26,9 @@ export type AppState = AppStateSnapshot &
     gridEnabled: boolean;
     rulersEnabled: boolean;
     snapEnabled: boolean;
+    gridIntensity: "low" | "medium" | "high";
+    showOnlyCmLines: boolean;
+    debugOverlays: boolean;
     selectedBoxId: string | null;
     isEditingLayout: boolean;
     setZoom: (value: number) => void;
@@ -42,6 +45,9 @@ export type AppState = AppStateSnapshot &
     toggleGrid: () => void;
     toggleRulers: () => void;
     toggleSnap: () => void;
+    setGridIntensity: (value: "low" | "medium" | "high") => void;
+    toggleOnlyCmLines: () => void;
+    toggleDebugOverlays: () => void;
     pushHistory: () => void;
     undo: () => void;
     redo: () => void;
@@ -91,6 +97,9 @@ export const useAppStore = create<AppState>()(
     gridEnabled: true,
     rulersEnabled: true,
     snapEnabled: true,
+    gridIntensity: "low",
+    showOnlyCmLines: false,
+    debugOverlays: false,
     selectedBoxId: null,
     isEditingLayout: false,
     setZoom: (value) => set((state) => {
@@ -178,6 +187,15 @@ export const useAppStore = create<AppState>()(
     }),
     toggleSnap: () => set((state) => {
       state.snapEnabled = !state.snapEnabled;
+    }),
+    setGridIntensity: (value) => set((state) => {
+      state.gridIntensity = value;
+    }),
+    toggleOnlyCmLines: () => set((state) => {
+      state.showOnlyCmLines = !state.showOnlyCmLines;
+    }),
+    toggleDebugOverlays: () => set((state) => {
+      state.debugOverlays = !state.debugOverlays;
     }),
     pushHistory: () => set((state) => {
       recordHistory(state, get());

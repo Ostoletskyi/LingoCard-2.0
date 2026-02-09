@@ -10,17 +10,20 @@ export const App = () => {
   const { selectedId, selectedSide, cardsA, cardsB } = useAppStore();
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
-  const headline = useMemo(() => {
-    if (!selectedId) {
-      return "Выберите карточку для редактирования";
-    }
-    return `Активная карточка: ${selectedId} (${selectedSide})`;
-  }, [selectedId, selectedSide]);
-
   const selectedCard = useMemo(() => {
     if (!selectedId) return null;
     return selectCardById(selectedId, selectedSide, cardsA, cardsB);
   }, [selectedId, selectedSide, cardsA, cardsB]);
+
+  const headline = useMemo(() => {
+    if (!selectedId) {
+      return "Выберите карточку для редактирования";
+    }
+    if (selectedCard) {
+      return `Активная карточка: ${selectedCard.inf || "Без названия"} (Коллекция ${selectedSide})`;
+    }
+    return `Активная карточка: ${selectedId} (${selectedSide})`;
+  }, [selectedId, selectedSide, selectedCard]);
 
   useEffect(() => {
     const stored = localStorage.getItem("lc_theme");
@@ -46,7 +49,10 @@ export const App = () => {
             Дневной редактор карточек немецких глаголов
           </p>
         </div>
-        <div className="rounded-full bg-white px-4 py-2 text-xs text-slate-500 shadow-soft dark:bg-slate-900 dark:text-slate-300">
+        <div
+          className="rounded-full bg-white px-4 py-2 text-xs text-slate-500 shadow-soft dark:bg-slate-900 dark:text-slate-300"
+          title={selectedCard?.id ?? ""}
+        >
           {headline}
         </div>
       </header>

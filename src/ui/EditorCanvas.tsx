@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
-import { getCardFieldValue } from "../utils/cardFields";
+import { getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
 
 const GRID_STEP_MM = 1;
@@ -40,6 +40,9 @@ export const EditorCanvas = () => {
     gridEnabled,
     rulersEnabled,
     snapEnabled,
+    gridIntensity,
+    showOnlyCmLines,
+    debugOverlays,
     selectBox,
     updateBox,
     beginLayoutEdit,
@@ -55,6 +58,9 @@ export const EditorCanvas = () => {
     gridEnabled: state.gridEnabled,
     rulersEnabled: state.rulersEnabled,
     snapEnabled: state.snapEnabled,
+    gridIntensity: state.gridIntensity,
+    showOnlyCmLines: state.showOnlyCmLines,
+    debugOverlays: state.debugOverlays,
     selectBox: state.selectBox,
     updateBox: state.updateBox,
     beginLayoutEdit: state.beginLayoutEdit,
@@ -64,6 +70,7 @@ export const EditorCanvas = () => {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const isDarkTheme = document.documentElement.classList.contains("dark");
 
   const card = useMemo(() => {
     if (!selectedId) return null;
@@ -164,6 +171,25 @@ export const EditorCanvas = () => {
 
   const cursorX = cursorMm ? Math.round(cursorMm.x) : null;
   const cursorY = cursorMm ? Math.round(cursorMm.y) : null;
+  const intensityMap = {
+    low: 0.08,
+    medium: 0.16,
+    high: 0.24
+  } as const;
+  const intensityBase = intensityMap[gridIntensity];
+  const intensityScale = isDarkTheme ? 0.6 : 1;
+  const minorOpacity = intensityBase * 0.6 * intensityScale;
+  const mediumOpacity = intensityBase * 0.9 * intensityScale;
+  const majorOpacity = intensityBase * 1.2 * intensityScale;
+  const gridBackground = showOnlyCmLines
+    ? `linear-gradient(to right, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px)`
+    : `linear-gradient(to right, rgba(148,163,184,${minorOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${minorOpacity}) 1px, transparent 1px),
+       linear-gradient(to right, rgba(148,163,184,${mediumOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${mediumOpacity}) 1px, transparent 1px),
+       linear-gradient(to right, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px)`;
 
   const renderHorizontalRuler = () => (
     <div
@@ -283,17 +309,27 @@ export const EditorCanvas = () => {
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
-                  backgroundImage:
-                    "linear-gradient(to right, rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(to bottom, rgba(226,232,240,0.6) 1px, transparent 1px)",
-                  backgroundSize: `${mmToPx(GRID_STEP_MM, pxPerMm)}px ${mmToPx(
-                    GRID_STEP_MM,
-                    pxPerMm
-                  )}px`
+                  backgroundImage: gridBackground,
+                  backgroundSize: showOnlyCmLines
+                    ? `${mmToPx(10, pxPerMm)}px ${mmToPx(10, pxPerMm)}px`
+                    : `${mmToPx(1, pxPerMm)}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(
+                        1,
+                        pxPerMm
+                      )}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(
+                        5,
+                        pxPerMm
+                      )}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(5, pxPerMm)}px, ${mmToPx(
+                        10,
+                        pxPerMm
+                      )}px ${mmToPx(10, pxPerMm)}px, ${mmToPx(10, pxPerMm)}px ${mmToPx(
+                        10,
+                        pxPerMm
+                      )}px`
                 }}
               />
             )}
             {layout.boxes.map((box) => {
-              const value = getCardFieldValue(card, box.fieldId);
+              const fieldText = getFieldText(card, box.fieldId);
               const isSelected = selectedBoxId === box.id;
               return (
                 <div
@@ -309,6 +345,7 @@ export const EditorCanvas = () => {
                     textAlign: box.style.align,
                     lineHeight: box.style.lineHeight,
                     padding: mmToPx(box.style.paddingMm, pxPerMm),
+                    color: fieldText.isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
                     border: isSelected
                       ? "1px solid #38bdf8"
                       : box.style.border
@@ -319,7 +356,18 @@ export const EditorCanvas = () => {
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
                 >
-                  {value}
+                  {fieldText.text}
+                  {debugOverlays && (
+                    <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[9px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
+                      {box.fieldId}
+                    </span>
+                  )}
+                  {dragState?.boxId === box.id && (
+                    <span className="absolute left-1 top-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
+                      X:{box.xMm.toFixed(1)} Y:{box.yMm.toFixed(1)} W:{box.wMm.toFixed(1)} H:
+                      {box.hMm.toFixed(1)}
+                    </span>
+                  )}
                   {isSelected && (
                     <>
                       {([

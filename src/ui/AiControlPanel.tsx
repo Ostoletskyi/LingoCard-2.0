@@ -70,7 +70,7 @@ export const AiControlPanel = () => {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-            AI Control Panel
+            ИИ-панель
           </h3>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Помощник для генерации карточек
@@ -105,7 +105,7 @@ export const AiControlPanel = () => {
               checked={mode === "generate"}
               onChange={() => setMode("generate")}
             />
-            Generate
+            Генерация
           </label>
           <label className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 dark:bg-slate-900">
             <input
@@ -113,7 +113,7 @@ export const AiControlPanel = () => {
               checked={mode === "patch"}
               onChange={() => setMode("patch")}
             />
-            Patch
+            Патч
           </label>
         </div>
       </div>
@@ -127,19 +127,19 @@ export const AiControlPanel = () => {
             onClick={handleGenerate}
             className="px-4 py-2 rounded-full bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           >
-            Generate
+            Сгенерировать
           </button>
           <button
             onClick={handleCancel}
             className="px-4 py-2 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
           >
-            Cancel
+            Отмена
           </button>
           <button
             onClick={handleApply}
             className="px-4 py-2 rounded-full border border-slate-200 text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:text-slate-200"
           >
-            Apply
+            Применить
           </button>
         </div>
       </div>

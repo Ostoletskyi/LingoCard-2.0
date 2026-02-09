@@ -95,20 +95,20 @@ export const CardListPanel = ({ side }: Props) => {
         <label className="cursor-pointer">
           <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
           <span className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition">
-            Import JSON
+            Импорт JSON
           </span>
         </label>
         <button
           onClick={handleTextImport}
           className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition"
         >
-          Import TXT
+          Импорт TXT
         </button>
         <button
           onClick={handleExport}
           className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition"
         >
-          Export
+          Экспорт
         </button>
       </div>
       <div className="flex-1 overflow-auto rounded-xl border border-slate-100 bg-slate-50/40 p-3 text-sm space-y-3 dark:border-slate-800 dark:bg-slate-900/60">
