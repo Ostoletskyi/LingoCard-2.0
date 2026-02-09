@@ -353,9 +353,21 @@ export const EditorCanvas = () => {
     <div className="mt-3 relative flex justify-center">
       <div
         className={[
-          "relative rounded-[22px] bg-slate-100/70 p-6 dark:bg-slate-900/70",
+          "relative rounded-[22px] bg-slate-100/70 p-6",
           snapEnabled ? "ring-2 ring-sky-100" : "ring-1 ring-slate-200"
         ].join(" ")}
+      >
+        <div
+          className="absolute inset-0 rounded-[22px] bg-gradient-to-br from-white via-white to-slate-100/40"
+          aria-hidden
+        />
+        <div
+          className="relative bg-white border border-slate-200 rounded-2xl shadow-card"
+        style={{ width: widthPx, height: heightPx }}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        onPointerDown={() => selectBox(null)}
       >
         <div
           className="absolute inset-0 rounded-[22px] bg-gradient-to-br from-white via-white to-slate-100/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/40"
@@ -371,103 +383,65 @@ export const EditorCanvas = () => {
             ref={cardRef}
             className="relative bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
             style={{
-              width: widthPx,
-              height: heightPx,
-              marginLeft: rulersEnabled && rulersPlacement === "outside" ? RULER_SIZE_PX : 0,
-              marginTop:
-                rulersEnabled && rulersPlacement === "outside"
-                  ? RULER_SIZE_PX + rulerOffsetPx
-                  : 0
+              backgroundImage:
+                "linear-gradient(to right, rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(to bottom, rgba(226,232,240,0.6) 1px, transparent 1px)",
+              backgroundSize: `${mmToPx(GRID_STEP_MM, pxPerMm)}px ${mmToPx(
+                GRID_STEP_MM,
+                pxPerMm
+              )}px`
             }}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerLeave}
-            onPointerDown={() => {
-              if (editingBoxId) {
-                commitEdit(true);
-                return;
-              }
-              selectBox(null);
-            }}
-          >
-            {gridEnabled && (
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  backgroundImage: gridBackground,
-                  backgroundSize: showOnlyCmLines
-                    ? `${mmToPx(10, pxPerMm)}px ${mmToPx(10, pxPerMm)}px`
-                    : `${mmToPx(1, pxPerMm)}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(
-                        1,
-                        pxPerMm
-                      )}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(
-                        5,
-                        pxPerMm
-                      )}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(5, pxPerMm)}px, ${mmToPx(
-                        10,
-                        pxPerMm
-                      )}px ${mmToPx(10, pxPerMm)}px, ${mmToPx(10, pxPerMm)}px ${mmToPx(
-                        10,
-                        pxPerMm
-                      )}px`
-                }}
-              />
-            )}
-            {layout.boxes.map((box) => {
-              const fieldText = getFieldText(card, box.fieldId);
-              const label = getFieldLabel(box.fieldId);
-              const isSelected = selectedBoxId === box.id;
-              const isEditing = editingBoxId === box.id;
-              return (
-                <div
-                  key={box.id}
-                  className="absolute group cursor-move"
-                  style={{
-                    left: mmToPx(box.xMm, pxPerMm),
-                    top: mmToPx(box.yMm, pxPerMm),
-                    width: mmToPx(box.wMm, pxPerMm),
-                    height: mmToPx(box.hMm, pxPerMm),
-                    fontSize: box.style.fontSizePt * 1.333 * zoom,
-                    fontWeight: box.style.fontWeight,
-                    textAlign: box.style.align,
-                    lineHeight: box.style.lineHeight,
-                    padding: mmToPx(box.style.paddingMm, pxPerMm),
-                    color: fieldText.isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
-                    border: isSelected
-                      ? "1px solid #38bdf8"
-                      : box.style.border
-                        ? "1px dashed #cbd5f5"
-                        : "none",
-                    outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
-                    display: box.style.visible === false ? "none" : "block"
-                  }}
-                  onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
-                  onDoubleClick={(event) => {
-                    event.stopPropagation();
-                    handleBeginEdit(box);
-                  }}
-                >
-                  <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
-                    {label}
-                  </div>
-                  {isEditing ? (
-                    <textarea
-                      ref={editRef}
-                      className="w-full h-full resize-none bg-white/80 text-sm outline-none cursor-text"
-                      value={editValue}
-                      onChange={(event) => setEditValue(event.target.value)}
-                      onBlur={() => commitEdit(true)}
-                      onKeyDown={(event) => {
-                        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-                          event.preventDefault();
-                          commitEdit(true);
-                          return;
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          setEditValue(originalValue);
-                          commitEdit(false);
-                        }
+          />
+        )}
+        {layout.boxes.map((box) => {
+          const value = getCardFieldValue(card, box.fieldId);
+          const isSelected = selectedBoxId === box.id;
+          return (
+            <div
+              key={box.id}
+              className="absolute group cursor-move"
+              style={{
+                left: mmToPx(box.xMm, pxPerMm),
+                top: mmToPx(box.yMm, pxPerMm),
+                width: mmToPx(box.wMm, pxPerMm),
+                height: mmToPx(box.hMm, pxPerMm),
+                fontSize: box.style.fontSizePt * 1.333 * zoom,
+                fontWeight: box.style.fontWeight,
+                textAlign: box.style.align,
+                lineHeight: box.style.lineHeight,
+                padding: mmToPx(box.style.paddingMm, pxPerMm),
+                border: isSelected
+                  ? "1px solid #38bdf8"
+                  : box.style.border
+                    ? "1px dashed #cbd5f5"
+                    : "none",
+                outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
+                display: box.style.visible === false ? "none" : "block"
+              }}
+              onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
+            >
+              {value}
+              {isSelected && (
+                <>
+                  {([
+                    "nw",
+                    "n",
+                    "ne",
+                    "e",
+                    "se",
+                    "s",
+                    "sw",
+                    "w"
+                  ] as const).map((handle) => (
+                    <div
+                      key={handle}
+                      className="absolute h-2 w-2 rounded-full bg-sky-500 shadow-sm"
+                      style={{
+                        ...(handle.includes("n") ? { top: -4 } : {}),
+                        ...(handle.includes("s") ? { bottom: -4 } : {}),
+                        ...(handle.includes("e") ? { right: -4 } : {}),
+                        ...(handle.includes("w") ? { left: -4 } : {}),
+                        ...(handle === "n" || handle === "s" ? { left: "50%", marginLeft: -4 } : {}),
+                        ...(handle === "e" || handle === "w" ? { top: "50%", marginTop: -4 } : {})
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
                     />
@@ -545,7 +519,8 @@ export const EditorCanvas = () => {
                 ? `X: ${cursorMm.x.toFixed(1)} мм · Y: ${cursorMm.y.toFixed(1)} мм`
                 : "Наведите на холст"}
             </div>
-          </div>
+          );
+        })}
         </div>
       </div>
     </div>
