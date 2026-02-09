@@ -48,11 +48,16 @@ export const exportCardsToPdf = (
     const x = marginMm + col * cardWidth;
     const y = marginMm + row * cardHeight;
 
+    doc.setLineWidth(0.2);
+    doc.setDrawColor(60, 60, 60);
     doc.rect(x, y, cardWidth, cardHeight);
 
     layout.boxes.forEach((box) => {
       const value = getFieldText(card, box.fieldId).text;
       if (box.style.visible === false) return;
+      doc.setLineWidth(0.1);
+      doc.setDrawColor(90, 90, 90);
+      doc.rect(x + box.xMm, y + box.yMm, box.wMm, box.hMm);
       const textX = x + box.xMm + box.style.paddingMm;
       const textY = y + box.yMm + box.style.paddingMm + box.style.fontSizePt * 0.3527;
       const maxWidth = Math.max(1, box.wMm - box.style.paddingMm * 2);

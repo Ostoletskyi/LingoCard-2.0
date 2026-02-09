@@ -28,6 +28,7 @@ export const CardListPanel = ({ side }: Props) => {
   const selectedCardIds = useAppStore((state) =>
     side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB
   );
+  const selectedCardIdsSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
   const toggleCardSelection = useAppStore((state) => state.toggleCardSelection);
   const selectAllCards = useAppStore((state) => state.selectAllCards);
   const clearCardSelection = useAppStore((state) => state.clearCardSelection);
@@ -117,7 +118,7 @@ export const CardListPanel = ({ side }: Props) => {
       suffix = `current_${active.id}`;
     }
     if (mode === "selected") {
-      const selected = list.filter((card) => selectedCardIds.has(card.id));
+      const selected = list.filter((card) => selectedCardIdsSet.has(card.id));
       if (!selected.length) return;
       exportCards = selected;
       suffix = `selected_${selected.length}`;
@@ -220,7 +221,7 @@ export const CardListPanel = ({ side }: Props) => {
         </button>
         <button
           onClick={() => handlePdfExport("selected")}
-          disabled={selectedCardIds.size === 0}
+          disabled={selectedCardIds.length === 0}
           className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700 disabled:opacity-50"
         >
           PDF: Выбранные
@@ -282,7 +283,7 @@ export const CardListPanel = ({ side }: Props) => {
           >
             <input
               type="checkbox"
-              checked={selectedCardIds.has(card.id)}
+              checked={selectedCardIdsSet.has(card.id)}
               onChange={() => toggleCardSelection(card.id, side)}
               className="h-4 w-4"
             />

@@ -35,8 +35,8 @@ export type AppState = AppStateSnapshot &
     isExporting: boolean;
     exportStartedAt: number | null;
     exportLabel: string | null;
-    selectedCardIdsA: Set<string>;
-    selectedCardIdsB: Set<string>;
+    selectedCardIdsA: string[];
+    selectedCardIdsB: string[];
     selectedBoxId: string | null;
     isEditingLayout: boolean;
     setZoom: (value: number) => void;
@@ -78,8 +78,8 @@ const snapshotState = (state: AppState): AppStateSnapshot => ({
   selectedSide: state.selectedSide,
   layout: structuredClone(state.layout),
   selectedBoxId: state.selectedBoxId,
-  selectedCardIdsA: Array.from(state.selectedCardIdsA),
-  selectedCardIdsB: Array.from(state.selectedCardIdsB)
+  selectedCardIdsA: [...state.selectedCardIdsA],
+  selectedCardIdsB: [...state.selectedCardIdsB]
 });
 
 const recordHistory = (state: AppState, current: AppState) => {
@@ -97,8 +97,8 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.selectedSide = snapshot.selectedSide;
   state.layout = structuredClone(snapshot.layout);
   state.selectedBoxId = snapshot.selectedBoxId;
-  state.selectedCardIdsA = new Set(snapshot.selectedCardIdsA);
-  state.selectedCardIdsB = new Set(snapshot.selectedCardIdsB);
+  state.selectedCardIdsA = [...snapshot.selectedCardIdsA];
+  state.selectedCardIdsB = [...snapshot.selectedCardIdsB];
   state.isEditingLayout = false;
 };
 
@@ -122,8 +122,8 @@ export const useAppStore = create<AppState>()(
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,
-    selectedCardIdsA: new Set<string>(),
-    selectedCardIdsB: new Set<string>(),
+    selectedCardIdsA: [],
+    selectedCardIdsB: [],
     selectedBoxId: null,
     isEditingLayout: false,
     setZoom: (value) => set((state) => {
@@ -235,22 +235,34 @@ export const useAppStore = create<AppState>()(
       state.exportLabel = null;
     }),
     toggleCardSelection: (id, side) => set((state) => {
-      const setRef = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
-      if (setRef.has(id)) {
-        setRef.delete(id);
+      const list = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      const next = new Set(list);
+      if (next.has(id)) {
+        next.delete(id);
       } else {
-        setRef.add(id);
+        next.add(id);
+      }
+      if (side === "A") {
+        state.selectedCardIdsA = Array.from(next);
+      } else {
+        state.selectedCardIdsB = Array.from(next);
       }
     }),
     selectAllCards: (side) => set((state) => {
       const source = side === "A" ? state.cardsA : state.cardsB;
-      const setRef = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
-      setRef.clear();
-      source.forEach((card) => setRef.add(card.id));
+      const next = source.map((card) => card.id);
+      if (side === "A") {
+        state.selectedCardIdsA = next;
+      } else {
+        state.selectedCardIdsB = next;
+      }
     }),
     clearCardSelection: (side) => set((state) => {
-      const setRef = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
-      setRef.clear();
+      if (side === "A") {
+        state.selectedCardIdsA = [];
+      } else {
+        state.selectedCardIdsB = [];
+      }
     }),
     pushHistory: () => set((state) => {
       recordHistory(state, get());

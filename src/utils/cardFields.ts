@@ -44,8 +44,8 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
   const placeholder =
     fieldId.startsWith("tr_") ? "Перевод…" : fieldId.startsWith("ex_") ? "Пример…" : "Введите текст…";
   if (fieldId === "freq") {
-    const count = card.freq ?? 0;
-    return { text: count ? "●".repeat(count) : "1–5", isPlaceholder: count === 0 };
+    const count = card.freq;
+    return { text: count ? "●".repeat(count) : "1–5", isPlaceholder: !count };
   }
   if (fieldId === "tags") {
     return {

@@ -4,7 +4,7 @@ import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
 import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
-import type { Card } from "../model/cardSchema";
+import { emptyCard, type Card } from "../model/cardSchema";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -191,6 +191,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     setEditValue(fieldValue);
   };
 
+  type StringCardField = Exclude<keyof Card, "freq" | "tags" | "forms_aux">;
+  const isStringCardField = (fieldId: string): fieldId is StringCardField =>
+    fieldId !== "freq" && fieldId !== "tags" && fieldId in emptyCard;
+
   const updateCardField = (current: Card, fieldId: string, value: string): Card => {
     const next: Card = { ...current };
     if (fieldId === "tags") {
@@ -207,11 +211,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       }
       return next;
     }
-    if (fieldId in next) {
-      const key = fieldId as keyof Card;
-      if (typeof next[key] === "string") {
-        next[key] = value as Card[typeof key];
+    if (fieldId === "forms_aux") {
+      if (value === "haben" || value === "sein" || value === "") {
+        next.forms_aux = value;
       }
+      return next;
+    }
+    if (isStringCardField(fieldId)) {
+      next[fieldId] = value;
     }
     return next;
   };

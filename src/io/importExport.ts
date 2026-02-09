@@ -1,4 +1,5 @@
 import { CardSchema, normalizeCard, type Card } from "../model/cardSchema";
+import { parseCardImportFile } from "../model/cardImportSchema";
 import { z } from "zod";
 
 export type ImportMode = "skip" | "overwrite" | "keep";
@@ -56,25 +57,28 @@ export const validateCardsImport = (
 ): ImportResult => {
   try {
     const parsed = JSON.parse(text);
-    const payloadCards = Array.isArray(parsed)
-      ? parsed
-      : parsed.cards ?? (parsed.kind && parsed.card ? parsed.cards : undefined);
-    if (!Array.isArray(payloadCards)) {
+    const parseResult = parseCardImportFile(parsed);
+    if (!parseResult.ok) {
       return {
         status: "error",
         cards: [],
         warnings: [],
         errorLog: {
           timestamp: new Date().toISOString(),
-          fileName: meta?.fileName,
-          size: meta?.size,
           errorCode: "INVALID_FORMAT",
-          humanSummary:
-            "JSON валиден, но структура не соответствует формату карточек. Ожидали { cards: Card[] } или экспорт LingoCard с cards.",
-          technicalDetails: `Получены ключи: ${Object.keys(parsed ?? {}).join(", ")}`
+          humanSummary: parseResult.error.message,
+          ...(meta?.fileName ? { fileName: meta.fileName } : {}),
+          ...(meta?.size != null ? { size: meta.size } : {}),
+          ...(parseResult.error.details
+            ? { technicalDetails: parseResult.error.details }
+            : {}),
+          ...(parseResult.error.samplePaths
+            ? { samplePaths: parseResult.error.samplePaths }
+            : {})
         }
       };
     }
+    const payloadCards = parseResult.cards;
     const cards: Card[] = [];
     const warnings: string[] = [];
     payloadCards.forEach((item, index) => {
@@ -84,7 +88,8 @@ export const validateCardsImport = (
           const normalized = normalizeCard({ id: legacy.id, inf: legacy.inf ?? "" });
           cards.push(normalized);
         } else {
-          const normalized = normalizeCard(item);
+          const candidate = item && typeof item === "object" ? (item as Partial<Card>) : {};
+          const normalized = normalizeCard(candidate);
           CardSchema.parse(normalized);
           cards.push(normalized);
         }
@@ -102,11 +107,11 @@ export const validateCardsImport = (
         warnings,
         errorLog: {
           timestamp: new Date().toISOString(),
-          fileName: meta?.fileName,
-          size: meta?.size,
           errorCode: "NO_VALID_CARDS",
           humanSummary: "Не найдено валидных карточек в файле.",
-          technicalDetails: warnings.join("; ")
+          technicalDetails: warnings.join("; "),
+          ...(meta?.fileName ? { fileName: meta.fileName } : {}),
+          ...(meta?.size != null ? { size: meta.size } : {})
         }
       };
     }
@@ -122,11 +127,11 @@ export const validateCardsImport = (
       warnings: [],
       errorLog: {
         timestamp: new Date().toISOString(),
-        fileName: meta?.fileName,
-        size: meta?.size,
         errorCode: "INVALID_JSON",
         humanSummary: "Файл не является корректным JSON.",
-        technicalDetails: error instanceof Error ? error.message : String(error)
+        technicalDetails: error instanceof Error ? error.message : String(error),
+        ...(meta?.fileName ? { fileName: meta.fileName } : {}),
+        ...(meta?.size != null ? { size: meta.size } : {})
       }
     };
   }
