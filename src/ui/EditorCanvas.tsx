@@ -173,9 +173,23 @@ export const EditorCanvas = () => {
   );
 
   return (
-    <div className="mt-3 relative">
+    <div className="mt-3 relative flex justify-center">
       <div
-        className="relative bg-white border rounded shadow-inner"
+        className={[
+          "relative rounded-[22px] bg-slate-100/70 p-6",
+          snapEnabled ? "ring-2 ring-sky-100" : "ring-1 ring-slate-200"
+        ].join(" ")}
+      >
+        <div
+          className="absolute inset-0 rounded-[22px] bg-gradient-to-br from-white via-white to-slate-100/40"
+          aria-hidden
+        />
+        <div className="mb-4 flex items-center justify-between text-xs text-slate-500">
+          <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
+          <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"}</span>
+        </div>
+        <div
+          className="relative bg-white border border-slate-200 rounded-2xl shadow-card"
         style={{ width: widthPx, height: heightPx }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -188,7 +202,7 @@ export const EditorCanvas = () => {
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage:
-                "linear-gradient(to right, rgba(226,232,240,0.8) 1px, transparent 1px), linear-gradient(to bottom, rgba(226,232,240,0.8) 1px, transparent 1px)",
+                "linear-gradient(to right, rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(to bottom, rgba(226,232,240,0.6) 1px, transparent 1px)",
               backgroundSize: `${mmToPx(GRID_STEP_MM, pxPerMm)}px ${mmToPx(
                 GRID_STEP_MM,
                 pxPerMm
@@ -202,7 +216,7 @@ export const EditorCanvas = () => {
           return (
             <div
               key={box.id}
-              className="absolute group"
+              className="absolute group cursor-move"
               style={{
                 left: mmToPx(box.xMm, pxPerMm),
                 top: mmToPx(box.yMm, pxPerMm),
@@ -218,7 +232,7 @@ export const EditorCanvas = () => {
                   : box.style.border
                     ? "1px dashed #cbd5f5"
                     : "none",
-                outline: isSelected ? "2px solid rgba(56,189,248,0.3)" : "none",
+                outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
                 display: box.style.visible === false ? "none" : "block"
               }}
               onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
@@ -238,7 +252,7 @@ export const EditorCanvas = () => {
                   ] as const).map((handle) => (
                     <div
                       key={handle}
-                      className="absolute h-2 w-2 bg-sky-500"
+                      className="absolute h-2 w-2 rounded-full bg-sky-500 shadow-sm"
                       style={{
                         ...(handle.includes("n") ? { top: -4 } : {}),
                         ...(handle.includes("s") ? { bottom: -4 } : {}),
@@ -257,6 +271,7 @@ export const EditorCanvas = () => {
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );

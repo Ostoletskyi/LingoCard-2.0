@@ -13,6 +13,8 @@ export const CardListPanel = ({ side }: Props) => {
   const selectCard = useAppStore((state) => state.selectCard);
   const addCard = useAppStore((state) => state.addCard);
   const moveCard = useAppStore((state) => state.moveCard);
+  const selectedId = useAppStore((state) => state.selectedId);
+  const selectedSide = useAppStore((state) => state.selectedSide);
 
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -60,51 +62,79 @@ export const CardListPanel = ({ side }: Props) => {
   };
 
   return (
-    <div className="rounded-lg bg-white p-3 shadow flex flex-col gap-2">
+    <div className="rounded-2xl bg-white p-4 shadow-soft flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">List {side}</h2>
-        <span className="text-xs text-slate-500">{cards.length} cards</span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Коллекция {side}
+          </p>
+          <h2 className="text-lg font-semibold text-slate-800">Карточки</h2>
+          <p className="text-xs text-slate-400">{cards.length} карточек</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
+          Список {side}
+        </span>
       </div>
       <input
         value={filter}
         onChange={(event) => setFilter(event.target.value)}
         placeholder="Поиск"
-        className="border rounded px-2 py-1 text-sm"
+        className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200"
       />
-      <div className="flex flex-wrap gap-2 text-xs">
+      <div className="flex flex-wrap gap-2 text-xs text-slate-600">
         <label className="cursor-pointer">
           <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
-          <span className="px-2 py-1 rounded bg-slate-200">Import JSON</span>
+          <span className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition">
+            Import JSON
+          </span>
         </label>
-        <button onClick={handleTextImport} className="px-2 py-1 rounded bg-slate-200">
+        <button
+          onClick={handleTextImport}
+          className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition"
+        >
           Import TXT
         </button>
-        <button onClick={handleExport} className="px-2 py-1 rounded bg-slate-200">
+        <button
+          onClick={handleExport}
+          className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition"
+        >
           Export
         </button>
       </div>
-      <div className="flex-1 overflow-auto border rounded p-2 text-sm space-y-2">
+      <div className="flex-1 overflow-auto rounded-xl border border-slate-100 bg-slate-50/40 p-3 text-sm space-y-3">
         {filtered.map((card) => (
           <div
             key={card.id}
-            className="flex items-center justify-between gap-2 rounded px-2 py-1 hover:bg-slate-50"
+            className={[
+              "flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition",
+              selectedId === card.id && selectedSide === side
+                ? "border-sky-200 bg-sky-50 shadow-sm"
+                : "border-transparent bg-white hover:border-slate-100 hover:shadow-sm"
+            ].join(" ")}
           >
             <button
               onClick={() => selectCard(card.id, side)}
               className="flex-1 text-left"
             >
-              <div className="font-medium">{card.inf || "(без названия)"}</div>
-              <div className="text-xs text-slate-500">{card.tr_1_ru}</div>
+              <div className="text-sm font-semibold text-slate-800">
+                {card.inf || "(без названия)"}
+              </div>
+              <div className="text-xs text-slate-500">{card.tr_1_ru || "Перевод пока пуст"}</div>
             </button>
             <button
               onClick={() => moveCard(card.id, side)}
-              className="text-xs text-blue-600"
+              title="Перенести в другой список"
+              className="text-xs text-slate-500 hover:text-slate-700"
             >
               →
             </button>
           </div>
         ))}
-        {!filtered.length && <p className="text-xs text-slate-400">Нет карточек</p>}
+        {!filtered.length && (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-center text-xs text-slate-400">
+            Карточек пока нет. Импортируйте список или начните с одного глагола.
+          </div>
+        )}
       </div>
     </div>
   );

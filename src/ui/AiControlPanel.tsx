@@ -66,62 +66,82 @@ export const AiControlPanel = () => {
   }, [status]);
 
   return (
-    <div className="rounded-lg bg-white p-3 shadow flex flex-col gap-3">
+    <div className="rounded-2xl bg-white p-5 shadow-soft flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">AI Control Panel</h3>
-        <span className="text-xs text-slate-500">{statusLabel}</span>
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">AI Control Panel</h3>
+          <p className="text-sm text-slate-500">Помощник для генерации карточек</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          {status === "sending" && (
+            <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+          )}
+          <span>{statusLabel}</span>
+        </div>
       </div>
-      <textarea
-        value={infinitives}
-        onChange={(event) => setInfinitives(event.target.value)}
-        placeholder="Infinitiv или список (по одному в строке)"
-        className="border rounded p-2 text-sm"
-      />
-      <div className="flex items-center gap-2 text-sm">
-        <label className="flex items-center gap-1">
-          <input
-            type="radio"
-            checked={mode === "generate"}
-            onChange={() => setMode("generate")}
-          />
-          Generate
-        </label>
-        <label className="flex items-center gap-1">
-          <input
-            type="radio"
-            checked={mode === "patch"}
-            onChange={() => setMode("patch")}
-          />
-          Patch
-        </label>
+      <div className="grid gap-3 rounded-2xl bg-slate-50/70 p-4">
+        <label className="text-xs font-semibold text-slate-500">1. Ввод инфинитивов</label>
+        <textarea
+          value={infinitives}
+          onChange={(event) => setInfinitives(event.target.value)}
+          placeholder="Infinitiv или список (по одному в строке)"
+          className="border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200"
+        />
       </div>
-      <div className="flex flex-wrap gap-2 text-sm">
-        <button
-          disabled={!canSend}
-          onClick={handleGenerate}
-          className="px-3 py-1 rounded bg-slate-200 disabled:opacity-50"
-        >
-          Generate
-        </button>
-        <button
-          onClick={handleCancel}
-          className="px-3 py-1 rounded bg-slate-200"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleApply}
-          className="px-3 py-1 rounded bg-slate-200"
-        >
-          Apply
-        </button>
+      <div className="grid gap-2 rounded-2xl bg-slate-50/70 p-4">
+        <label className="text-xs font-semibold text-slate-500">2. Режим работы</label>
+        <div className="flex items-center gap-3 text-sm">
+          <label className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2">
+            <input
+              type="radio"
+              checked={mode === "generate"}
+              onChange={() => setMode("generate")}
+            />
+            Generate
+          </label>
+          <label className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2">
+            <input
+              type="radio"
+              checked={mode === "patch"}
+              onChange={() => setMode("patch")}
+            />
+            Patch
+          </label>
+        </div>
       </div>
-      <textarea
-        readOnly
-        value={responseJson}
-        placeholder="Preview JSON"
-        className="border rounded p-2 text-xs h-32 font-mono"
-      />
+      <div className="grid gap-2 rounded-2xl bg-slate-50/70 p-4">
+        <label className="text-xs font-semibold text-slate-500">3. Действия</label>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <button
+            disabled={!canSend}
+            onClick={handleGenerate}
+            className="px-4 py-2 rounded-full bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            Generate
+          </button>
+          <button
+            onClick={handleCancel}
+            className="px-4 py-2 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleApply}
+            className="px-4 py-2 rounded-full border border-slate-200 text-slate-600 hover:border-slate-300"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-2 rounded-2xl bg-slate-50/70 p-4">
+        <label className="text-xs font-semibold text-slate-500">4. Preview JSON</label>
+        <textarea
+          readOnly
+          value={responseJson}
+          placeholder="Preview JSON"
+          className="border border-slate-200 rounded-xl p-3 text-xs h-32 font-mono bg-slate-50/60"
+        />
+      </div>
     </div>
   );
 };
