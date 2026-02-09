@@ -4,6 +4,7 @@ import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
 import { getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
+import type { Card } from "../model/cardSchema";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -25,6 +26,7 @@ const applySnap = (valueMm: number, enabled: boolean) =>
   enabled ? Math.round(valueMm / GRID_STEP_MM) * GRID_STEP_MM : valueMm;
 
 const RULER_SIZE_PX = 28;
+const RULER_OFFSET_MM = 10;
 
 const buildRange = (max: number) => Array.from({ length: Math.floor(max) + 1 }, (_, i) => i);
 
@@ -71,6 +73,9 @@ export const EditorCanvas = () => {
 
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
+  const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [originalValue, setOriginalValue] = useState("");
   const cardRef = useRef<HTMLDivElement | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
 
@@ -82,8 +87,10 @@ export const EditorCanvas = () => {
   const pxPerMm = DEFAULT_PX_PER_MM * zoom;
   const widthPx = mmToPx(layout.widthMm, pxPerMm);
   const heightPx = mmToPx(layout.heightMm, pxPerMm);
+  const rulerOffsetPx = mmToPx(RULER_OFFSET_MM, pxPerMm);
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
+    if (editingBoxId) return;
     if (box.locked) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -166,6 +173,54 @@ export const EditorCanvas = () => {
     setDragState(null);
   };
 
+  const handleBeginEdit = (box: Box) => {
+    if (!card) return;
+    const fieldText = getFieldText(card, box.fieldId);
+    setEditingBoxId(box.id);
+    setOriginalValue(fieldText.text);
+    setEditValue(fieldText.text);
+  };
+
+  const updateCardField = (current: Card, fieldId: string, value: string): Card => {
+    const next: Card = { ...current };
+    if (fieldId === "tags") {
+      next.tags = value
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      return next;
+    }
+    if (fieldId === "freq") {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed)) {
+        next.freq = Math.min(5, Math.max(1, parsed)) as Card["freq"];
+      }
+      return next;
+    }
+    if (fieldId in next) {
+      const key = fieldId as keyof Card;
+      if (typeof next[key] === "string") {
+        next[key] = value as Card[typeof key];
+      }
+    }
+    return next;
+  };
+
+  const commitEdit = (shouldSave: boolean) => {
+    if (!editingBoxId || !card) {
+      setEditingBoxId(null);
+      return;
+    }
+    if (shouldSave && editValue !== originalValue) {
+      const box = layout.boxes.find((item) => item.id === editingBoxId);
+      if (box) {
+        const updated = updateCardField(card, box.fieldId, editValue);
+        useAppStore.getState().updateCard(updated, selectedSide);
+      }
+    }
+    setEditingBoxId(null);
+  };
+
   const handlePointerLeave = () => {
     setCursorMm(null);
     handlePointerUp();
@@ -195,11 +250,12 @@ export const EditorCanvas = () => {
 
   const renderHorizontalRuler = () => (
     <div
-      className="absolute left-0 top-0"
+      className="absolute left-0"
       style={{
         height: RULER_SIZE_PX,
         width: widthPx,
-        marginLeft: rulersPlacement === "outside" ? RULER_SIZE_PX : 0
+        marginLeft: rulersPlacement === "outside" ? RULER_SIZE_PX : 0,
+        top: rulersPlacement === "outside" ? -rulerOffsetPx : 0
       }}
     >
       {buildRange(layout.widthMm).map((mm) => {
@@ -236,11 +292,12 @@ export const EditorCanvas = () => {
 
   const renderVerticalRuler = () => (
     <div
-      className="absolute left-0 top-0"
+      className="absolute left-0"
       style={{
         width: RULER_SIZE_PX,
         height: heightPx,
-        marginTop: rulersPlacement === "outside" ? RULER_SIZE_PX : 0
+        marginTop: rulersPlacement === "outside" ? RULER_SIZE_PX : 0,
+        top: rulersPlacement === "outside" ? -rulerOffsetPx : 0
       }}
     >
       {buildRange(layout.heightMm).map((mm) => {
@@ -299,7 +356,7 @@ export const EditorCanvas = () => {
         />
         <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
-          <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"}</span>
+          <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"} · Двойной клик = редактирование</span>
         </div>
         <div className="relative">
           {rulersEnabled && renderRulers()}
@@ -310,12 +367,21 @@ export const EditorCanvas = () => {
               width: widthPx,
               height: heightPx,
               marginLeft: rulersEnabled && rulersPlacement === "outside" ? RULER_SIZE_PX : 0,
-              marginTop: rulersEnabled && rulersPlacement === "outside" ? RULER_SIZE_PX : 0
+              marginTop:
+                rulersEnabled && rulersPlacement === "outside"
+                  ? RULER_SIZE_PX + rulerOffsetPx
+                  : 0
             }}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerLeave}
-            onPointerDown={() => selectBox(null)}
+            onPointerDown={() => {
+              if (editingBoxId) {
+                commitEdit(true);
+                return;
+              }
+              selectBox(null);
+            }}
           >
             {gridEnabled && (
               <div
@@ -344,6 +410,7 @@ export const EditorCanvas = () => {
               const fieldText = getFieldText(card, box.fieldId);
               const label = getFieldLabel(box.fieldId);
               const isSelected = selectedBoxId === box.id;
+              const isEditing = editingBoxId === box.id;
               return (
                 <div
                   key={box.id}
@@ -368,11 +435,33 @@ export const EditorCanvas = () => {
                     display: box.style.visible === false ? "none" : "block"
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    handleBeginEdit(box);
+                  }}
                 >
                   <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
                     {label}
                   </div>
-                  <div className="text-sm">{fieldText.text}</div>
+                  {isEditing ? (
+                    <textarea
+                      className="w-full h-full resize-none bg-white/80 text-sm outline-none cursor-text"
+                      value={editValue}
+                      onChange={(event) => setEditValue(event.target.value)}
+                      onBlur={() => commitEdit(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          setEditValue(originalValue);
+                          commitEdit(false);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className={fieldText.isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
+                      {fieldText.text}
+                    </div>
+                  )}
                   {debugOverlays && (
                     <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[9px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
                       {box.fieldId}
