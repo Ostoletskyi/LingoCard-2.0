@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
-import { getFieldText } from "../utils/cardFields";
+import { getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
 
 const GRID_STEP_MM = 1;
@@ -43,6 +43,7 @@ export const EditorCanvas = () => {
     gridIntensity,
     showOnlyCmLines,
     debugOverlays,
+    rulersPlacement,
     selectBox,
     updateBox,
     beginLayoutEdit,
@@ -61,6 +62,7 @@ export const EditorCanvas = () => {
     gridIntensity: state.gridIntensity,
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
+    rulersPlacement: state.rulersPlacement,
     selectBox: state.selectBox,
     updateBox: state.updateBox,
     beginLayoutEdit: state.beginLayoutEdit,
@@ -172,9 +174,9 @@ export const EditorCanvas = () => {
   const cursorX = cursorMm ? Math.round(cursorMm.x) : null;
   const cursorY = cursorMm ? Math.round(cursorMm.y) : null;
   const intensityMap = {
-    low: 0.08,
-    medium: 0.16,
-    high: 0.24
+    low: 0.05,
+    medium: 0.1,
+    high: 0.16
   } as const;
   const intensityBase = intensityMap[gridIntensity];
   const intensityScale = isDarkTheme ? 0.6 : 1;
@@ -194,7 +196,11 @@ export const EditorCanvas = () => {
   const renderHorizontalRuler = () => (
     <div
       className="absolute left-0 top-0"
-      style={{ height: RULER_SIZE_PX, width: widthPx, marginLeft: RULER_SIZE_PX }}
+      style={{
+        height: RULER_SIZE_PX,
+        width: widthPx,
+        marginLeft: rulersPlacement === "outside" ? RULER_SIZE_PX : 0
+      }}
     >
       {buildRange(layout.widthMm).map((mm) => {
         const isCm = mm % 10 === 0;
@@ -231,7 +237,11 @@ export const EditorCanvas = () => {
   const renderVerticalRuler = () => (
     <div
       className="absolute left-0 top-0"
-      style={{ width: RULER_SIZE_PX, height: heightPx, marginTop: RULER_SIZE_PX }}
+      style={{
+        width: RULER_SIZE_PX,
+        height: heightPx,
+        marginTop: rulersPlacement === "outside" ? RULER_SIZE_PX : 0
+      }}
     >
       {buildRange(layout.heightMm).map((mm) => {
         const isCm = mm % 10 === 0;
@@ -264,10 +274,12 @@ export const EditorCanvas = () => {
 
   const renderRulers = () => (
     <>
-      <div
-        className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
-        style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
-      />
+      {rulersPlacement === "outside" && (
+        <div
+          className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
+          style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
+        />
+      )}
       {renderHorizontalRuler()}
       {renderVerticalRuler()}
     </>
@@ -297,8 +309,8 @@ export const EditorCanvas = () => {
             style={{
               width: widthPx,
               height: heightPx,
-              marginLeft: rulersEnabled ? RULER_SIZE_PX : 0,
-              marginTop: rulersEnabled ? RULER_SIZE_PX : 0
+              marginLeft: rulersEnabled && rulersPlacement === "outside" ? RULER_SIZE_PX : 0,
+              marginTop: rulersEnabled && rulersPlacement === "outside" ? RULER_SIZE_PX : 0
             }}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -330,6 +342,7 @@ export const EditorCanvas = () => {
             )}
             {layout.boxes.map((box) => {
               const fieldText = getFieldText(card, box.fieldId);
+              const label = getFieldLabel(box.fieldId);
               const isSelected = selectedBoxId === box.id;
               return (
                 <div
@@ -356,16 +369,23 @@ export const EditorCanvas = () => {
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
                 >
-                  {fieldText.text}
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
+                    {label}
+                  </div>
+                  <div className="text-sm">{fieldText.text}</div>
                   {debugOverlays && (
                     <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[9px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
                       {box.fieldId}
                     </span>
                   )}
                   {dragState?.boxId === box.id && (
-                    <span className="absolute left-1 top-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
-                      X:{box.xMm.toFixed(1)} Y:{box.yMm.toFixed(1)} W:{box.wMm.toFixed(1)} H:
-                      {box.hMm.toFixed(1)}
+                    <span className="absolute right-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
+                      X:{box.xMm.toFixed(1)} Y:{box.yMm.toFixed(1)}
+                    </span>
+                  )}
+                  {isSelected && (
+                    <span className="absolute left-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
+                      {box.wMm.toFixed(1)}×{box.hMm.toFixed(1)} мм
                     </span>
                   )}
                   {isSelected && (

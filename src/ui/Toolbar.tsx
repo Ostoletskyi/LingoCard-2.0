@@ -19,12 +19,14 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const gridIntensity = useAppStore((state) => state.gridIntensity);
   const showOnlyCmLines = useAppStore((state) => state.showOnlyCmLines);
   const debugOverlays = useAppStore((state) => state.debugOverlays);
+  const rulersPlacement = useAppStore((state) => state.rulersPlacement);
   const toggleGrid = useAppStore((state) => state.toggleGrid);
   const toggleRulers = useAppStore((state) => state.toggleRulers);
   const toggleSnap = useAppStore((state) => state.toggleSnap);
   const setGridIntensity = useAppStore((state) => state.setGridIntensity);
   const toggleOnlyCmLines = useAppStore((state) => state.toggleOnlyCmLines);
   const toggleDebugOverlays = useAppStore((state) => state.toggleDebugOverlays);
+  const setRulersPlacement = useAppStore((state) => state.setRulersPlacement);
 
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-soft dark:bg-slate-900/80">
@@ -65,21 +67,42 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
           value={gridIntensity}
           onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")}
           className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          title="Интенсивность сетки"
         >
-          <option value="low">Сетка: Низкая</option>
-          <option value="medium">Сетка: Средняя</option>
-          <option value="high">Сетка: Высокая</option>
+          <option value="low">Сетка: Мягкая</option>
+          <option value="medium">Сетка: Нормальная</option>
+          <option value="high">Сетка: Контрастная</option>
         </select>
         <label className="flex items-center gap-1 text-xs text-slate-600">
           <input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />
           Только см
         </label>
         <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />
+          <input
+            type="checkbox"
+            checked={rulersEnabled}
+            onChange={toggleRulers}
+            title="Показать линейки"
+          />
           Линейки
         </label>
+        <select
+          value={rulersPlacement}
+          onChange={(event) =>
+            setRulersPlacement(event.target.value as "outside" | "inside")
+          }
+          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        >
+          <option value="outside">Линейки: Снаружи</option>
+          <option value="inside">Линейки: Внутри</option>
+        </select>
         <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />
+          <input
+            type="checkbox"
+            checked={snapEnabled}
+            onChange={toggleSnap}
+            title="Мягкая привязка к сетке"
+          />
           Привязка
         </label>
         <label className="flex items-center gap-1 text-xs text-slate-600">
@@ -104,6 +127,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
       <div className="flex items-center gap-2 border-l border-slate-100 pl-3 dark:border-slate-700">
         <button
           onClick={onToggleTheme}
+          title="Переключить тему"
           className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:text-white"
         >
           <span>{theme === "light" ? "☀️" : "🌙"}</span>

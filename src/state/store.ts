@@ -29,6 +29,10 @@ export type AppState = AppStateSnapshot &
     gridIntensity: "low" | "medium" | "high";
     showOnlyCmLines: boolean;
     debugOverlays: boolean;
+    rulersPlacement: "outside" | "inside";
+    isExporting: boolean;
+    exportStartedAt: number | null;
+    exportLabel: string | null;
     selectedBoxId: string | null;
     isEditingLayout: boolean;
     setZoom: (value: number) => void;
@@ -48,6 +52,9 @@ export type AppState = AppStateSnapshot &
     setGridIntensity: (value: "low" | "medium" | "high") => void;
     toggleOnlyCmLines: () => void;
     toggleDebugOverlays: () => void;
+    setRulersPlacement: (value: "outside" | "inside") => void;
+    startExport: (label: string) => void;
+    finishExport: () => void;
     pushHistory: () => void;
     undo: () => void;
     redo: () => void;
@@ -100,6 +107,10 @@ export const useAppStore = create<AppState>()(
     gridIntensity: "low",
     showOnlyCmLines: false,
     debugOverlays: false,
+    rulersPlacement: "outside",
+    isExporting: false,
+    exportStartedAt: null,
+    exportLabel: null,
     selectedBoxId: null,
     isEditingLayout: false,
     setZoom: (value) => set((state) => {
@@ -196,6 +207,19 @@ export const useAppStore = create<AppState>()(
     }),
     toggleDebugOverlays: () => set((state) => {
       state.debugOverlays = !state.debugOverlays;
+    }),
+    setRulersPlacement: (value) => set((state) => {
+      state.rulersPlacement = value;
+    }),
+    startExport: (label) => set((state) => {
+      state.isExporting = true;
+      state.exportStartedAt = Date.now();
+      state.exportLabel = label;
+    }),
+    finishExport: () => set((state) => {
+      state.isExporting = false;
+      state.exportStartedAt = null;
+      state.exportLabel = null;
     }),
     pushHistory: () => set((state) => {
       recordHistory(state, get());

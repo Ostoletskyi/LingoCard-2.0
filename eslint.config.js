@@ -22,7 +22,10 @@ export default [
         document: "readonly",
         fetch: "readonly",
         AbortController: "readonly",
-        crypto: "readonly"
+        crypto: "readonly",
+        URL: "readonly",
+        Blob: "readonly",
+        AbortSignal: "readonly"
       }
     },
     plugins: {
