@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import type { Card } from "../model/cardSchema";
 import type { Layout } from "../model/layoutSchema";
-import { getCardFieldValue } from "../utils/cardFields";
+import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
 
 export type PdfExportOptions = {
@@ -14,7 +14,8 @@ export type PdfExportOptions = {
 export const exportCardsToPdf = (
   cards: Card[],
   layout: Layout,
-  options: PdfExportOptions
+  options: PdfExportOptions,
+  fileName: string = "cards.pdf"
 ) => {
   const { cardsPerRow, cardsPerColumn, marginMm, pageFormat = "a4" } = options;
   const doc = new jsPDF({
@@ -50,7 +51,7 @@ export const exportCardsToPdf = (
     doc.rect(x, y, cardWidth, cardHeight);
 
     layout.boxes.forEach((box) => {
-      const value = getCardFieldValue(card, box.fieldId);
+      const value = getFieldText(card, box.fieldId).text;
       if (box.style.visible === false) return;
       const textX = x + box.xMm + box.style.paddingMm;
       const textY = y + box.yMm + box.style.paddingMm + box.style.fontSizePt * 0.3527;
@@ -70,5 +71,5 @@ export const exportCardsToPdf = (
     });
   });
 
-  doc.save("cards.pdf");
+  doc.save(fileName);
 };

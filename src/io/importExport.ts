@@ -56,7 +56,9 @@ export const validateCardsImport = (
 ): ImportResult => {
   try {
     const parsed = JSON.parse(text);
-    const payloadCards = Array.isArray(parsed) ? parsed : parsed.cards;
+    const payloadCards = Array.isArray(parsed)
+      ? parsed
+      : parsed.cards ?? (parsed.kind && parsed.card ? parsed.cards : undefined);
     if (!Array.isArray(payloadCards)) {
       return {
         status: "error",
@@ -67,7 +69,9 @@ export const validateCardsImport = (
           fileName: meta?.fileName,
           size: meta?.size,
           errorCode: "INVALID_FORMAT",
-          humanSummary: "JSON валиден, но структура не соответствует формату карточек."
+          humanSummary:
+            "JSON валиден, но структура не соответствует формату карточек. Ожидали { cards: Card[] } или экспорт LingoCard с cards.",
+          technicalDetails: `Получены ключи: ${Object.keys(parsed ?? {}).join(", ")}`
         }
       };
     }
@@ -75,9 +79,15 @@ export const validateCardsImport = (
     const warnings: string[] = [];
     payloadCards.forEach((item, index) => {
       try {
-        const normalized = normalizeCard(item);
-        CardSchema.parse(normalized);
-        cards.push(normalized);
+        if (item && typeof item === "object" && "id" in item && "boxes" in item) {
+          const legacy = item as { id: string; inf?: string };
+          const normalized = normalizeCard({ id: legacy.id, inf: legacy.inf ?? "" });
+          cards.push(normalized);
+        } else {
+          const normalized = normalizeCard(item);
+          CardSchema.parse(normalized);
+          cards.push(normalized);
+        }
       } catch (error) {
         warnings.push(`Карточка #${index + 1} не прошла валидацию.`);
         if (warnings.length < 5 && error instanceof z.ZodError) {

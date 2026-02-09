@@ -13,6 +13,8 @@ export type AppStateSnapshot = {
   selectedSide: ListSide;
   layout: Layout;
   selectedBoxId: string | null;
+  selectedCardIdsA: string[];
+  selectedCardIdsB: string[];
 };
 
 export type HistoryState = {
@@ -33,6 +35,8 @@ export type AppState = AppStateSnapshot &
     isExporting: boolean;
     exportStartedAt: number | null;
     exportLabel: string | null;
+    selectedCardIdsA: Set<string>;
+    selectedCardIdsB: Set<string>;
     selectedBoxId: string | null;
     isEditingLayout: boolean;
     setZoom: (value: number) => void;
@@ -55,6 +59,9 @@ export type AppState = AppStateSnapshot &
     setRulersPlacement: (value: "outside" | "inside") => void;
     startExport: (label: string) => void;
     finishExport: () => void;
+    toggleCardSelection: (id: string, side: ListSide) => void;
+    selectAllCards: (side: ListSide) => void;
+    clearCardSelection: (side: ListSide) => void;
     pushHistory: () => void;
     undo: () => void;
     redo: () => void;
@@ -70,7 +77,9 @@ const snapshotState = (state: AppState): AppStateSnapshot => ({
   selectedId: state.selectedId,
   selectedSide: state.selectedSide,
   layout: structuredClone(state.layout),
-  selectedBoxId: state.selectedBoxId
+  selectedBoxId: state.selectedBoxId,
+  selectedCardIdsA: Array.from(state.selectedCardIdsA),
+  selectedCardIdsB: Array.from(state.selectedCardIdsB)
 });
 
 const recordHistory = (state: AppState, current: AppState) => {
@@ -88,6 +97,8 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.selectedSide = snapshot.selectedSide;
   state.layout = structuredClone(snapshot.layout);
   state.selectedBoxId = snapshot.selectedBoxId;
+  state.selectedCardIdsA = new Set(snapshot.selectedCardIdsA);
+  state.selectedCardIdsB = new Set(snapshot.selectedCardIdsB);
   state.isEditingLayout = false;
 };
 
@@ -111,6 +122,8 @@ export const useAppStore = create<AppState>()(
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,
+    selectedCardIdsA: new Set<string>(),
+    selectedCardIdsB: new Set<string>(),
     selectedBoxId: null,
     isEditingLayout: false,
     setZoom: (value) => set((state) => {
@@ -220,6 +233,24 @@ export const useAppStore = create<AppState>()(
       state.isExporting = false;
       state.exportStartedAt = null;
       state.exportLabel = null;
+    }),
+    toggleCardSelection: (id, side) => set((state) => {
+      const setRef = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      if (setRef.has(id)) {
+        setRef.delete(id);
+      } else {
+        setRef.add(id);
+      }
+    }),
+    selectAllCards: (side) => set((state) => {
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const setRef = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      setRef.clear();
+      source.forEach((card) => setRef.add(card.id));
+    }),
+    clearCardSelection: (side) => set((state) => {
+      const setRef = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      setRef.clear();
     }),
     pushHistory: () => set((state) => {
       recordHistory(state, get());

@@ -3,12 +3,12 @@ import type React from "react";
 import { useAppStore, type ListSide } from "../state/store";
 import {
   exportCardsToJson,
-  importCardsFromJson,
   importInfinitivesText,
   validateCardsImport,
   type ImportErrorLog
 } from "../io/importExport";
 import { normalizeCard } from "../model/cardSchema";
+import { exportCardsToPdf } from "../pdf/exportPdf";
 
 type Props = {
   side: ListSide;
@@ -25,6 +25,13 @@ export const CardListPanel = ({ side }: Props) => {
   const isExporting = useAppStore((state) => state.isExporting);
   const selectedId = useAppStore((state) => state.selectedId);
   const selectedSide = useAppStore((state) => state.selectedSide);
+  const selectedCardIds = useAppStore((state) =>
+    side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB
+  );
+  const toggleCardSelection = useAppStore((state) => state.toggleCardSelection);
+  const selectAllCards = useAppStore((state) => state.selectAllCards);
+  const clearCardSelection = useAppStore((state) => state.clearCardSelection);
+  const layout = useAppStore((state) => state.layout);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importErrorLog, setImportErrorLog] = useState<ImportErrorLog | null>(null);
@@ -97,6 +104,32 @@ export const CardListPanel = ({ side }: Props) => {
       finishExport();
       setImportNotice("Экспорт завершён.");
     }, 600);
+  };
+
+  const handlePdfExport = (mode: "current" | "selected" | "all") => {
+    const list = cards;
+    let exportCards = list;
+    let suffix = "all";
+    if (mode === "current") {
+      const active = list.find((card) => card.id === selectedId);
+      if (!active) return;
+      exportCards = [active];
+      suffix = `current_${active.id}`;
+    }
+    if (mode === "selected") {
+      const selected = list.filter((card) => selectedCardIds.has(card.id));
+      if (!selected.length) return;
+      exportCards = selected;
+      suffix = `selected_${selected.length}`;
+    }
+    const fileName = `LingoCard_${side}_${suffix}.pdf`;
+    startExport("Экспорт PDF");
+    exportCardsToPdf(exportCards, layout, {
+      cardsPerRow: 1,
+      cardsPerColumn: 1,
+      marginMm: 5
+    }, fileName);
+    finishExport();
   };
 
   const downloadImportLog = () => {
@@ -179,6 +212,39 @@ export const CardListPanel = ({ side }: Props) => {
         >
           Экспорт
         </button>
+        <button
+          onClick={() => handlePdfExport("current")}
+          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700"
+        >
+          PDF: Текущая
+        </button>
+        <button
+          onClick={() => handlePdfExport("selected")}
+          disabled={selectedCardIds.size === 0}
+          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700 disabled:opacity-50"
+        >
+          PDF: Выбранные
+        </button>
+        <button
+          onClick={() => handlePdfExport("all")}
+          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700"
+        >
+          PDF: Все
+        </button>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-slate-500">
+        <button
+          onClick={() => selectAllCards(side)}
+          className="inline-flex items-center justify-center px-2 py-1 rounded-full border border-slate-200"
+        >
+          Выделить всё
+        </button>
+        <button
+          onClick={() => clearCardSelection(side)}
+          className="inline-flex items-center justify-center px-2 py-1 rounded-full border border-slate-200"
+        >
+          Снять выделение
+        </button>
       </div>
       <div className="flex-1 overflow-auto rounded-xl border border-slate-100 bg-slate-50/40 p-3 text-sm space-y-3 dark:border-slate-800 dark:bg-slate-900/60">
         {importNotice && (
@@ -214,6 +280,12 @@ export const CardListPanel = ({ side }: Props) => {
                 : "border-transparent bg-white hover:border-slate-100 hover:shadow-sm dark:bg-slate-900 dark:hover:border-slate-700"
             ].join(" ")}
           >
+            <input
+              type="checkbox"
+              checked={selectedCardIds.has(card.id)}
+              onChange={() => toggleCardSelection(card.id, side)}
+              className="h-4 w-4"
+            />
             <button
               onClick={() => selectCard(card.id, side)}
               className="flex-1 text-left"

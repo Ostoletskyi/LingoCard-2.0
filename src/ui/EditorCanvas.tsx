@@ -30,7 +30,13 @@ const RULER_OFFSET_MM = 10;
 
 const buildRange = (max: number) => Array.from({ length: Math.floor(max) + 1 }, (_, i) => i);
 
-export const EditorCanvas = () => {
+type RenderMode = "editor" | "print";
+
+type EditorCanvasProps = {
+  renderMode?: RenderMode;
+};
+
+export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const {
     layout,
     zoom,
@@ -95,6 +101,9 @@ export const EditorCanvas = () => {
     if (box.locked) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.currentTarget instanceof HTMLElement) {
+      event.currentTarget.focus();
+    }
     selectBox(box.id);
     setDragState({
       boxId: box.id,
@@ -361,12 +370,14 @@ export const EditorCanvas = () => {
           className="absolute inset-0 rounded-[22px] bg-gradient-to-br from-white via-white to-slate-100/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/40"
           aria-hidden
         />
-        <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+        {renderMode === "editor" && (
+          <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
           <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"} · Двойной клик = редактирование</span>
-        </div>
+          </div>
+        )}
         <div className="relative">
-          {rulersEnabled && renderRulers()}
+          {renderMode === "editor" && rulersEnabled && renderRulers()}
           <div
             ref={cardRef}
             className="relative bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
@@ -390,7 +401,7 @@ export const EditorCanvas = () => {
               selectBox(null);
             }}
           >
-            {gridEnabled && (
+            {renderMode === "editor" && gridEnabled && (
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{
@@ -422,6 +433,7 @@ export const EditorCanvas = () => {
                 <div
                   key={box.id}
                   className="absolute group cursor-move"
+                  tabIndex={renderMode === "editor" ? 0 : -1}
                   style={{
                     left: mmToPx(box.xMm, pxPerMm),
                     top: mmToPx(box.yMm, pxPerMm),
@@ -433,10 +445,11 @@ export const EditorCanvas = () => {
                     lineHeight: box.style.lineHeight,
                     padding: mmToPx(box.style.paddingMm, pxPerMm),
                     color: fieldText.isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
-                    border: isSelected
-                      ? "1px solid #38bdf8"
-                      : box.style.border
-                        ? "1px dashed #cbd5f5"
+                    border:
+                      renderMode === "editor"
+                        ? isSelected
+                          ? "1px solid #38bdf8"
+                          : "1px solid rgba(148,163,184,0.4)"
                         : "none",
                     outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
                     display: box.style.visible === false ? "none" : "block"
@@ -446,10 +459,18 @@ export const EditorCanvas = () => {
                     event.stopPropagation();
                     handleBeginEdit(box);
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !editingBoxId) {
+                      event.preventDefault();
+                      handleBeginEdit(box);
+                    }
+                  }}
                 >
-                  <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
-                    {label}
-                  </div>
+                  {renderMode === "editor" && (
+                    <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
+                      {label}
+                    </div>
+                  )}
                   {isEditing ? (
                     <textarea
                       ref={editRef}
@@ -480,22 +501,22 @@ export const EditorCanvas = () => {
                       {fieldText.text}
                     </div>
                   )}
-                  {debugOverlays && (
+                  {renderMode === "editor" && debugOverlays && (
                     <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[9px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
                       {box.fieldId}
                     </span>
                   )}
-                  {dragState?.boxId === box.id && (
+                  {renderMode === "editor" && dragState?.boxId === box.id && (
                     <span className="absolute right-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
                       X:{box.xMm.toFixed(1)} Y:{box.yMm.toFixed(1)}
                     </span>
                   )}
-                  {isSelected && (
+                  {renderMode === "editor" && isSelected && (
                     <span className="absolute left-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
                       {box.wMm.toFixed(1)}×{box.hMm.toFixed(1)} мм
                     </span>
                   )}
-                  {isSelected && (
+                  {renderMode === "editor" && isSelected && (
                     <>
                       {([
                         "nw",
@@ -532,7 +553,7 @@ export const EditorCanvas = () => {
                 </div>
               );
             })}
-            {cursorMm && (
+            {renderMode === "editor" && cursorMm && (
               <>
                 <div
                   className="absolute top-0 bottom-0 w-px bg-sky-200/60 pointer-events-none"
@@ -544,11 +565,13 @@ export const EditorCanvas = () => {
                 />
               </>
             )}
-            <div className="absolute bottom-2 right-2 rounded-full bg-white/80 px-2 py-1 text-[11px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
+            {renderMode === "editor" && (
+              <div className="absolute bottom-2 right-2 rounded-full bg-white/80 px-2 py-1 text-[11px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
               {cursorMm
                 ? `X: ${cursorMm.x.toFixed(1)} мм · Y: ${cursorMm.y.toFixed(1)} мм`
                 : "Наведите на холст"}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
