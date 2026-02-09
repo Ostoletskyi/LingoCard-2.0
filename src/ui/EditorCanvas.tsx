@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
@@ -23,6 +23,10 @@ type DragState = {
 
 const applySnap = (valueMm: number, enabled: boolean) =>
   enabled ? Math.round(valueMm / GRID_STEP_MM) * GRID_STEP_MM : valueMm;
+
+const RULER_SIZE_PX = 28;
+
+const buildRange = (max: number) => Array.from({ length: Math.floor(max) + 1 }, (_, i) => i);
 
 export const EditorCanvas = () => {
   const {
@@ -58,6 +62,8 @@ export const EditorCanvas = () => {
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const card = useMemo(() => {
     if (!selectedId) return null;
@@ -84,6 +90,16 @@ export const EditorCanvas = () => {
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
+    if (cardRef.current) {
+      const rect = cardRef.current.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / pxPerMm;
+      const y = (event.clientY - rect.top) / pxPerMm;
+      if (x >= 0 && y >= 0 && x <= layout.widthMm && y <= layout.heightMm) {
+        setCursorMm({ x, y });
+      } else {
+        setCursorMm(null);
+      }
+    }
     if (!dragState) return;
     const deltaX = event.clientX - dragState.startX;
     const deltaY = event.clientY - dragState.startY;
@@ -141,34 +157,93 @@ export const EditorCanvas = () => {
     setDragState(null);
   };
 
+  const handlePointerLeave = () => {
+    setCursorMm(null);
+    handlePointerUp();
+  };
+
+  const cursorX = cursorMm ? Math.round(cursorMm.x) : null;
+  const cursorY = cursorMm ? Math.round(cursorMm.y) : null;
+
+  const renderHorizontalRuler = () => (
+    <div
+      className="absolute left-0 top-0"
+      style={{ height: RULER_SIZE_PX, width: widthPx, marginLeft: RULER_SIZE_PX }}
+    >
+      {buildRange(layout.widthMm).map((mm) => {
+        const isCm = mm % 10 === 0;
+        const isMid = mm % 5 === 0;
+        const height = isCm ? 14 : isMid ? 10 : 6;
+        return (
+          <div
+            key={`h-${mm}`}
+            className="absolute bottom-0"
+            style={{
+              left: mmToPx(mm, pxPerMm),
+              width: 1,
+              height,
+              backgroundColor: "rgba(100,116,139,0.7)"
+            }}
+          >
+            {isCm && (
+              <span
+                className="absolute -top-4 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200"
+                style={{ transform: "translateX(-4px)" }}
+              >
+                {mm / 10}
+              </span>
+            )}
+            {cursorX === mm && (
+              <span className="absolute -top-1 h-1 w-1 rounded-full bg-sky-400" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderVerticalRuler = () => (
+    <div
+      className="absolute left-0 top-0"
+      style={{ width: RULER_SIZE_PX, height: heightPx, marginTop: RULER_SIZE_PX }}
+    >
+      {buildRange(layout.heightMm).map((mm) => {
+        const isCm = mm % 10 === 0;
+        const isMid = mm % 5 === 0;
+        const width = isCm ? 14 : isMid ? 10 : 6;
+        return (
+          <div
+            key={`v-${mm}`}
+            className="absolute right-0"
+            style={{
+              top: mmToPx(mm, pxPerMm),
+              height: 1,
+              width,
+              backgroundColor: "rgba(100,116,139,0.7)"
+            }}
+          >
+            {isCm && (
+              <span className="absolute left-0 -translate-x-full -translate-y-2 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200">
+                {mm / 10}
+              </span>
+            )}
+            {cursorY === mm && (
+              <span className="absolute -left-1 h-1 w-1 rounded-full bg-sky-400" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const renderRulers = () => (
     <>
       <div
-        className="absolute -top-6 left-0 right-0 h-6 bg-slate-100 border-b border-slate-200"
-        style={{ backgroundSize: `${mmToPx(10, pxPerMm)}px 100%` }}
-      >
-        <div
-          className="h-full w-full"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, rgba(148,163,184,0.4) 1px, transparent 1px)",
-            backgroundSize: `${mmToPx(1, pxPerMm)}px 100%`
-          }}
-        />
-      </div>
-      <div
-        className="absolute -left-6 top-0 bottom-0 w-6 bg-slate-100 border-r border-slate-200"
-        style={{ backgroundSize: `100% ${mmToPx(10, pxPerMm)}px` }}
-      >
-        <div
-          className="h-full w-full"
-          style={{
-            backgroundImage:
-              "linear-gradient(to bottom, rgba(148,163,184,0.4) 1px, transparent 1px)",
-            backgroundSize: `100% ${mmToPx(1, pxPerMm)}px`
-          }}
-        />
-      </div>
+        className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
+        style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
+      />
+      {renderHorizontalRuler()}
+      {renderVerticalRuler()}
     </>
   );
 
@@ -176,101 +251,130 @@ export const EditorCanvas = () => {
     <div className="mt-3 relative flex justify-center">
       <div
         className={[
-          "relative rounded-[22px] bg-slate-100/70 p-6",
+          "relative rounded-[22px] bg-slate-100/70 p-6 dark:bg-slate-900/70",
           snapEnabled ? "ring-2 ring-sky-100" : "ring-1 ring-slate-200"
         ].join(" ")}
       >
         <div
-          className="absolute inset-0 rounded-[22px] bg-gradient-to-br from-white via-white to-slate-100/40"
+          className="absolute inset-0 rounded-[22px] bg-gradient-to-br from-white via-white to-slate-100/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/40"
           aria-hidden
         />
-        <div className="mb-4 flex items-center justify-between text-xs text-slate-500">
+        <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
           <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"}</span>
         </div>
-        <div
-          className="relative bg-white border border-slate-200 rounded-2xl shadow-card"
-        style={{ width: widthPx, height: heightPx }}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        onPointerDown={() => selectBox(null)}
-      >
-        {rulersEnabled && renderRulers()}
-        {gridEnabled && (
+        <div className="relative">
+          {rulersEnabled && renderRulers()}
           <div
-            className="absolute inset-0 pointer-events-none"
+            ref={cardRef}
+            className="relative bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
             style={{
-              backgroundImage:
-                "linear-gradient(to right, rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(to bottom, rgba(226,232,240,0.6) 1px, transparent 1px)",
-              backgroundSize: `${mmToPx(GRID_STEP_MM, pxPerMm)}px ${mmToPx(
-                GRID_STEP_MM,
-                pxPerMm
-              )}px`
+              width: widthPx,
+              height: heightPx,
+              marginLeft: rulersEnabled ? RULER_SIZE_PX : 0,
+              marginTop: rulersEnabled ? RULER_SIZE_PX : 0
             }}
-          />
-        )}
-        {layout.boxes.map((box) => {
-          const value = getCardFieldValue(card, box.fieldId);
-          const isSelected = selectedBoxId === box.id;
-          return (
-            <div
-              key={box.id}
-              className="absolute group cursor-move"
-              style={{
-                left: mmToPx(box.xMm, pxPerMm),
-                top: mmToPx(box.yMm, pxPerMm),
-                width: mmToPx(box.wMm, pxPerMm),
-                height: mmToPx(box.hMm, pxPerMm),
-                fontSize: box.style.fontSizePt * 1.333 * zoom,
-                fontWeight: box.style.fontWeight,
-                textAlign: box.style.align,
-                lineHeight: box.style.lineHeight,
-                padding: mmToPx(box.style.paddingMm, pxPerMm),
-                border: isSelected
-                  ? "1px solid #38bdf8"
-                  : box.style.border
-                    ? "1px dashed #cbd5f5"
-                    : "none",
-                outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
-                display: box.style.visible === false ? "none" : "block"
-              }}
-              onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
-            >
-              {value}
-              {isSelected && (
-                <>
-                  {([
-                    "nw",
-                    "n",
-                    "ne",
-                    "e",
-                    "se",
-                    "s",
-                    "sw",
-                    "w"
-                  ] as const).map((handle) => (
-                    <div
-                      key={handle}
-                      className="absolute h-2 w-2 rounded-full bg-sky-500 shadow-sm"
-                      style={{
-                        ...(handle.includes("n") ? { top: -4 } : {}),
-                        ...(handle.includes("s") ? { bottom: -4 } : {}),
-                        ...(handle.includes("e") ? { right: -4 } : {}),
-                        ...(handle.includes("w") ? { left: -4 } : {}),
-                        ...(handle === "n" || handle === "s" ? { left: "50%", marginLeft: -4 } : {}),
-                        ...(handle === "e" || handle === "w" ? { top: "50%", marginTop: -4 } : {})
-                      }}
-                      onPointerDown={(event) =>
-                        handlePointerDown(event, box, { type: "resize", handle })
-                      }
-                    />
-                  ))}
-                </>
-              )}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
+            onPointerDown={() => selectBox(null)}
+          >
+            {gridEnabled && (
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(to right, rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(to bottom, rgba(226,232,240,0.6) 1px, transparent 1px)",
+                  backgroundSize: `${mmToPx(GRID_STEP_MM, pxPerMm)}px ${mmToPx(
+                    GRID_STEP_MM,
+                    pxPerMm
+                  )}px`
+                }}
+              />
+            )}
+            {layout.boxes.map((box) => {
+              const value = getCardFieldValue(card, box.fieldId);
+              const isSelected = selectedBoxId === box.id;
+              return (
+                <div
+                  key={box.id}
+                  className="absolute group cursor-move"
+                  style={{
+                    left: mmToPx(box.xMm, pxPerMm),
+                    top: mmToPx(box.yMm, pxPerMm),
+                    width: mmToPx(box.wMm, pxPerMm),
+                    height: mmToPx(box.hMm, pxPerMm),
+                    fontSize: box.style.fontSizePt * 1.333 * zoom,
+                    fontWeight: box.style.fontWeight,
+                    textAlign: box.style.align,
+                    lineHeight: box.style.lineHeight,
+                    padding: mmToPx(box.style.paddingMm, pxPerMm),
+                    border: isSelected
+                      ? "1px solid #38bdf8"
+                      : box.style.border
+                        ? "1px dashed #cbd5f5"
+                        : "none",
+                    outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
+                    display: box.style.visible === false ? "none" : "block"
+                  }}
+                  onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
+                >
+                  {value}
+                  {isSelected && (
+                    <>
+                      {([
+                        "nw",
+                        "n",
+                        "ne",
+                        "e",
+                        "se",
+                        "s",
+                        "sw",
+                        "w"
+                      ] as const).map((handle) => (
+                        <div
+                          key={handle}
+                          className="absolute h-2 w-2 rounded-full bg-sky-500 shadow-sm"
+                          style={{
+                            ...(handle.includes("n") ? { top: -4 } : {}),
+                            ...(handle.includes("s") ? { bottom: -4 } : {}),
+                            ...(handle.includes("e") ? { right: -4 } : {}),
+                            ...(handle.includes("w") ? { left: -4 } : {}),
+                            ...(handle === "n" || handle === "s"
+                              ? { left: "50%", marginLeft: -4 }
+                              : {}),
+                            ...(handle === "e" || handle === "w"
+                              ? { top: "50%", marginTop: -4 }
+                              : {})
+                          }}
+                          onPointerDown={(event) =>
+                            handlePointerDown(event, box, { type: "resize", handle })
+                          }
+                        />
+                      ))}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {cursorMm && (
+              <>
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-sky-200/60 pointer-events-none"
+                  style={{ left: mmToPx(cursorMm.x, pxPerMm) }}
+                />
+                <div
+                  className="absolute left-0 right-0 h-px bg-sky-200/60 pointer-events-none"
+                  style={{ top: mmToPx(cursorMm.y, pxPerMm) }}
+                />
+              </>
+            )}
+            <div className="absolute bottom-2 right-2 rounded-full bg-white/80 px-2 py-1 text-[11px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
+              {cursorMm
+                ? `X: ${cursorMm.x.toFixed(1)} мм · Y: ${cursorMm.y.toFixed(1)} мм`
+                : "Наведите на холст"}
             </div>
-          );
-        })}
+          </div>
         </div>
       </div>
     </div>
