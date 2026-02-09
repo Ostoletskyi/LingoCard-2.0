@@ -1,10 +1,63 @@
 import type { Card } from "../model/cardSchema";
 
-export const getCardFieldValue = (card: Card | null, fieldId: string): string => {
+type FieldTextResult = {
+  text: string;
+  isPlaceholder: boolean;
+};
+
+const fieldLabels: Record<string, string> = {
+  inf: "Infinitiv",
+  forms_p3: "Präsens (3sg)",
+  forms_prat: "Präteritum",
+  forms_p2: "Partizip II",
+  forms_aux: "Aux (haben/sein)",
+  tr_1_ru: "Перевод RU",
+  tr_1_ctx: "Контекст RU",
+  tr_2_ru: "Перевод RU",
+  tr_3_ru: "Перевод RU",
+  tr_4_ru: "Перевод RU",
+  freq: "Частотность",
+  tags: "Теги"
+};
+
+export const getFieldLabel = (fieldId: string) => fieldLabels[fieldId] ?? `Поле: ${fieldId}`;
+
+export const getFieldEditValue = (card: Card | null, fieldId: string): string => {
   if (!card) return "";
-  if (Object.prototype.hasOwnProperty.call(card, fieldId)) {
-    const value = (card as Record<string, string>)[fieldId];
+  if (fieldId === "tags") {
+    return card.tags.join(", ");
+  }
+  if (fieldId === "freq") {
+    return String(card.freq ?? "");
+  }
+  if (fieldId in card) {
+    const value = card[fieldId as keyof Card];
     return typeof value === "string" ? value : "";
   }
   return "";
+};
+
+export const getFieldText = (card: Card | null, fieldId: string): FieldTextResult => {
+  if (!card) {
+    return { text: "Введите текст…", isPlaceholder: true };
+  }
+  const placeholder =
+    fieldId.startsWith("tr_") ? "Перевод…" : fieldId.startsWith("ex_") ? "Пример…" : "Введите текст…";
+  if (fieldId === "freq") {
+    const count = card.freq ?? 0;
+    return { text: count ? "●".repeat(count) : "1–5", isPlaceholder: count === 0 };
+  }
+  if (fieldId === "tags") {
+    return {
+      text: card.tags.length ? card.tags.join(", ") : "Теги…",
+      isPlaceholder: card.tags.length === 0
+    };
+  }
+  if (fieldId in card) {
+    const value = card[fieldId as keyof Card];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return { text: value, isPlaceholder: false };
+    }
+  }
+  return { text: placeholder, isPlaceholder: true };
 };

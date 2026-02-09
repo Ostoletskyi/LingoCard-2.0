@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import type React from "react";
 import { useAppStore, type ListSide } from "../state/store";
-import { exportCardsToJson, importCardsFromJson, importInfinitivesText } from "../io/importExport";
+import {
+  exportCardsToJson,
+  importCardsFromJson,
+  importInfinitivesText,
+  validateCardsImport,
+  type ImportErrorLog
+} from "../io/importExport";
 
 type Props = {
   side: ListSide;
@@ -38,10 +44,22 @@ export const CardListPanel = ({ side }: Props) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const text = await file.text();
-    const imported = importCardsFromJson(text);
-    if (imported.cards.length) {
-      imported.cards.forEach((card) => addCard(card, side));
+    const validation = validateCardsImport(text, { fileName: file.name, size: file.size });
+    if (validation.status === "error") {
+      setImportModalType("error");
+      setImportErrorLog(validation.errorLog ?? null);
+      event.target.value = "";
+      return;
     }
+    setImportErrorLog(null);
+    setImportModalType(null);
+    validation.cards.forEach((card) => addCard(card, side));
+    setImportWarnings(validation.warnings);
+    setImportNotice(
+      validation.status === "warning"
+        ? `Импортировано: ${validation.cards.length}. Есть предупреждения.`
+        : `Импортировано: ${validation.cards.length} карточек.`
+    );
     event.target.value = "";
   };
 
@@ -52,11 +70,32 @@ export const CardListPanel = ({ side }: Props) => {
     cardsFromText.forEach((card) => addCard(card, side));
   };
 
+  const handleCreate = () => {
+    addCard({ inf: "" }, side);
+  };
+
   const handleExport = () => {
+    startExport("Экспорт JSON");
     const blob = exportCardsToJson(cards);
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `cards_${side}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setTimeout(() => {
+      finishExport();
+      setImportNotice("Экспорт завершён.");
+    }, 600);
+  };
+
+  const downloadImportLog = () => {
+    if (!importErrorLog) return;
+    const blob = new Blob([JSON.stringify(importErrorLog, null, 2)], {
+      type: "application/json"
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "import_error_log.json";
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -133,6 +172,49 @@ export const CardListPanel = ({ side }: Props) => {
           </div>
         )}
       </div>
+      {importErrorLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-lg dark:bg-slate-900">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              {importModalType === "warning"
+                ? "Импорт завершён с предупреждениями"
+                : "Не удалось импортировать файл"}
+            </h3>
+            <div className="mt-3 text-sm text-slate-500 dark:text-slate-300">
+              <div>Файл: {importErrorLog.fileName ?? "неизвестно"}</div>
+              {importErrorLog.size ? <div>Размер: {importErrorLog.size} bytes</div> : null}
+            </div>
+            <div className="mt-4 rounded-xl border border-dashed border-slate-200 p-3 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-200">
+              {importErrorLog.humanSummary}
+            </div>
+            {importErrorLog.technicalDetails && (
+              <div className="mt-3 text-xs text-slate-400">
+                Детали: {importErrorLog.technicalDetails}
+              </div>
+            )}
+            <div className="mt-3 text-xs text-slate-400">
+              Проверьте, что файл содержит массив карточек или объект с ключом cards.
+            </div>
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                onClick={downloadImportLog}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300"
+              >
+                Скачать лог
+              </button>
+              <button
+                onClick={() => {
+                  setImportErrorLog(null);
+                  setImportModalType(null);
+                }}
+                className="rounded-full bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

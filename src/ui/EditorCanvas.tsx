@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
-import { getCardFieldValue } from "../utils/cardFields";
+import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
+import type { Card } from "../model/cardSchema";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -24,6 +25,11 @@ type DragState = {
 const applySnap = (valueMm: number, enabled: boolean) =>
   enabled ? Math.round(valueMm / GRID_STEP_MM) * GRID_STEP_MM : valueMm;
 
+const RULER_SIZE_PX = 28;
+const RULER_OFFSET_MM = 10;
+
+const buildRange = (max: number) => Array.from({ length: Math.floor(max) + 1 }, (_, i) => i);
+
 export const EditorCanvas = () => {
   const {
     layout,
@@ -36,6 +42,10 @@ export const EditorCanvas = () => {
     gridEnabled,
     rulersEnabled,
     snapEnabled,
+    gridIntensity,
+    showOnlyCmLines,
+    debugOverlays,
+    rulersPlacement,
     selectBox,
     updateBox,
     beginLayoutEdit,
@@ -51,6 +61,10 @@ export const EditorCanvas = () => {
     gridEnabled: state.gridEnabled,
     rulersEnabled: state.rulersEnabled,
     snapEnabled: state.snapEnabled,
+    gridIntensity: state.gridIntensity,
+    showOnlyCmLines: state.showOnlyCmLines,
+    debugOverlays: state.debugOverlays,
+    rulersPlacement: state.rulersPlacement,
     selectBox: state.selectBox,
     updateBox: state.updateBox,
     beginLayoutEdit: state.beginLayoutEdit,
@@ -58,6 +72,13 @@ export const EditorCanvas = () => {
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
+  const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [originalValue, setOriginalValue] = useState("");
+  const editRef = useRef<HTMLTextAreaElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const isDarkTheme = document.documentElement.classList.contains("dark");
 
   const card = useMemo(() => {
     if (!selectedId) return null;
@@ -67,8 +88,10 @@ export const EditorCanvas = () => {
   const pxPerMm = DEFAULT_PX_PER_MM * zoom;
   const widthPx = mmToPx(layout.widthMm, pxPerMm);
   const heightPx = mmToPx(layout.heightMm, pxPerMm);
+  const rulerOffsetPx = mmToPx(RULER_OFFSET_MM, pxPerMm);
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
+    if (editingBoxId) return;
     if (box.locked) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -84,6 +107,16 @@ export const EditorCanvas = () => {
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
+    if (cardRef.current) {
+      const rect = cardRef.current.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / pxPerMm;
+      const y = (event.clientY - rect.top) / pxPerMm;
+      if (x >= 0 && y >= 0 && x <= layout.widthMm && y <= layout.heightMm) {
+        setCursorMm({ x, y });
+      } else {
+        setCursorMm(null);
+      }
+    }
     if (!dragState) return;
     const deltaX = event.clientX - dragState.startX;
     const deltaY = event.clientY - dragState.startY;
@@ -141,34 +174,178 @@ export const EditorCanvas = () => {
     setDragState(null);
   };
 
+  const handleBeginEdit = (box: Box) => {
+    if (!card) return;
+    const fieldValue = getFieldEditValue(card, box.fieldId);
+    setEditingBoxId(box.id);
+    setOriginalValue(fieldValue);
+    setEditValue(fieldValue);
+  };
+
+  const updateCardField = (current: Card, fieldId: string, value: string): Card => {
+    const next: Card = { ...current };
+    if (fieldId === "tags") {
+      next.tags = value
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      return next;
+    }
+    if (fieldId === "freq") {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed)) {
+        next.freq = Math.min(5, Math.max(1, parsed)) as Card["freq"];
+      }
+      return next;
+    }
+    if (fieldId in next) {
+      const key = fieldId as keyof Card;
+      if (typeof next[key] === "string") {
+        next[key] = value as Card[typeof key];
+      }
+    }
+    return next;
+  };
+
+  const commitEdit = (shouldSave: boolean) => {
+    if (!editingBoxId || !card) {
+      setEditingBoxId(null);
+      return;
+    }
+    if (shouldSave && editValue !== originalValue) {
+      const box = layout.boxes.find((item) => item.id === editingBoxId);
+      if (box) {
+        const updated = updateCardField(card, box.fieldId, editValue);
+        useAppStore.getState().updateCard(updated, selectedSide);
+      }
+    }
+    setEditingBoxId(null);
+  };
+
+  useEffect(() => {
+    if (!editingBoxId) return;
+    const id = window.requestAnimationFrame(() => editRef.current?.focus());
+    return () => window.cancelAnimationFrame(id);
+  }, [editingBoxId]);
+
+  const handlePointerLeave = () => {
+    setCursorMm(null);
+    handlePointerUp();
+  };
+
+  const cursorX = cursorMm ? Math.round(cursorMm.x) : null;
+  const cursorY = cursorMm ? Math.round(cursorMm.y) : null;
+  const intensityMap = {
+    low: 0.05,
+    medium: 0.1,
+    high: 0.16
+  } as const;
+  const intensityBase = intensityMap[gridIntensity];
+  const intensityScale = isDarkTheme ? 0.6 : 1;
+  const minorOpacity = intensityBase * 0.6 * intensityScale;
+  const mediumOpacity = intensityBase * 0.9 * intensityScale;
+  const majorOpacity = intensityBase * 1.2 * intensityScale;
+  const gridBackground = showOnlyCmLines
+    ? `linear-gradient(to right, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px)`
+    : `linear-gradient(to right, rgba(148,163,184,${minorOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${minorOpacity}) 1px, transparent 1px),
+       linear-gradient(to right, rgba(148,163,184,${mediumOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${mediumOpacity}) 1px, transparent 1px),
+       linear-gradient(to right, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px),
+       linear-gradient(to bottom, rgba(148,163,184,${majorOpacity}) 1px, transparent 1px)`;
+
+  const renderHorizontalRuler = () => (
+    <div
+      className="absolute left-0"
+      style={{
+        height: RULER_SIZE_PX,
+        width: widthPx,
+        marginLeft: rulersPlacement === "outside" ? RULER_SIZE_PX : 0,
+        top: rulersPlacement === "outside" ? -rulerOffsetPx : 0
+      }}
+    >
+      {buildRange(layout.widthMm).map((mm) => {
+        const isCm = mm % 10 === 0;
+        const isMid = mm % 5 === 0;
+        const height = isCm ? 14 : isMid ? 10 : 6;
+        return (
+          <div
+            key={`h-${mm}`}
+            className="absolute bottom-0"
+            style={{
+              left: mmToPx(mm, pxPerMm),
+              width: 1,
+              height,
+              backgroundColor: "rgba(100,116,139,0.7)"
+            }}
+          >
+            {isCm && (
+              <span
+                className="absolute -top-4 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200"
+                style={{ transform: "translateX(-4px)" }}
+              >
+                {mm / 10}
+              </span>
+            )}
+            {cursorX === mm && (
+              <span className="absolute -top-1 h-1 w-1 rounded-full bg-sky-400" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderVerticalRuler = () => (
+    <div
+      className="absolute left-0"
+      style={{
+        width: RULER_SIZE_PX,
+        height: heightPx,
+        marginTop: rulersPlacement === "outside" ? RULER_SIZE_PX : 0,
+        top: rulersPlacement === "outside" ? -rulerOffsetPx : 0
+      }}
+    >
+      {buildRange(layout.heightMm).map((mm) => {
+        const isCm = mm % 10 === 0;
+        const isMid = mm % 5 === 0;
+        const width = isCm ? 14 : isMid ? 10 : 6;
+        return (
+          <div
+            key={`v-${mm}`}
+            className="absolute right-0"
+            style={{
+              top: mmToPx(mm, pxPerMm),
+              height: 1,
+              width,
+              backgroundColor: "rgba(100,116,139,0.7)"
+            }}
+          >
+            {isCm && (
+              <span className="absolute left-0 -translate-x-full -translate-y-2 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200">
+                {mm / 10}
+              </span>
+            )}
+            {cursorY === mm && (
+              <span className="absolute -left-1 h-1 w-1 rounded-full bg-sky-400" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const renderRulers = () => (
     <>
-      <div
-        className="absolute -top-6 left-0 right-0 h-6 bg-slate-100 border-b border-slate-200"
-        style={{ backgroundSize: `${mmToPx(10, pxPerMm)}px 100%` }}
-      >
+      {rulersPlacement === "outside" && (
         <div
-          className="h-full w-full"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, rgba(148,163,184,0.4) 1px, transparent 1px)",
-            backgroundSize: `${mmToPx(1, pxPerMm)}px 100%`
-          }}
+          className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
+          style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
         />
-      </div>
-      <div
-        className="absolute -left-6 top-0 bottom-0 w-6 bg-slate-100 border-r border-slate-200"
-        style={{ backgroundSize: `100% ${mmToPx(10, pxPerMm)}px` }}
-      >
-        <div
-          className="h-full w-full"
-          style={{
-            backgroundImage:
-              "linear-gradient(to bottom, rgba(148,163,184,0.4) 1px, transparent 1px)",
-            backgroundSize: `100% ${mmToPx(1, pxPerMm)}px`
-          }}
-        />
-      </div>
+      )}
+      {renderHorizontalRuler()}
+      {renderVerticalRuler()}
     </>
   );
 
@@ -192,10 +369,19 @@ export const EditorCanvas = () => {
         onPointerLeave={handlePointerUp}
         onPointerDown={() => selectBox(null)}
       >
-        {rulersEnabled && renderRulers()}
-        {gridEnabled && (
+        <div
+          className="absolute inset-0 rounded-[22px] bg-gradient-to-br from-white via-white to-slate-100/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/40"
+          aria-hidden
+        />
+        <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
+          <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"} · Двойной клик = редактирование</span>
+        </div>
+        <div className="relative">
+          {rulersEnabled && renderRulers()}
           <div
-            className="absolute inset-0 pointer-events-none"
+            ref={cardRef}
+            className="relative bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
             style={{
               backgroundImage:
                 "linear-gradient(to right, rgba(226,232,240,0.6) 1px, transparent 1px), linear-gradient(to bottom, rgba(226,232,240,0.6) 1px, transparent 1px)",
@@ -257,13 +443,81 @@ export const EditorCanvas = () => {
                         ...(handle === "n" || handle === "s" ? { left: "50%", marginLeft: -4 } : {}),
                         ...(handle === "e" || handle === "w" ? { top: "50%", marginTop: -4 } : {})
                       }}
-                      onPointerDown={(event) =>
-                        handlePointerDown(event, box, { type: "resize", handle })
-                      }
+                      onPointerDown={(event) => event.stopPropagation()}
                     />
-                  ))}
-                </>
-              )}
+                  ) : (
+                    <div className={fieldText.isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
+                      {fieldText.text}
+                    </div>
+                  )}
+                  {debugOverlays && (
+                    <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[9px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
+                      {box.fieldId}
+                    </span>
+                  )}
+                  {dragState?.boxId === box.id && (
+                    <span className="absolute right-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
+                      X:{box.xMm.toFixed(1)} Y:{box.yMm.toFixed(1)}
+                    </span>
+                  )}
+                  {isSelected && (
+                    <span className="absolute left-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
+                      {box.wMm.toFixed(1)}×{box.hMm.toFixed(1)} мм
+                    </span>
+                  )}
+                  {isSelected && (
+                    <>
+                      {([
+                        "nw",
+                        "n",
+                        "ne",
+                        "e",
+                        "se",
+                        "s",
+                        "sw",
+                        "w"
+                      ] as const).map((handle) => (
+                        <div
+                          key={handle}
+                          className="absolute h-2 w-2 rounded-full bg-sky-500 shadow-sm"
+                          style={{
+                            ...(handle.includes("n") ? { top: -4 } : {}),
+                            ...(handle.includes("s") ? { bottom: -4 } : {}),
+                            ...(handle.includes("e") ? { right: -4 } : {}),
+                            ...(handle.includes("w") ? { left: -4 } : {}),
+                            ...(handle === "n" || handle === "s"
+                              ? { left: "50%", marginLeft: -4 }
+                              : {}),
+                            ...(handle === "e" || handle === "w"
+                              ? { top: "50%", marginTop: -4 }
+                              : {})
+                          }}
+                          onPointerDown={(event) =>
+                            handlePointerDown(event, box, { type: "resize", handle })
+                          }
+                        />
+                      ))}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {cursorMm && (
+              <>
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-sky-200/60 pointer-events-none"
+                  style={{ left: mmToPx(cursorMm.x, pxPerMm) }}
+                />
+                <div
+                  className="absolute left-0 right-0 h-px bg-sky-200/60 pointer-events-none"
+                  style={{ top: mmToPx(cursorMm.y, pxPerMm) }}
+                />
+              </>
+            )}
+            <div className="absolute bottom-2 right-2 rounded-full bg-white/80 px-2 py-1 text-[11px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
+              {cursorMm
+                ? `X: ${cursorMm.x.toFixed(1)} мм · Y: ${cursorMm.y.toFixed(1)} мм`
+                : "Наведите на холст"}
             </div>
           );
         })}

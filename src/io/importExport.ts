@@ -1,6 +1,24 @@
 import { CardSchema, normalizeCard, type Card } from "../model/cardSchema";
+import { z } from "zod";
 
 export type ImportMode = "skip" | "overwrite" | "keep";
+
+export type ImportErrorLog = {
+  timestamp: string;
+  fileName?: string;
+  size?: number;
+  errorCode: "INVALID_JSON" | "INVALID_FORMAT" | "NO_VALID_CARDS";
+  humanSummary: string;
+  technicalDetails?: string;
+  samplePaths?: string[];
+};
+
+export type ImportResult = {
+  status: "ok" | "warning" | "error";
+  cards: Card[];
+  warnings: string[];
+  errorLog?: ImportErrorLog;
+};
 
 export const importCardsFromJson = (text: string, mode: ImportMode = "keep") => {
   const parsed = JSON.parse(text);
@@ -30,6 +48,78 @@ export const importCardsFromJson = (text: string, mode: ImportMode = "keep") => 
     }
   });
   return { cards, meta: Array.isArray(parsed) ? null : parsed.meta };
+};
+
+export const validateCardsImport = (
+  text: string,
+  meta?: { fileName?: string; size?: number }
+): ImportResult => {
+  try {
+    const parsed = JSON.parse(text);
+    const payloadCards = Array.isArray(parsed) ? parsed : parsed.cards;
+    if (!Array.isArray(payloadCards)) {
+      return {
+        status: "error",
+        cards: [],
+        warnings: [],
+        errorLog: {
+          timestamp: new Date().toISOString(),
+          fileName: meta?.fileName,
+          size: meta?.size,
+          errorCode: "INVALID_FORMAT",
+          humanSummary: "JSON валиден, но структура не соответствует формату карточек."
+        }
+      };
+    }
+    const cards: Card[] = [];
+    const warnings: string[] = [];
+    payloadCards.forEach((item, index) => {
+      try {
+        const normalized = normalizeCard(item);
+        CardSchema.parse(normalized);
+        cards.push(normalized);
+      } catch (error) {
+        warnings.push(`Карточка #${index + 1} не прошла валидацию.`);
+        if (warnings.length < 5 && error instanceof z.ZodError) {
+          warnings.push(...error.errors.map((err) => err.path.join(".")));
+        }
+      }
+    });
+    if (!cards.length) {
+      return {
+        status: "error",
+        cards: [],
+        warnings,
+        errorLog: {
+          timestamp: new Date().toISOString(),
+          fileName: meta?.fileName,
+          size: meta?.size,
+          errorCode: "NO_VALID_CARDS",
+          humanSummary: "Не найдено валидных карточек в файле.",
+          technicalDetails: warnings.join("; ")
+        }
+      };
+    }
+    return {
+      status: warnings.length ? "warning" : "ok",
+      cards,
+      warnings
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      cards: [],
+      warnings: [],
+      errorLog: {
+        timestamp: new Date().toISOString(),
+        fileName: meta?.fileName,
+        size: meta?.size,
+        errorCode: "INVALID_JSON",
+        humanSummary: "Файл не является корректным JSON.",
+        technicalDetails: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
 };
 
 export const importInfinitivesText = (text: string, limit = 25): Card[] => {
