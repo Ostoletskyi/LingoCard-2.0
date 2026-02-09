@@ -29,26 +29,26 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const setRulersPlacement = useAppStore((state) => state.setRulersPlacement);
 
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-soft">
-      <div className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2">
+    <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-soft dark:bg-slate-900/80">
+      <div className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 dark:bg-slate-800">
         <span className="text-xs font-semibold text-slate-500">История</span>
         <button
-          className="rounded-full bg-white px-3 py-1 text-xs text-slate-700 shadow-sm hover:bg-slate-100"
+          className="rounded-full bg-white px-3 py-1 text-xs text-slate-700 shadow-sm hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           onClick={undo}
         >
-          Undo
+          Отменить
         </button>
         <button
-          className="rounded-full bg-white px-3 py-1 text-xs text-slate-700 shadow-sm hover:bg-slate-100"
+          className="rounded-full bg-white px-3 py-1 text-xs text-slate-700 shadow-sm hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           onClick={redo}
         >
-          Redo
+          Повторить
         </button>
       </div>
-      <div className="flex items-center gap-3 rounded-full bg-slate-50 px-3 py-2">
+      <div className="flex items-center gap-3 rounded-full bg-slate-50 px-3 py-2 dark:bg-slate-800">
         <span className="text-xs font-semibold text-slate-500">Вид</span>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Zoom</span>
+          <span className="text-xs text-slate-500">Масштаб</span>
           <input
             type="range"
             min={0.25}
@@ -78,12 +78,32 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
           Только см
         </label>
         <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />
-          Rulers
+          <input
+            type="checkbox"
+            checked={rulersEnabled}
+            onChange={toggleRulers}
+            title="Показать линейки"
+          />
+          Линейки
         </label>
+        <select
+          value={rulersPlacement}
+          onChange={(event) =>
+            setRulersPlacement(event.target.value as "outside" | "inside")
+          }
+          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        >
+          <option value="outside">Линейки: Снаружи</option>
+          <option value="inside">Линейки: Внутри</option>
+        </select>
         <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />
-          Snap
+          <input
+            type="checkbox"
+            checked={snapEnabled}
+            onChange={toggleSnap}
+            title="Мягкая привязка к сетке"
+          />
+          Привязка
         </label>
         <label className="flex items-center gap-1 text-xs text-slate-600">
           <input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />
@@ -112,14 +132,6 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
         >
           <span>{theme === "light" ? "☀️" : "🌙"}</span>
           {theme === "light" ? "Светлая" : "Тёмная"}
-        </button>
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:text-slate-700"
-          onClick={pushHistory}
-        >
-          Snapshot
         </button>
       </div>
     </div>
