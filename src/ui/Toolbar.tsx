@@ -6,6 +6,12 @@ export const Toolbar = () => {
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
   const pushHistory = useAppStore((state) => state.pushHistory);
+  const gridEnabled = useAppStore((state) => state.gridEnabled);
+  const rulersEnabled = useAppStore((state) => state.rulersEnabled);
+  const snapEnabled = useAppStore((state) => state.snapEnabled);
+  const toggleGrid = useAppStore((state) => state.toggleGrid);
+  const toggleRulers = useAppStore((state) => state.toggleRulers);
+  const toggleSnap = useAppStore((state) => state.toggleSnap);
 
   return (
     <div className="flex items-center gap-3 rounded-lg bg-white p-3 shadow">
@@ -33,6 +39,20 @@ export const Toolbar = () => {
       >
         Snapshot
       </button>
+      <div className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
+          Grid
+        </label>
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />
+          Rulers
+        </label>
+        <label className="flex items-center gap-1">
+          <input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />
+          Snap
+        </label>
+      </div>
     </div>
   );
 };

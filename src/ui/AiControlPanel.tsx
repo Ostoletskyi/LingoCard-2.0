@@ -31,6 +31,10 @@ export const AiControlPanel = () => {
       setResponseJson(json);
       setStatus("done");
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setStatus("idle");
+        return;
+      }
       console.error(error);
       setStatus("error");
     }

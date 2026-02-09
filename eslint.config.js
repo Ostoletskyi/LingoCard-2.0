@@ -13,6 +13,13 @@ export default [
       parserOptions: {
         ecmaVersion: "latest",
         sourceType: "module"
+      },
+      globals: {
+        window: "readonly",
+        document: "readonly",
+        fetch: "readonly",
+        AbortController: "readonly",
+        crypto: "readonly"
       }
     },
     plugins: {
@@ -24,6 +31,15 @@ export default [
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
       "react-refresh/only-export-components": "warn"
+    }
+  },
+  {
+    files: ["_tools/**/*.js"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly"
+      }
     }
   }
 ];

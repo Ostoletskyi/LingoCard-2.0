@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type React from "react";
 import { useAppStore, type ListSide } from "../state/store";
 import { exportCardsToJson, importCardsFromJson, importInfinitivesText } from "../io/importExport";
 

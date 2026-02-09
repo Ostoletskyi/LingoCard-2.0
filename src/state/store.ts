@@ -12,6 +12,7 @@ export type AppStateSnapshot = {
   selectedId: string | null;
   selectedSide: ListSide;
   layout: Layout;
+  selectedBoxId: string | null;
 };
 
 export type HistoryState = {
@@ -25,13 +26,22 @@ export type AppState = AppStateSnapshot &
     gridEnabled: boolean;
     rulersEnabled: boolean;
     snapEnabled: boolean;
+    selectedBoxId: string | null;
+    isEditingLayout: boolean;
     setZoom: (value: number) => void;
     selectCard: (id: string | null, side: ListSide) => void;
+    selectBox: (id: string | null) => void;
     addCard: (card: Partial<Card>, side: ListSide) => void;
     updateCard: (card: Card, side: ListSide) => void;
     removeCard: (id: string, side: ListSide) => void;
     moveCard: (id: string, from: ListSide) => void;
     setLayout: (layout: Layout) => void;
+    updateBox: (boxId: string, update: Partial<Layout["boxes"][number]>) => void;
+    beginLayoutEdit: () => void;
+    endLayoutEdit: () => void;
+    toggleGrid: () => void;
+    toggleRulers: () => void;
+    toggleSnap: () => void;
     pushHistory: () => void;
     undo: () => void;
     redo: () => void;
@@ -39,13 +49,34 @@ export type AppState = AppStateSnapshot &
 
 const HISTORY_LIMIT = 100;
 
+const cloneCards = (cards: Card[]) => cards.map((card) => structuredClone(card));
+
 const snapshotState = (state: AppState): AppStateSnapshot => ({
-  cardsA: state.cardsA,
-  cardsB: state.cardsB,
+  cardsA: cloneCards(state.cardsA),
+  cardsB: cloneCards(state.cardsB),
   selectedId: state.selectedId,
   selectedSide: state.selectedSide,
-  layout: state.layout
+  layout: structuredClone(state.layout),
+  selectedBoxId: state.selectedBoxId
 });
+
+const recordHistory = (state: AppState, current: AppState) => {
+  state.past.push(snapshotState(current));
+  if (state.past.length > HISTORY_LIMIT) {
+    state.past.shift();
+  }
+  state.future = [];
+};
+
+const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
+  state.cardsA = cloneCards(snapshot.cardsA);
+  state.cardsB = cloneCards(snapshot.cardsB);
+  state.selectedId = snapshot.selectedId;
+  state.selectedSide = snapshot.selectedSide;
+  state.layout = structuredClone(snapshot.layout);
+  state.selectedBoxId = snapshot.selectedBoxId;
+  state.isEditingLayout = false;
+};
 
 export const useAppStore = create<AppState>()(
   immer((set, get) => ({
@@ -60,6 +91,8 @@ export const useAppStore = create<AppState>()(
     gridEnabled: true,
     rulersEnabled: true,
     snapEnabled: true,
+    selectedBoxId: null,
+    isEditingLayout: false,
     setZoom: (value) => set((state) => {
       state.zoom = Math.min(2, Math.max(0.25, value));
     }),
@@ -67,7 +100,11 @@ export const useAppStore = create<AppState>()(
       state.selectedId = id;
       state.selectedSide = side;
     }),
+    selectBox: (id) => set((state) => {
+      state.selectedBoxId = id;
+    }),
     addCard: (card, side) => set((state) => {
+      recordHistory(state, get());
       const normalized = normalizeCard(card);
       if (side === "A") {
         state.cardsA.push(normalized);
@@ -78,6 +115,7 @@ export const useAppStore = create<AppState>()(
       state.selectedSide = side;
     }),
     updateCard: (card, side) => set((state) => {
+      recordHistory(state, get());
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
@@ -85,6 +123,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     removeCard: (id, side) => set((state) => {
+      recordHistory(state, get());
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === id);
       if (index >= 0) {
@@ -95,46 +134,66 @@ export const useAppStore = create<AppState>()(
       }
     }),
     moveCard: (id, from) => set((state) => {
+      recordHistory(state, get());
       const fromList = from === "A" ? state.cardsA : state.cardsB;
       const toList = from === "A" ? state.cardsB : state.cardsA;
       const index = fromList.findIndex((item) => item.id === id);
       if (index >= 0) {
-        const [card] = fromList.splice(index, 1);
+        const card = fromList[index];
+        if (!card) return;
+        fromList.splice(index, 1);
         toList.push(card);
         state.selectedId = card.id;
         state.selectedSide = from === "A" ? "B" : "A";
       }
     }),
     setLayout: (layout) => set((state) => {
+      recordHistory(state, get());
       state.layout = layout;
     }),
-    pushHistory: () => set((state) => {
-      state.past.push(snapshotState(get()));
-      if (state.past.length > HISTORY_LIMIT) {
-        state.past.shift();
+    updateBox: (boxId, update) => set((state) => {
+      if (!state.isEditingLayout) {
+        recordHistory(state, get());
+        state.isEditingLayout = true;
       }
-      state.future = [];
+      const box = state.layout.boxes.find((item) => item.id === boxId);
+      if (box) {
+        Object.assign(box, update);
+      }
+    }),
+    beginLayoutEdit: () => set((state) => {
+      if (!state.isEditingLayout) {
+        recordHistory(state, get());
+        state.isEditingLayout = true;
+      }
+    }),
+    endLayoutEdit: () => set((state) => {
+      state.isEditingLayout = false;
+    }),
+    toggleGrid: () => set((state) => {
+      state.gridEnabled = !state.gridEnabled;
+    }),
+    toggleRulers: () => set((state) => {
+      state.rulersEnabled = !state.rulersEnabled;
+    }),
+    toggleSnap: () => set((state) => {
+      state.snapEnabled = !state.snapEnabled;
+    }),
+    pushHistory: () => set((state) => {
+      recordHistory(state, get());
     }),
     undo: () => set((state) => {
       const previous = state.past.pop();
       if (previous) {
         state.future.unshift(snapshotState(get()));
-        state.cardsA = previous.cardsA;
-        state.cardsB = previous.cardsB;
-        state.selectedId = previous.selectedId;
-        state.selectedSide = previous.selectedSide;
-        state.layout = previous.layout;
+        applySnapshot(state, previous);
       }
     }),
     redo: () => set((state) => {
       const next = state.future.shift();
       if (next) {
         state.past.push(snapshotState(get()));
-        state.cardsA = next.cardsA;
-        state.cardsB = next.cardsB;
-        state.selectedId = next.selectedId;
-        state.selectedSide = next.selectedSide;
-        state.layout = next.layout;
+        applySnapshot(state, next);
       }
     })
   }))
