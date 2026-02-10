@@ -4,6 +4,7 @@ import type { Layout } from "../model/layoutSchema";
 import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
 import { MM_PER_INCH, mmToPdf } from "../utils/mmPx";
+import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 
 export type PdfExportOptions = {
   cardsPerRow?: number;
@@ -102,7 +103,9 @@ export const exportCardsToPdf = (
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const activeBoxes = card.boxes?.length ? card.boxes : layout.boxes;
+    const activeBoxes = card.boxes?.length
+      ? card.boxes
+      : buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm);
     activeBoxes.forEach((box) => {
       if (box.style.visible === false) return;
       const fontPx = (box.style.fontSizePt / 72) * CANVAS_DPI;

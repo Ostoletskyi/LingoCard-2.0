@@ -74,8 +74,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     rulersPlacement,
     selectBox,
     updateCardSilent,
-    beginLayoutEdit,
-    endLayoutEdit,
+    pushHistory,
     adjustColumnFontSizeByField,
     setZoom
   } = useAppStore((state) => ({
@@ -95,8 +94,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     rulersPlacement: state.rulersPlacement,
     selectBox: state.selectBox,
     updateCardSilent: state.updateCardSilent,
-    beginLayoutEdit: state.beginLayoutEdit,
-    endLayoutEdit: state.endLayoutEdit,
+    pushHistory: state.pushHistory,
     adjustColumnFontSizeByField: state.adjustColumnFontSizeByField,
     setZoom: state.setZoom
   }));
@@ -192,7 +190,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const deltaYMm = pxToMm(deltaY, basePxPerMm * zoomScale);
 
     if (!dragState.hasApplied) {
-      beginLayoutEdit();
+      pushHistory();
       setDragState((prev) => (prev ? { ...prev, hasApplied: true } : prev));
     }
 
@@ -245,9 +243,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   };
 
   const handlePointerUp = () => {
-    if (dragState?.hasApplied) {
-      endLayoutEdit();
-    }
     setDragState(null);
   };
 

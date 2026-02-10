@@ -138,7 +138,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
             <div className="grid gap-2">
               <button ref={historyRef} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-100" onClick={undo}>Отменить</button>
               <button className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-100" onClick={redo}>Повторить</button>
-              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={pushHistory}>Снимок</button>
+              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={pushHistory} title="Добавить текущий state в историю для Undo/Redo">Снимок истории</button>
             </div>
           </div>
         </div>
