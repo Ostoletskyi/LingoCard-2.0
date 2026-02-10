@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { getPxPerMm, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
@@ -23,11 +23,23 @@ type DragState = {
   hasApplied: boolean;
 };
 
+type EditSession = {
+  boxId: string;
+  cardId: string;
+  side: "A" | "B";
+  fieldId: string;
+  originalValue: string;
+};
+
 const applySnap = (valueMm: number, enabled: boolean) =>
   enabled ? Math.round(valueMm / GRID_STEP_MM) * GRID_STEP_MM : valueMm;
 
 const RULER_SIZE_MM = 7;
 const RULER_GAP_MM = 1;
+
+type StringCardField = Exclude<keyof Card, "freq" | "tags" | "forms_aux" | "boxes">;
+const isStringCardField = (fieldId: string): fieldId is StringCardField =>
+  fieldId !== "freq" && fieldId !== "tags" && fieldId !== "boxes" && fieldId in emptyCard;
 
 const buildRulerTicks = (maxMm: number) => {
   const full = Array.from({ length: Math.floor(maxMm) + 1 }, (_, i) => i);
@@ -63,7 +75,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     selectBox,
     updateCardSilent,
     beginLayoutEdit,
-    endLayoutEdit
+    endLayoutEdit,
+    adjustColumnFontSize
   } = useAppStore((state) => ({
     layout: state.layout,
     zoom: state.zoom,
@@ -82,14 +95,15 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     selectBox: state.selectBox,
     updateCardSilent: state.updateCardSilent,
     beginLayoutEdit: state.beginLayoutEdit,
-    endLayoutEdit: state.endLayoutEdit
+    endLayoutEdit: state.endLayoutEdit,
+    adjustColumnFontSize: state.adjustColumnFontSize
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [editSession, setEditSession] = useState<EditSession | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [originalValue, setOriginalValue] = useState("");
   const editRef = useRef<HTMLTextAreaElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
@@ -228,62 +242,75 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!card) return;
     const fieldValue = getFieldEditValue(card, box.fieldId);
     setEditingBoxId(box.id);
-    setOriginalValue(fieldValue);
+    setEditSession({
+      boxId: box.id,
+      cardId: card.id,
+      side: selectedSide,
+      fieldId: box.fieldId,
+      originalValue: fieldValue
+    });
     setEditValue(fieldValue);
   };
 
-  type StringCardField = Exclude<keyof Card, "freq" | "tags" | "forms_aux" | "boxes">;
-  const isStringCardField = (fieldId: string): fieldId is StringCardField =>
-    fieldId !== "freq" && fieldId !== "tags" && fieldId !== "boxes" && fieldId in emptyCard;
-
-  const updateCardField = (current: Card, fieldId: string, value: string): Card => {
-    const next: Card = { ...current };
-    if (fieldId === "tags") {
-      next.tags = value
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-      return next;
-    }
-    if (fieldId === "freq") {
-      const parsed = Number.parseInt(value, 10);
-      if (!Number.isNaN(parsed)) {
-        next.freq = Math.min(5, Math.max(1, parsed)) as Card["freq"];
+  const commitEdit = useCallback((shouldSave: boolean) => {
+    const updateCardField = (current: Card, fieldId: string, value: string): Card => {
+      const next: Card = { ...current };
+      if (fieldId === "tags") {
+        next.tags = value
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean);
+        return next;
+      }
+      if (fieldId === "freq") {
+        const trimmed = value.trim();
+        if (!/^[1-5]$/.test(trimmed)) {
+          return next;
+        }
+        next.freq = Number.parseInt(trimmed, 10) as Card["freq"];
+        return next;
+      }
+      if (fieldId === "forms_aux") {
+        if (value === "haben" || value === "sein" || value === "") {
+          next.forms_aux = value;
+        }
+        return next;
+      }
+      if (isStringCardField(fieldId)) {
+        next[fieldId] = value;
       }
       return next;
-    }
-    if (fieldId === "forms_aux") {
-      if (value === "haben" || value === "sein" || value === "") {
-        next.forms_aux = value;
-      }
-      return next;
-    }
-    if (isStringCardField(fieldId)) {
-      next[fieldId] = value;
-    }
-    return next;
-  };
+    };
 
-  const commitEdit = (shouldSave: boolean) => {
-    if (!editingBoxId || !card) {
+    if (!editSession) {
       setEditingBoxId(null);
       return;
     }
-    if (shouldSave && editValue !== originalValue) {
-      const box = activeBoxes.find((item) => item.id === editingBoxId);
-      if (box) {
-        const updated = updateCardField(card, box.fieldId, editValue);
-        useAppStore.getState().updateCard(updated, selectedSide);
+    if (shouldSave && editValue !== editSession.originalValue) {
+      const store = useAppStore.getState();
+      const source = editSession.side === "A" ? store.cardsA : store.cardsB;
+      const currentCard = source.find((item) => item.id === editSession.cardId);
+      if (currentCard) {
+        const updated = updateCardField(currentCard, editSession.fieldId, editValue);
+        store.updateCard(updated, editSession.side);
       }
     }
     setEditingBoxId(null);
-  };
+    setEditSession(null);
+  }, [editSession, editValue]);
 
   useEffect(() => {
     if (!editingBoxId) return;
     const id = window.requestAnimationFrame(() => editRef.current?.focus());
     return () => window.cancelAnimationFrame(id);
   }, [editingBoxId]);
+
+  useEffect(() => {
+    if (!editSession) return;
+    if (!selectedId || selectedId !== editSession.cardId || selectedSide !== editSession.side) {
+      commitEdit(true);
+    }
+  }, [selectedId, selectedSide, editSession, commitEdit]);
 
   const handlePointerLeave = () => {
     setCursorMm(null);
@@ -519,6 +546,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     display: box.style.visible === false ? "none" : "block"
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
+                  onWheel={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (renderMode !== "editor") return;
+                    const delta = event.deltaY < 0 ? 1 : -1;
+                    adjustColumnFontSize(selectedSide, delta);
+                  }}
                   onDoubleClick={(event) => {
                     event.stopPropagation();
                     handleBeginEdit(box);
@@ -555,7 +589,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                         }
                         if (event.key === "Escape") {
                           event.preventDefault();
-                          setEditValue(originalValue);
+                          setEditValue(editSession?.originalValue ?? "");
                           commitEdit(false);
                         }
                       }}

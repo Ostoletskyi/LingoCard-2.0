@@ -51,7 +51,14 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     normalizedFieldId.startsWith("tr_") ? "Перевод…" : normalizedFieldId.startsWith("ex_") ? "Пример…" : "Введите текст…";
   if (normalizedFieldId === "freq") {
     const count = card.freq;
-    return { text: count ? "●".repeat(count) : "1–5", isPlaceholder: !count };
+    const dotsMap: Record<number, string> = {
+      1: "🟣",
+      2: "🔴🔴",
+      3: "🟠🟠🟠",
+      4: "🟡🟡🟡🟡",
+      5: "🟢🟢🟢🟢🟢"
+    };
+    return { text: dotsMap[count] ?? "🟠🟠🟠", isPlaceholder: false };
   }
   if (normalizedFieldId === "tags") {
     return {

@@ -88,6 +88,7 @@ export type AppState = AppStateSnapshot &
     clearCardSelection: (side: ListSide) => void;
     updateCardSilent: (card: Card, side: ListSide) => void;
     autoLayoutAllCards: (side: ListSide) => void;
+    adjustColumnFontSize: (side: ListSide, deltaPt: number) => void;
     resetState: () => void;
     pushHistory: () => void;
     undo: () => void;
@@ -370,6 +371,34 @@ export const useAppStore = create<AppState>()(
       recordHistory(state, get());
       const source = side === "A" ? state.cardsA : state.cardsB;
       const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm));
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+    }),
+    adjustColumnFontSize: (side, deltaPt) => set((state) => {
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const hasAnyBoxes = source.some((card) => (card.boxes?.length ?? 0) > 0);
+      if (!hasAnyBoxes) {
+        return;
+      }
+      recordHistory(state, get());
+      const next = source.map((card) => {
+        if (!card.boxes?.length) {
+          return card;
+        }
+        return {
+          ...card,
+          boxes: card.boxes.map((box) => ({
+            ...box,
+            style: {
+              ...box.style,
+              fontSizePt: Math.min(36, Math.max(5, box.style.fontSizePt + deltaPt))
+            }
+          }))
+        };
+      });
       if (side === "A") {
         state.cardsA = next;
       } else {
