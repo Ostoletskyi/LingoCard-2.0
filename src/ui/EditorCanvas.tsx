@@ -149,7 +149,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
     if (editingBoxId) return;
-    if (!canEditLayoutGeometry) return;
     if (box.locked) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -164,6 +163,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       setSelectedBoxIds([box.id]);
     }
     selectBox(box.id);
+    if (!canEditLayoutGeometry) return;
     setDragState({
       boxId: box.id,
       startX: event.clientX,
@@ -503,6 +503,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               if (editingBoxId) {
                 commitEdit(true);
                 return;
+              }
+              selectBox(null);
+              setSelectedBoxIds([]);
+            }}
+            onDoubleClick={() => {
+              if (editingBoxId) {
+                commitEdit(true);
               }
               selectBox(null);
               setSelectedBoxIds([]);

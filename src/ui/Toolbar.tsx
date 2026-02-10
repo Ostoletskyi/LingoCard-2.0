@@ -3,6 +3,7 @@ import { useAppStore } from "../state/store";
 
 type ThemeMode = "light" | "dark";
 type ToolbarSection = "history" | "view" | "grid" | "snap";
+type ViewWheelTarget = "zoom" | "width" | "height" | null;
 
 type ToolbarProps = {
   theme: ThemeMode;
@@ -48,6 +49,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const snapRef = useRef<HTMLInputElement | null>(null);
   const viewPanelRef = useRef<HTMLDivElement | null>(null);
   const [captureViewWheel, setCaptureViewWheel] = useState(false);
+  const [viewWheelTarget, setViewWheelTarget] = useState<ViewWheelTarget>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -71,6 +73,23 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
     node.addEventListener("wheel", handler, { passive: false });
     return () => node.removeEventListener("wheel", handler);
   }, [captureViewWheel]);
+
+  const applyZoomWheel = (deltaY: number) => {
+    const direction = deltaY > 0 ? -1 : 1;
+    setZoom(clampZoom(zoom + direction * 0.05));
+  };
+
+  const applyWidthWheel = (deltaY: number, shift: boolean) => {
+    const direction = deltaY > 0 ? -1 : 1;
+    const step = shift ? 10 : 1;
+    setCardSizeMm(clampMm(layout.widthMm + direction * step), layout.heightMm);
+  };
+
+  const applyHeightWheel = (deltaY: number, shift: boolean) => {
+    const direction = deltaY > 0 ? -1 : 1;
+    const step = shift ? 10 : 1;
+    setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + direction * step));
+  };
 
   const sectionHeader = (label: string, section: ToolbarSection, icon: string) => (
     <button
@@ -118,68 +137,94 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
             <div
               ref={viewPanelRef}
               className="grid gap-2"
+              onWheel={(event) => {
+                if (!viewWheelTarget) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (viewWheelTarget === "zoom") applyZoomWheel(event.deltaY);
+                if (viewWheelTarget === "width") applyWidthWheel(event.deltaY, event.shiftKey);
+                if (viewWheelTarget === "height") applyHeightWheel(event.deltaY, event.shiftKey);
+              }}
             >
-              <label className="text-xs text-slate-600 dark:text-slate-200">Масштаб: {Math.round(zoom * 100)}%</label>
+              <button
+                type="button"
+                className="text-left text-xs text-slate-600 dark:text-slate-200"
+                onClick={() => {
+                  setCaptureViewWheel(true);
+                  setViewWheelTarget("zoom");
+                }}
+              >Масштаб: {Math.round(zoom * 100)}%</button>
               <input
                 type="range"
                 min={0.25}
                 max={2}
                 step={0.05}
                 value={zoom}
-                onFocus={() => setCaptureViewWheel(true)}
-                onBlur={() => setCaptureViewWheel(false)}
-                onPointerEnter={() => setCaptureViewWheel(true)}
-                onPointerLeave={() => setCaptureViewWheel(false)}
+                onFocus={() => { setCaptureViewWheel(true); setViewWheelTarget("zoom"); }}
+                onBlur={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
+                onPointerEnter={() => { setCaptureViewWheel(true); setViewWheelTarget("zoom"); }}
+                onPointerLeave={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
                 onChange={(event) => setZoom(Number(event.target.value))}
                 onWheel={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  const direction = event.deltaY > 0 ? -1 : 1;
-                  setZoom(clampZoom(zoom + direction * 0.05));
+                  applyZoomWheel(event.deltaY);
                 }}
               />
               <button ref={viewRef} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={() => setZoom(1)}>Центр · 100%</button>
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[11px] text-slate-500 dark:text-slate-300">Card Width (mm)
+                <label className="text-[11px] text-slate-500 dark:text-slate-300">
+                  <button
+                    type="button"
+                    className="text-left"
+                    onClick={() => {
+                      setCaptureViewWheel(true);
+                      setViewWheelTarget("width");
+                    }}
+                  >Card Width (mm)</button>
                   <input
                     type="number"
                     min={50}
                     max={400}
                     step={1}
                     value={layout.widthMm}
-                    onFocus={() => setCaptureViewWheel(true)}
-                    onBlur={() => setCaptureViewWheel(false)}
-                    onPointerEnter={() => setCaptureViewWheel(true)}
-                    onPointerLeave={() => setCaptureViewWheel(false)}
+                    onFocus={() => { setCaptureViewWheel(true); setViewWheelTarget("width"); }}
+                    onBlur={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
+                    onPointerEnter={() => { setCaptureViewWheel(true); setViewWheelTarget("width"); }}
+                    onPointerLeave={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
                     onChange={(event) => setCardSizeMm(clampMm(Number(event.target.value)), layout.heightMm)}
                     onWheel={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      const delta = event.deltaY > 0 ? -1 : 1;
-                      const factor = event.shiftKey ? 10 : 1;
-                      setCardSizeMm(clampMm(layout.widthMm + delta * factor), layout.heightMm);
+                      applyWidthWheel(event.deltaY, event.shiftKey);
                     }}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                   />
                 </label>
-                <label className="text-[11px] text-slate-500 dark:text-slate-300">Card Height (mm)
+                <label className="text-[11px] text-slate-500 dark:text-slate-300">
+                  <button
+                    type="button"
+                    className="text-left"
+                    onClick={() => {
+                      setCaptureViewWheel(true);
+                      setViewWheelTarget("height");
+                    }}
+                  >Card Height (mm)</button>
                   <input
                     type="number"
                     min={50}
                     max={400}
                     step={1}
                     value={layout.heightMm}
-                    onFocus={() => setCaptureViewWheel(true)}
-                    onBlur={() => setCaptureViewWheel(false)}
-                    onPointerEnter={() => setCaptureViewWheel(true)}
-                    onPointerLeave={() => setCaptureViewWheel(false)}
+                    onFocus={() => { setCaptureViewWheel(true); setViewWheelTarget("height"); }}
+                    onBlur={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
+                    onPointerEnter={() => { setCaptureViewWheel(true); setViewWheelTarget("height"); }}
+                    onPointerLeave={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
                     onChange={(event) => setCardSizeMm(layout.widthMm, clampMm(Number(event.target.value)))}
                     onWheel={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      const delta = event.deltaY > 0 ? -1 : 1;
-                      const factor = event.shiftKey ? 10 : 1;
-                      setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + delta * factor));
+                      applyHeightWheel(event.deltaY, event.shiftKey);
                     }}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                   />
