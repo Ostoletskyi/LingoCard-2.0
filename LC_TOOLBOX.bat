@@ -1,124 +1,119 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-chcp 65001 >nul
 
-set "PROJECT_ROOT=%~dp0"
-if "%PROJECT_ROOT:~-1%"=="\" set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
-set "PS_EXE=powershell"
+rem LingoCard 2.0 Toolbox (Windows CMD)
+rem Keep this file ASCII (no UTF-8 BOM) to avoid garbled output in cmd.exe.
 
-title LingoCard 2.0 - Пульт управления
+title LingoCard 2.0 - Toolbox
 
-:MAIN_MENU
+set "ROOT=%~dp0"
+pushd "%ROOT%" >nul
+
+call :requireTool git
+if errorlevel 1 goto :end
+call :requireTool node
+if errorlevel 1 goto :end
+call :requireTool npm
+if errorlevel 1 goto :end
+
+:main
 cls
 echo ==============================================
-echo        LingoCard 2.0 — Пульт управления
+echo              LingoCard 2.0 Toolbox
 echo ==============================================
-echo [1] Бэкап
-echo [2] Git + Smoke тест
-echo [3] Запуск сервера (авто)
-echo [0] Выход
+echo Project root: %CD%
+echo.
+echo [1] Backup
+echo [2] Git + Smoke
+echo [3] Start dev server
+echo [0] Exit
 echo ----------------------------------------------
-set /p CHOICE=Введите номер: 
+set "CHOICE="
+set /p "CHOICE=Select option: "
+if "%CHOICE%"=="1" goto :menu_backup
+if "%CHOICE%"=="2" goto :menu_git
+if "%CHOICE%"=="3" goto :run_dev
+if "%CHOICE%"=="0" goto :end
+goto :main
 
-if "%CHOICE%"=="1" goto BACKUP_MENU
-if "%CHOICE%"=="2" goto GIT_MENU
-if "%CHOICE%"=="3" goto RUN_DEV
-if "%CHOICE%"=="0" goto END
-
-echo Неверный ввод. Введите номер из меню.
-pause
-goto MAIN_MENU
-
-:BACKUP_MENU
+:menu_backup
 cls
 echo ==============================================
-echo                 Бэкап
+echo                    Backup
 echo ==============================================
-echo [1] Создать бэкап
-echo [2] Восстановить из бэкапа
-echo [0] Назад
+echo [1] Create backup
+echo [2] Restore from backup
+echo [0] Back
 echo ----------------------------------------------
-set /p BCHOICE=Введите номер: 
+set "CHOICE="
+set /p "CHOICE=Select option: "
+if "%CHOICE%"=="1" call :ps "_tools\ps\backup_create.ps1" & goto :pause_back
+if "%CHOICE%"=="2" call :ps "_tools\ps\backup_restore.ps1" & goto :pause_back
+if "%CHOICE%"=="0" goto :main
+goto :menu_backup
 
-if "%BCHOICE%"=="1" goto BACKUP_CREATE
-if "%BCHOICE%"=="2" goto BACKUP_RESTORE
-if "%BCHOICE%"=="0" goto MAIN_MENU
-
-echo Неверный ввод. Введите номер из меню.
-pause
-goto BACKUP_MENU
-
-:GIT_MENU
+:menu_git
 cls
 echo ==============================================
-echo             Git + Smoke тест
+echo                Git + Smoke tests
 echo ==============================================
-echo [1] Обновить последнюю версию с GitHub (pull --rebase)
-echo [2] Запушить изменённую версию в GitHub
-echo [3] Если нет доступа к GitHub — создать связь
-echo [4] Создать локальный git (init + первый коммит)
+echo [1] Pull latest from GitHub (pull --rebase)
+echo [2] Push local changes to GitHub
+echo [3] Fix GitHub access (remote/auth hints)
+echo [4] Create local git repo (init + first commit)
 echo [5] Smoke test (npm run tools:smoke)
-echo [0] Назад
+echo [0] Back
 echo ----------------------------------------------
-set /p GCHOICE=Введите номер: 
+set "CHOICE="
+set /p "CHOICE=Select option: "
+if "%CHOICE%"=="1" call :ps "_tools\ps\git_pull_rebase.ps1" & goto :pause_back
+if "%CHOICE%"=="2" call :ps "_tools\ps\git_push.ps1" & goto :pause_back
+if "%CHOICE%"=="3" call :ps "_tools\ps\git_fix_remote_access.ps1" & goto :pause_back
+if "%CHOICE%"=="4" call :ps "_tools\ps\git_init_local.ps1" & goto :pause_back
+if "%CHOICE%"=="5" call :ps "_tools\ps\smoke.ps1" & goto :pause_back
+if "%CHOICE%"=="0" goto :main
+goto :menu_git
 
-if "%GCHOICE%"=="1" goto GIT_PULL
-if "%GCHOICE%"=="2" goto GIT_PUSH
-if "%GCHOICE%"=="3" goto GIT_FIX
-if "%GCHOICE%"=="4" goto GIT_INIT
-if "%GCHOICE%"=="5" goto SMOKE
-if "%GCHOICE%"=="0" goto MAIN_MENU
+:run_dev
+cls
+echo ==============================================
+echo                 Dev server
+echo ==============================================
+echo Starting dev server (npm run dev)...
+echo Close this window to stop it.
+echo.
+call :ps "_tools\ps\dev_server.ps1"
+goto :pause_back
 
-echo Неверный ввод. Введите номер из меню.
+:pause_back
+echo.
 pause
-goto GIT_MENU
+goto :main
 
-:BACKUP_CREATE
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\backup_create.ps1" -ProjectRoot "%PROJECT_ROOT%"
-pause
-goto BACKUP_MENU
-
-:BACKUP_RESTORE
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\backup_restore.ps1" -ProjectRoot "%PROJECT_ROOT%"
-pause
-goto BACKUP_MENU
-
-:GIT_PULL
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\git_pull_rebase.ps1" -ProjectRoot "%PROJECT_ROOT%"
-pause
-goto GIT_MENU
-
-:GIT_PUSH
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\git_push.ps1" -ProjectRoot "%PROJECT_ROOT%"
-pause
-goto GIT_MENU
-
-:GIT_FIX
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\git_fix_remote_access.ps1" -ProjectRoot "%PROJECT_ROOT%"
-pause
-goto GIT_MENU
-
-:GIT_INIT
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\git_init_local.ps1" -ProjectRoot "%PROJECT_ROOT%"
-pause
-goto GIT_MENU
-
-:SMOKE
-%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\smoke.ps1" -ProjectRoot "%PROJECT_ROOT%"
-pause
-goto GIT_MENU
-
-:RUN_DEV
-set /p OPENBROWSER=Открыть браузер http://localhost:5173 ? (Y/N): 
-if /I "%OPENBROWSER%"=="Y" (
-  %PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\dev_server.ps1" -ProjectRoot "%PROJECT_ROOT%" -OpenBrowser
-) else (
-  %PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\_tools\ps\dev_server.ps1" -ProjectRoot "%PROJECT_ROOT%"
+:ps
+set "PSFILE=%~1"
+if not exist "%PSFILE%" (
+  echo.
+  echo [ERROR] PowerShell script not found: %PSFILE%
+  goto :eof
 )
-pause
-goto MAIN_MENU
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PSFILE%"
+goto :eof
 
-:END
-echo Выход.
+:requireTool
+set "TOOL=%~1"
+where "%TOOL%" >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo [ERROR] Required tool not found in PATH: %TOOL%
+  echo Install it or fix PATH, then run this toolbox again.
+  echo.
+  pause
+  exit /b 1
+)
+exit /b 0
+
+:end
+popd >nul
 endlocal
 exit /b 0
