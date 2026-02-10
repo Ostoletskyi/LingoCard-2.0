@@ -1,51 +1,55 @@
-﻿param([string]$ProjectRoot)
+﻿param(
+    [string]$ProjectRoot,
+    [string]$LogPath
+)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-$action='git_push'
+$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'git_push'
+$action = 'git_push'
 
 try {
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git не найден. Установите Git for Windows.' }
-    if (-not (Test-Path (Join-Path $root '.git'))) { throw 'Текущая папка не является git-репозиторием.' }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git is not installed.' }
+    if (-not (Test-Path (Join-Path $root '.git'))) { throw 'Current directory is not a git repository.' }
 
     Push-Location $root
     try {
+        git status -sb | Tee-Object -FilePath $log -Append
         $dirty = git status --porcelain
         if ($dirty) {
-            $add = Read-Host 'Есть изменения. Выполнить git add -A? (Y/N)'
-            if ($add -match '^(Y|y|Д|д)$') { git add -A }
-
-            $message = Read-Host 'Введите commit message (обязательно)'
-            if ([string]::IsNullOrWhiteSpace($message)) {
-                throw 'Commit message не может быть пустым.'
+            Write-Host 'There are local changes:'
+            Write-Host '[1] Abort'
+            Write-Host '[2] Commit with message'
+            Write-Host '[3] Stash and push'
+            $mode = Read-Host 'Select option'
+            if ($mode -eq '1') { Write-ToolLog -LogPath $log -Action $action -Command 'push mode select' -Result 'cancelled' -ExitCode 2; Show-LogHint -LogPath $log; exit 2 }
+            elseif ($mode -eq '2') {
+                git add -A
+                $msg = Read-Host 'Enter commit message'
+                if ([string]::IsNullOrWhiteSpace($msg)) { throw 'Commit message is required.' }
+                git commit -m $msg 2>&1 | Tee-Object -FilePath $log -Append
             }
-
-            git commit -m $message
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host 'Нечего коммитить или commit завершился ошибкой.' -ForegroundColor Yellow
+            elseif ($mode -eq '3') {
+                git stash push -u -m ("toolbox_stash_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss')) | Tee-Object -FilePath $log -Append
             }
+            else { Write-ToolLog -LogPath $log -Action $action -Command 'push mode select' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPath $log; exit 2 }
         }
 
-        $pushOutput = git push 2>&1
-        $pushOutput | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            if ($pushOutput -match 'Authentication failed|Permission denied|could not read Username') {
-                Write-Host 'Похоже, проблема с авторизацией GitHub.' -ForegroundColor Yellow
-                Write-Host 'Перейдите в пункт меню: "Нет доступа к GitHub — создать связь".'
-            }
-            throw 'git push завершился с ошибкой.'
-        }
+        git push 2>&1 | Tee-Object -FilePath $log -Append
+        if ($LASTEXITCODE -ne 0) { throw 'git push failed.' }
 
-        Write-Host '[Успех] Изменения отправлены в GitHub.' -ForegroundColor Green
-        Write-ToolLog -ProjectRoot $root -Action $action -Command 'git add/commit/push' -ExitCode 0 -Result 'success'
+        Write-Host 'Push completed.'
+        Write-ToolLog -LogPath $log -Action $action -Command 'git push' -Result 'success' -ExitCode 0
+        Show-LogHint -LogPath $log
         exit 0
-    } finally { Pop-Location }
-} catch {
-    Write-Host '[Ошибка] Не удалось выполнить push.' -ForegroundColor Red
-    Write-Host 'Что делать дальше: проверьте remote, доступ и корректность commit message.'
+    }
+    finally { Pop-Location }
+}
+catch {
+    Write-Host 'Git push failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -ProjectRoot $root -Action $action -Command 'git push' -ExitCode 1 -Result 'error' -Details $_.Exception.Message
-    Show-LogHint -ProjectRoot $root
+    Write-ToolLog -LogPath $log -Action $action -Command 'git push' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPath $log
     exit 1
 }

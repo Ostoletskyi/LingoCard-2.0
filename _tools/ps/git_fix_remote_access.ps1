@@ -1,80 +1,57 @@
-﻿param([string]$ProjectRoot)
+﻿param(
+    [string]$ProjectRoot,
+    [string]$LogPath
+)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-$action='git_fix_remote_access'
+$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'git_remote_fix'
+$action = 'git_fix_remote_access'
 
 try {
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git не найден. Установите Git for Windows.' }
-    if (-not (Test-Path (Join-Path $root '.git'))) { throw 'Текущая папка не является git-репозиторием.' }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git is not installed.' }
+    if (-not (Test-Path (Join-Path $root '.git'))) { throw 'Current directory is not a git repository.' }
 
     Push-Location $root
     try {
-        $remote = git remote -v
-        if (-not $remote) {
-            throw 'Не найден git remote. Пример: git remote add origin https://github.com/your-user/your-repo.git'
+        $remoteUrl = git remote get-url origin 2>$null
+        if (-not $remoteUrl) {
+            throw 'No origin remote found. Example: git remote add origin https://github.com/your-user/your-repo.git'
         }
 
-        Write-Host "Текущие remote:`n$remote"
-        $firstUrl = git remote get-url origin 2>$null
-        $instructions = @()
-
-        if ($firstUrl -match '^https://') {
-            Write-Host 'Обнаружен HTTPS remote.'
-            $instructions += 'Используется HTTPS. Для GitHub нужен Personal Access Token (PAT), обычный пароль не работает.'
-            $instructions += 'Шаги: GitHub -> Settings -> Developer settings -> Personal access tokens -> Generate token.'
-            $instructions += 'При запросе пароля в git вставляйте PAT вместо пароля.'
+        Write-Host "Origin URL: $remoteUrl"
+        if ($remoteUrl -match '^https://') {
+            Write-Host 'Protocol: HTTPS'
+            Write-Host 'Use a GitHub PAT token instead of password.'
+            Write-Host 'Check Windows Credential Manager if old credentials are cached.'
+            Write-Host 'Then retry: git push'
         }
-        elseif ($firstUrl -match 'git@github.com:') {
-            Write-Host 'Обнаружен SSH remote.'
-            $sshDir = Join-Path $env:USERPROFILE '.ssh'
-            $keys = @()
-            if (Test-Path $sshDir) {
-                $keys = Get-ChildItem -Path $sshDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^id_(rsa|ed25519)$' }
-            }
-
-            if ($keys.Count -gt 0) {
-                Write-Host ('SSH-ключи найдены: ' + (($keys | Select-Object -ExpandProperty Name) -join ', '))
-            }
-            else {
-                Write-Host 'SSH-ключи не найдены.' -ForegroundColor Yellow
-            }
-
-            $instructions += 'Используется SSH remote.'
-            $instructions += 'Если ключей нет: ssh-keygen -t ed25519 -C "your_email@example.com"'
-            $instructions += 'Добавьте публичный ключ в GitHub: Settings -> SSH and GPG keys.'
-            $instructions += 'Проверьте соединение: ssh -T git@github.com'
+        elseif ($remoteUrl -match '^git@') {
+            Write-Host 'Protocol: SSH'
+            Write-Host 'Generate key if needed: ssh-keygen -t ed25519 -C "you@example.com"'
+            Write-Host 'Test connection: ssh -T git@github.com'
+            Write-Host 'Add the public key in GitHub SSH keys settings.'
         }
         else {
-            Write-Host 'Тип remote не распознан автоматически.' -ForegroundColor Yellow
-            $instructions += 'Проверьте URL remote: git remote -v'
-            $instructions += 'Для GitHub используйте HTTPS или SSH-URL.'
+            Write-Host 'Unknown remote protocol. Review with: git remote -v'
         }
 
-        $instructions += 'После исправления доступа повторите git push или git pull --rebase.'
-        $text = ($instructions -join [Environment]::NewLine)
-        Write-Host "`nРекомендуемые шаги:`n$text"
-
-        $copy = Read-Host 'Скопировать инструкцию в буфер обмена? (Y/N)'
-        if ($copy -match '^(Y|y|Д|д)$') {
-            Set-Clipboard -Value $text
-            Write-Host 'Инструкция скопирована в буфер обмена.'
+        $open = Read-Host 'Open log folder now? (Y/N)'
+        if ($open -match '^(Y|y)$') {
+            Start-Process (Join-Path $root '_tools\logs') | Out-Null
         }
 
-        Write-ToolLog -ProjectRoot $root -Action $action -Command 'git remote -v analysis' -ExitCode 0 -Result 'success'
-        Show-LogHint -ProjectRoot $root
+        Write-ToolLog -LogPath $log -Action $action -Command 'git remote get-url origin' -Result 'success' -ExitCode 0 -Details $remoteUrl
+        Show-LogHint -LogPath $log
         exit 0
     }
-    finally {
-        Pop-Location
-    }
+    finally { Pop-Location }
 }
 catch {
-    Write-Host '[Ошибка] Не удалось собрать диагностику доступа к GitHub.' -ForegroundColor Red
-    Write-Host 'Что делать дальше: проверьте git remote -v и сетевое подключение.'
+    Write-Host 'Git remote diagnostics failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -ProjectRoot $root -Action $action -Command 'git remote -v' -ExitCode 1 -Result 'error' -Details $_.Exception.Message
-    Show-LogHint -ProjectRoot $root
+    Write-ToolLog -LogPath $log -Action $action -Command 'git remote diagnostics' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPath $log
     exit 1
 }

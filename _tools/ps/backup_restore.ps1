@@ -1,66 +1,58 @@
 ﻿param(
-    [string]$ProjectRoot
+    [string]$ProjectRoot,
+    [string]$LogPath
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-
+$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'backup_restore'
 $action = 'backup_restore'
-$commandText = 'Expand-Archive selected backup and copy to project'
 
 try {
-    $backupRoot = Join-Path $root '_tools\\backups'
-    $backups = Get-ChildItem -Path $backupRoot -Filter '*.zip' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
-
-    if (-not $backups -or $backups.Count -eq 0) {
-        Write-Host 'Бэкапы не найдены в _tools\backups.' -ForegroundColor Yellow
-        Write-ToolLog -ProjectRoot $root -Action $action -Command $commandText -ExitCode 1 -Result 'error' -Details 'no backups'
+    $backupRoot = Join-Path $root '_tools\backups'
+    $backups = Get-ChildItem -Path $backupRoot -Filter 'backup_*.zip' -File | Sort-Object LastWriteTime -Descending
+    if (-not $backups) {
+        Write-Host 'No backups found.' -ForegroundColor Yellow
+        Write-ToolLog -LogPath $log -Action $action -Command 'list backups' -Result 'error' -ExitCode 1 -Details 'none found'
+        Show-LogHint -LogPath $log
         exit 1
     }
 
-    Write-Host 'Доступные бэкапы:'
+    Write-Host 'Available backups:'
     for ($i = 0; $i -lt $backups.Count; $i++) {
-        Write-Host ("{0}) {1}" -f ($i + 1), $backups[$i].Name)
+        Write-Host (("[{0}] {1}" -f ($i + 1), $backups[$i].Name))
     }
 
-    $choice = Read-Host 'Введите номер бэкапа'
-    if (-not ($choice -as [int]) -or [int]$choice -lt 1 -or [int]$choice -gt $backups.Count) {
-        Write-Host 'Некорректный номер.' -ForegroundColor Yellow
-        Write-ToolLog -ProjectRoot $root -Action $action -Command $commandText -ExitCode 1 -Result 'error' -Details 'invalid backup index'
-        exit 1
+    $selected = Read-Host 'Enter backup number'
+    if (-not ($selected -as [int])) { Write-ToolLog -LogPath $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPath $log; exit 2 }
+    $idx = [int]$selected - 1
+    if ($idx -lt 0 -or $idx -ge $backups.Count) { Write-ToolLog -LogPath $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPath $log; exit 2 }
+
+    $picked = $backups[$idx]
+    $restoreDir = Join-Path $root ("_tools\tmp\restore_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    New-Item -ItemType Directory -Path $restoreDir -Force | Out-Null
+    Expand-Archive -Path $picked.FullName -DestinationPath $restoreDir -Force
+    Write-Host "Backup extracted to: $restoreDir"
+
+    $replace = Read-Host 'Replace current working tree now? Type YES to continue'
+    if ($replace -eq 'YES') {
+        Get-ChildItem -Path $restoreDir -Force | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination (Join-Path $root $_.Name) -Recurse -Force
+        }
+        Write-Host 'Working tree replaced from selected backup.'
+    } else {
+        Write-Host 'Replace skipped. Review restored folder manually.'
     }
 
-    $selected = $backups[[int]$choice - 1]
-
-    Write-Host 'Создаём pre-restore backup...'
-    & (Join-Path $PSScriptRoot 'backup_create.ps1') -ProjectRoot $root -Tag 'pre_restore' | Out-Host
-
-    $tempDir = Join-Path $env:TEMP ("lingocard_restore_" + [Guid]::NewGuid().ToString('N'))
-    New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
-    Expand-Archive -Path $selected.FullName -DestinationPath $tempDir -Force
-
-    Get-ChildItem -Path $tempDir -Force | ForEach-Object {
-        Copy-Item -Path $_.FullName -Destination (Join-Path $root $_.Name) -Recurse -Force
-    }
-
-    Write-Host "[Успех] Восстановление выполнено из: $($selected.Name)"
-
-    $npmInstall = Read-Host 'Запустить npm install после восстановления? (Y/N)'
-    if ($npmInstall -match '^(Y|y|Д|д)$') {
-        Push-Location $root
-        try { npm install } finally { Pop-Location }
-    }
-
-    Write-ToolLog -ProjectRoot $root -Action $action -Command "$commandText: $($selected.Name)" -ExitCode 0 -Result 'success' -Details $selected.FullName
+    Write-ToolLog -LogPath $log -Action $action -Command 'Expand-Archive and optional replace' -Result 'success' -ExitCode 0 -Details $picked.Name
+    Show-LogHint -LogPath $log
     exit 0
-} catch {
-    Write-Host '[Ошибка] Не удалось восстановить проект из бэкапа.' -ForegroundColor Red
-    Write-Host 'Что делать дальше: проверьте целостность архива и повторите попытку.'
+}
+catch {
+    Write-Host 'Backup restore failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -ProjectRoot $root -Action $action -Command $commandText -ExitCode 1 -Result 'error' -Details $_.Exception.Message
-    Show-LogHint -ProjectRoot $root
+    Write-ToolLog -LogPath $log -Action $action -Command 'restore' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPath $log
     exit 1
-} finally {
-    if ($tempDir -and (Test-Path $tempDir)) { Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
 }

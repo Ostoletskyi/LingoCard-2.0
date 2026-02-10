@@ -1,34 +1,25 @@
-# LingoCard 2.0 Toolbox
+# LingoCard Toolbox
 
-## Запуск
-Из корня проекта запустите:
+## Entry point
+Run from project root:
 
 ```bat
-LC_TOOLBOX.bat
+TOOLBOX.bat
 ```
 
-Главный батник открывает текстовое меню и запускает PowerShell-скрипты из `_tools/ps/` через:
+## Structure
+- `_tools/ps/` PowerShell 5.1 scripts
+- `_tools/logs/` runtime logs
+- `_tools/backups/` backup archives
+- `_tools/tmp/` temporary restore/output data
 
-```text
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File <script.ps1>
-```
+## Main menu
+- Backup
+- Git + Smoke
+- Dev server
+- Diagnostics / Self-test
 
-## Структура
-- `_tools/ps/` — PowerShell 5.1 скрипты управления
-- `_tools/backups/` — zip-бэкапы проекта
-- `_tools/reports/` — логи (`toolbox.log`, `git_pull_*.log`, `smoke_report.md`)
-
-## Команды меню
-1. **Бэкап**
-   - `backup_create.ps1` — создать zip-бэкап
-   - `backup_restore.ps1` — восстановить из выбранного бэкапа (с pre-restore backup)
-2. **Git + Smoke тест**
-   - `git_pull_rebase.ps1`
-   - `git_push.ps1`
-   - `git_fix_remote_access.ps1`
-   - `git_init_local.ps1`
-   - `smoke.ps1`
-3. **Запуск сервера**
-   - `dev_server.ps1`
-
-Все действия пишут результат в `_tools/reports/toolbox.log`.
+## Notes
+- All scripts use `Set-StrictMode -Version Latest` and `try/catch` with `exit 0/1/2`.
+- Default launcher command format:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File "_tools\ps\<script>.ps1"`

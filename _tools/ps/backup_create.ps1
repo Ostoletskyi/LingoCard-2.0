@@ -1,70 +1,70 @@
 ﻿param(
     [string]$ProjectRoot,
-    [string]$Tag = 'manual'
+    [string]$LogPath
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-
+$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'backup_create'
 $action = 'backup_create'
-$commandText = 'Compress-Archive selected project files'
 
+$tempDir = $null
 try {
-    $timestamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
-    $safeTag = ($Tag -replace '[^a-zA-Z0-9_-]', '_')
-    $backupName = if ($safeTag -and $safeTag -ne 'manual') { "backup_${timestamp}_${safeTag}.zip" } else { "backup_${timestamp}.zip" }
-    $backupPath = Join-Path $root "_tools\\backups\\$backupName"
+    $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $backupName = "backup_${stamp}.zip"
+    $backupPath = Join-Path $root ("_tools\backups\{0}" -f $backupName)
+    $manifestPath = Join-Path $root '_tools\tmp\manifest.json'
 
     $tempDir = Join-Path $env:TEMP ("lingocard_backup_" + [Guid]::NewGuid().ToString('N'))
-    New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-    $copyTargets = @('src','public','package.json','package-lock.json','tsconfig.json','index.html','_tools')
-    foreach ($item in $copyTargets) {
-        $source = Join-Path $root $item
-        if (-not (Test-Path $source)) { continue }
-        $destination = Join-Path $tempDir $item
-        if ((Get-Item $source).PSIsContainer) {
-            New-Item -ItemType Directory -Path $destination -Force | Out-Null
-            Get-ChildItem -Path $source -Recurse -Force | ForEach-Object {
-                $full = $_.FullName
-                if ($full -match '\\node_modules(\\|$)' -or $full -match '\\dist(\\|$)' -or $full -match '\\.git(\\|$)' -or $full -match '\\_tools\\backups(\\|$)' -or $full -match '\\_tools\\reports(\\|$)') { return }
-                $relative = $full.Substring($source.Length).TrimStart('\\')
-                $targetPath = Join-Path $destination $relative
-                if ($_.PSIsContainer) {
-                    if (-not (Test-Path $targetPath)) { New-Item -ItemType Directory -Path $targetPath -Force | Out-Null }
-                } else {
-                    $targetDir = Split-Path -Parent $targetPath
-                    if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
-                    Copy-Item -Path $full -Destination $targetPath -Force
-                }
-            }
-        } else {
-            $destDir = Split-Path -Parent $destination
-            if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
-            Copy-Item -Path $source -Destination $destination -Force
-        }
+    $targets = @('src','public','package.json','package-lock.json','tsconfig.json','index.html','README.md')
+    foreach ($item in $targets) {
+        $src = Join-Path $root $item
+        if (-not (Test-Path $src)) { continue }
+        Copy-Item -Path $src -Destination (Join-Path $tempDir $item) -Recurse -Force
     }
 
-    foreach ($configFile in (Get-ConfigFiles $root)) {
-        Copy-Item -Path $configFile.FullName -Destination (Join-Path $tempDir $configFile.Name) -Force
+    foreach ($cfg in (Get-ConfigFiles $root)) {
+        Copy-Item -Path $cfg.FullName -Destination (Join-Path $tempDir $cfg.Name) -Force
     }
 
-    if (Test-Path $backupPath) { Remove-Item -Path $backupPath -Force }
-    Compress-Archive -Path (Join-Path $tempDir '*') -DestinationPath $backupPath -CompressionLevel Optimal
+    $gitHash = 'n/a'
+    if (Test-Path (Join-Path $root '.git')) {
+        Push-Location $root
+        try { $gitHash = (git rev-parse --short HEAD 2>$null) } finally { Pop-Location }
+    }
 
-    $size = Format-FileSize ((Get-Item $backupPath).Length)
-    Write-Host "[Успех] Бэкап создан: $backupPath"
-    Write-Host "Размер: $size"
-    Write-ToolLog -ProjectRoot $root -Action $action -Command $commandText -ExitCode 0 -Result 'success' -Details $backupPath
+    $nodeVersion = if (Get-Command node -ErrorAction SilentlyContinue) { (node -v) } else { 'not found' }
+    $npmVersion = if (Get-Command npm -ErrorAction SilentlyContinue) { (npm -v) } else { 'not found' }
+
+    $manifest = [ordered]@{
+        timestamp = (Get-Date).ToString('o')
+        commit = $gitHash
+        node = $nodeVersion
+        npm = $npmVersion
+        keyFiles = @(Get-ChildItem -Path $tempDir -Recurse -File | ForEach-Object { $_.FullName.Substring($tempDir.Length).TrimStart('\\') })
+    }
+    $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path $manifestPath -Encoding UTF8
+    Copy-Item -Path $manifestPath -Destination (Join-Path $tempDir 'manifest.json') -Force
+
+    Compress-Archive -Path (Join-Path $tempDir '*') -DestinationPath $backupPath -CompressionLevel Optimal -Force
+    $size = (Get-Item $backupPath).Length
+
+    Write-Host "Backup created: $backupPath"
+    Write-Host "Size (bytes): $size"
+    Write-ToolLog -LogPath $log -Action $action -Command 'Compress-Archive' -Result 'success' -ExitCode 0 -Details $backupPath
+    Show-LogHint -LogPath $log
     exit 0
-} catch {
-    Write-Host "[Ошибка] Не удалось создать бэкап." -ForegroundColor Red
-    Write-Host "Что делать дальше: проверьте права доступа и свободное место на диске."
+}
+catch {
+    Write-Host 'Backup creation failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -ProjectRoot $root -Action $action -Command $commandText -ExitCode 1 -Result 'error' -Details $_.Exception.Message
-    Show-LogHint -ProjectRoot $root
+    Write-ToolLog -LogPath $log -Action $action -Command 'Compress-Archive' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPath $log
     exit 1
-} finally {
+}
+finally {
     if ($tempDir -and (Test-Path $tempDir)) { Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue }
 }
