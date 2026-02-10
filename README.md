@@ -13,7 +13,7 @@ src/
   state/             # Zustand store + undo/redo
   ui/                # React components
   utils/             # Shared utilities
-_tools/              # Toolbox scripts, backups and reports
+_tools/              # Backup/restore/smoke/dev scripts
 _tests/              # (reserved)
 tests/               # Smoke/preflight helpers
 ```
@@ -27,8 +27,7 @@ tests/               # Smoke/preflight helpers
 - `src/pdf/exportPdf.ts`: PDF export aligned with layout boxes.
 - `src/ai/lmStudioClient.ts`: LM Studio HTTP client.
 - `src/ai/promptBuilder.ts`: Prompt contract builder.
-- `TOOLBOX.bat`: единая точка входа для tools-меню (Windows).
-- `_tools/ps/*`: PowerShell 5.1 утилиты меню (backup/git/smoke/dev).
+- `_tools/*`: CLI utilities for backup/restore/smoke/dev.
 
 ## Getting started
 ```bash
@@ -40,13 +39,11 @@ npm run dev
 ```bash
 # Smoke test
 npm run tools:smoke
+
+# Backup
+npm run tools:backup -- my_tag
+
+# Restore (list backups or restore by name)
+npm run tools:restore
+npm run tools:restore -- 2024-01-01T00-00-00-000Z_my_tag
 ```
-
-Для backup/restore и Git-операций используйте меню `TOOLBOX.bat`.
-
-## Windows toolbox menu
-```bat
-TOOLBOX.bat
-```
-
-See `_tools/README_TOOLS.md` for menu and logs details.

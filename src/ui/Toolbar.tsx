@@ -1,15 +1,21 @@
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 
 type ThemeMode = "light" | "dark";
+type ToolbarSection = "history" | "view" | "grid" | "snap";
 
 type ToolbarProps = {
   theme: ThemeMode;
   onToggleTheme: () => void;
 };
 
+const clampMm = (value: number) => Math.min(400, Math.max(50, value));
+
 export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const zoom = useAppStore((state) => state.zoom);
+  const layout = useAppStore((state) => state.layout);
   const setZoom = useAppStore((state) => state.setZoom);
+  const setCardSizeMm = useAppStore((state) => state.setCardSizeMm);
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
   const pushHistory = useAppStore((state) => state.pushHistory);
@@ -28,111 +34,148 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const toggleDebugOverlays = useAppStore((state) => state.toggleDebugOverlays);
   const setRulersPlacement = useAppStore((state) => state.setRulersPlacement);
 
+  const [openSection, setOpenSection] = useState<ToolbarSection>(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("ui.toolbar.openSection") : null;
+    return saved === "history" || saved === "view" || saved === "grid" || saved === "snap"
+      ? saved
+      : "view";
+  });
+
+  const historyRef = useRef<HTMLButtonElement | null>(null);
+  const viewRef = useRef<HTMLButtonElement | null>(null);
+  const gridRef = useRef<HTMLInputElement | null>(null);
+  const snapRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("ui.toolbar.openSection", openSection);
+    window.requestAnimationFrame(() => {
+      if (openSection === "history") historyRef.current?.focus();
+      if (openSection === "view") viewRef.current?.focus();
+      if (openSection === "grid") gridRef.current?.focus();
+      if (openSection === "snap") snapRef.current?.focus();
+    });
+  }, [openSection]);
+
+  const sectionHeader = (label: string, section: ToolbarSection, icon: string) => (
+    <button
+      type="button"
+      aria-expanded={openSection === section}
+      aria-controls={`toolbar-${section}`}
+      className={[
+        "flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition",
+        openSection === section
+          ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300"
+          : "text-slate-600 dark:text-slate-200"
+      ].join(" ")}
+      onClick={() => setOpenSection(section)}
+    >
+      <span>{icon} {label}</span>
+      <span className={`transition-transform duration-200 ${openSection === section ? "rotate-180" : "rotate-0"}`}>▾</span>
+    </button>
+  );
+
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-soft dark:bg-slate-900/80">
-      <div className="flex items-center gap-2 rounded-full bg-slate-50 px-3 py-2 dark:bg-slate-800">
-        <span className="text-xs font-semibold text-slate-500">История</span>
-        <button
-          className="inline-flex items-center justify-center rounded-full bg-white px-3 py-1 text-xs text-slate-700 shadow-sm hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-          onClick={undo}
-        >
-          Отменить
-        </button>
-        <button
-          className="inline-flex items-center justify-center rounded-full bg-white px-3 py-1 text-xs text-slate-700 shadow-sm hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-          onClick={redo}
-        >
-          Повторить
-        </button>
-      </div>
-      <div className="flex items-center gap-3 rounded-full bg-slate-50 px-3 py-2 dark:bg-slate-800">
-        <span className="text-xs font-semibold text-slate-500">Вид</span>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Масштаб</span>
-          <input
-            type="range"
-            min={0.25}
-            max={2}
-            step={0.05}
-            value={zoom}
-            onChange={(event) => setZoom(Number(event.target.value))}
-          />
-          <span className="text-xs text-slate-500">{Math.round(zoom * 100)}%</span>
+    <div
+      className="rounded-2xl bg-white px-4 py-3 shadow-soft dark:bg-slate-900/80"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setOpenSection("view");
+        }
+      }}
+    >
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          {sectionHeader("History", "history", "↺")}
+          <div id="toolbar-history" className={`grid overflow-hidden transition-all duration-200 ${openSection === "history" ? "mt-2 max-h-44 opacity-100" : "max-h-0 opacity-0"}`}>
+            <div className="grid gap-2">
+              <button ref={historyRef} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-100" onClick={undo}>Отменить</button>
+              <button className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-100" onClick={redo}>Повторить</button>
+              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={pushHistory}>Снимок</button>
+            </div>
+          </div>
         </div>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
-          Сетка
-        </label>
-        <select
-          value={gridIntensity}
-          onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")}
-          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-          title="Интенсивность сетки"
-        >
-          <option value="low">Сетка: Мягкая</option>
-          <option value="medium">Сетка: Нормальная</option>
-          <option value="high">Сетка: Контрастная</option>
-        </select>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />
-          Только см
-        </label>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input
-            type="checkbox"
-            checked={rulersEnabled}
-            onChange={toggleRulers}
-            title="Показать линейки"
-          />
-          Линейки
-        </label>
-        <select
-          value={rulersPlacement}
-          onChange={(event) =>
-            setRulersPlacement(event.target.value as "outside" | "inside")
-          }
-          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-        >
-          <option value="outside">Линейки: Снаружи</option>
-          <option value="inside">Линейки: Внутри</option>
-        </select>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input
-            type="checkbox"
-            checked={snapEnabled}
-            onChange={toggleSnap}
-            title="Мягкая привязка к сетке"
-          />
-          Привязка
-        </label>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />
-          Отладка
-        </label>
-        <button
-          className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
-          onClick={() => setZoom(1)}
-        >
-          Центр · 100%
-        </button>
-      </div>
-      <div className="flex items-center gap-2 border-l border-slate-100 pl-3 dark:border-slate-700">
-        <button
-          className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
-          onClick={pushHistory}
-        >
-          Снимок
-        </button>
-      </div>
-      <div className="flex items-center gap-2 border-l border-slate-100 pl-3 dark:border-slate-700">
-        <button
-          onClick={onToggleTheme}
-          title="Переключить тему"
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:text-white"
-        >
-          <span>{theme === "light" ? "☀️" : "🌙"}</span>
-          {theme === "light" ? "Светлая" : "Тёмная"}
-        </button>
+
+        <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          {sectionHeader("View", "view", "👁️")}
+          <div id="toolbar-view" className={`grid overflow-hidden transition-all duration-200 ${openSection === "view" ? "mt-2 max-h-80 opacity-100" : "max-h-0 opacity-0"}`}>
+            <div className="grid gap-2">
+              <label className="text-xs text-slate-600 dark:text-slate-200">Масштаб: {Math.round(zoom * 100)}%</label>
+              <input type="range" min={0.25} max={2} step={0.05} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+              <button ref={viewRef} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={() => setZoom(1)}>Центр · 100%</button>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[11px] text-slate-500 dark:text-slate-300">Card Width (mm)
+                  <input
+                    type="number"
+                    min={50}
+                    max={400}
+                    step={1}
+                    value={layout.widthMm}
+                    onChange={(event) => setCardSizeMm(clampMm(Number(event.target.value)), layout.heightMm)}
+                    onWheel={(event) => {
+                      event.preventDefault();
+                      const delta = event.deltaY > 0 ? -1 : 1;
+                      const factor = event.shiftKey ? 10 : 1;
+                      setCardSizeMm(clampMm(layout.widthMm + delta * factor), layout.heightMm);
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                  />
+                </label>
+                <label className="text-[11px] text-slate-500 dark:text-slate-300">Card Height (mm)
+                  <input
+                    type="number"
+                    min={50}
+                    max={400}
+                    step={1}
+                    value={layout.heightMm}
+                    onChange={(event) => setCardSizeMm(layout.widthMm, clampMm(Number(event.target.value)))}
+                    onWheel={(event) => {
+                      event.preventDefault();
+                      const delta = event.deltaY > 0 ? -1 : 1;
+                      const factor = event.shiftKey ? 10 : 1;
+                      setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + delta * factor));
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                  />
+                </label>
+              </div>
+              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={onToggleTheme}>
+                {theme === "light" ? "☀️ Светлая" : "🌙 Тёмная"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          {sectionHeader("Grid & Rulers", "grid", "📏")}
+          <div id="toolbar-grid" className={`grid overflow-hidden transition-all duration-200 ${openSection === "grid" ? "mt-2 max-h-80 opacity-100" : "max-h-0 opacity-0"}`}>
+            <div className="grid gap-2">
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input ref={gridRef} type="checkbox" checked={gridEnabled} onChange={toggleGrid} />Сетка</label>
+              <select value={gridIntensity} onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")} className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">
+                <option value="low">Сетка: Мягкая</option>
+                <option value="medium">Сетка: Нормальная</option>
+                <option value="high">Сетка: Контрастная</option>
+              </select>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />Только см</label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />Линейки</label>
+              <select value={rulersPlacement} onChange={(event) => setRulersPlacement(event.target.value as "outside" | "inside")} className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">
+                <option value="outside">Линейки: Снаружи</option>
+                <option value="inside">Линейки: Внутри</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          {sectionHeader("Snap & Debug", "snap", "🧲")}
+          <div id="toolbar-snap" className={`grid overflow-hidden transition-all duration-200 ${openSection === "snap" ? "mt-2 max-h-44 opacity-100" : "max-h-0 opacity-0"}`}>
+            <div className="grid gap-2">
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input ref={snapRef} type="checkbox" checked={snapEnabled} onChange={toggleSnap} />Привязка</label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />Отладка</label>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
