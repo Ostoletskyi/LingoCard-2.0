@@ -319,6 +319,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   }, [editingBoxId]);
 
   useEffect(() => {
+    setSelectedBoxIds([]);
+  }, [selectedId, selectedSide]);
+
+  useEffect(() => {
     if (!editSession) return;
     if (!selectedId || selectedId !== editSession.cardId || selectedSide !== editSession.side) {
       commitEdit(true);
@@ -482,6 +486,17 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               event.stopPropagation();
               const next = zoomScale + (event.deltaY < 0 ? 0.05 : -0.05);
               setZoom(Math.min(2, Math.max(0.25, next)));
+              return;
+            }
+            if (selectedBoxIds.length > 0) {
+              event.preventDefault();
+              event.stopPropagation();
+              const step = event.shiftKey ? 2 : 1;
+              const delta = event.deltaY < 0 ? step : -step;
+              const targetFieldIds = activeBoxes
+                .filter((item) => selectedBoxIds.includes(item.id))
+                .map((item) => item.fieldId);
+              adjustColumnFontSizeByField(selectedSide, targetFieldIds, delta);
             }
           }}
         >

@@ -74,6 +74,18 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
     return () => node.removeEventListener("wheel", handler);
   }, [captureViewWheel]);
 
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const node = viewPanelRef.current;
+      if (!node) return;
+      if (node.contains(event.target as Node)) return;
+      setCaptureViewWheel(false);
+      setViewWheelTarget(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
   const applyZoomWheel = (deltaY: number) => {
     const direction = deltaY > 0 ? -1 : 1;
     setZoom(clampZoom(zoom + direction * 0.05));
