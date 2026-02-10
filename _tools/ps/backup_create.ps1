@@ -6,7 +6,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'backup_create'
+$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'backup_create'
 $action = 'backup_create'
 
 $tempDir = $null
@@ -54,15 +54,15 @@ try {
 
     Write-Host "Backup created: $backupPath"
     Write-Host "Size (bytes): $size"
-    Write-ToolLog -LogPath $log -Action $action -Command 'Compress-Archive' -Result 'success' -ExitCode 0 -Details $backupPath
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'Compress-Archive' -Result 'success' -ExitCode 0 -Details $backupPath
+    Show-LogHint -LogPaths $log
     exit 0
 }
 catch {
     Write-Host 'Backup creation failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPath $log -Action $action -Command 'Compress-Archive' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'Compress-Archive' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPaths $log
     exit 1
 }
 finally {

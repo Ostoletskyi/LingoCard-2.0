@@ -6,7 +6,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'smoke_run'
+$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'smoke_run'
 $action = 'smoke_run'
 
 try {
@@ -30,8 +30,8 @@ try {
 
         Write-Host 'Smoke test passed.'
         if (Test-Path $report) { Write-Host "Smoke report copy: $report" }
-        Write-ToolLog -LogPath $log -Action $action -Command 'npm ci/install + npm run tools:smoke' -Result 'success' -ExitCode 0
-        Show-LogHint -LogPath $log
+        Write-ToolLog -LogPaths $log -Action $action -Command 'npm ci/install + npm run tools:smoke' -Result 'success' -ExitCode 0
+        Show-LogHint -LogPaths $log
         exit 0
     }
     finally { Pop-Location }
@@ -39,7 +39,7 @@ try {
 catch {
     Write-Host 'Smoke test failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPath $log -Action $action -Command 'smoke pipeline' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'smoke pipeline' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPaths $log
     exit 1
 }

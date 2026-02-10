@@ -7,7 +7,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'selftest'
+$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'selftest'
 $action = 'toolbox_selftest'
 
 function Test-Bom {
@@ -49,8 +49,8 @@ try {
         git --version 2>$null
         node -v 2>$null
         npm -v 2>$null
-        Write-ToolLog -LogPath $log -Action $action -Command 'versions only' -Result 'success' -ExitCode 0
-        Show-LogHint -LogPath $log
+        Write-ToolLog -LogPaths $log -Action $action -Command 'versions only' -Result 'success' -ExitCode 0
+        Show-LogHint -LogPaths $log
         exit 0
     }
 
@@ -64,20 +64,20 @@ try {
 
     if ($errors -eq 0) {
         Write-Host 'SELF-TEST RESULT: PASS' -ForegroundColor Green
-        Write-ToolLog -LogPath $log -Action $action -Command 'full selftest' -Result 'PASS' -ExitCode 0
-        Show-LogHint -LogPath $log
+        Write-ToolLog -LogPaths $log -Action $action -Command 'full selftest' -Result 'PASS' -ExitCode 0
+        Show-LogHint -LogPaths $log
         exit 0
     }
 
     Write-Host 'SELF-TEST RESULT: FAIL' -ForegroundColor Red
-    Write-ToolLog -LogPath $log -Action $action -Command 'full selftest' -Result 'FAIL' -ExitCode 1
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'full selftest' -Result 'FAIL' -ExitCode 1
+    Show-LogHint -LogPaths $log
     exit 1
 }
 catch {
     Write-Host 'Self-test execution failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPath $log -Action $action -Command 'selftest' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'selftest' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPaths $log
     exit 1
 }

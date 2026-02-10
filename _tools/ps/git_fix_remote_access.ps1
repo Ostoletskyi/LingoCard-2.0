@@ -6,7 +6,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'git_remote_fix'
+$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'git_remote_fix'
 $action = 'git_fix_remote_access'
 
 try {
@@ -42,8 +42,8 @@ try {
             Start-Process (Join-Path $root '_tools\logs') | Out-Null
         }
 
-        Write-ToolLog -LogPath $log -Action $action -Command 'git remote get-url origin' -Result 'success' -ExitCode 0 -Details $remoteUrl
-        Show-LogHint -LogPath $log
+        Write-ToolLog -LogPaths $log -Action $action -Command 'git remote get-url origin' -Result 'success' -ExitCode 0 -Details $remoteUrl
+        Show-LogHint -LogPaths $log
         exit 0
     }
     finally { Pop-Location }
@@ -51,7 +51,7 @@ try {
 catch {
     Write-Host 'Git remote diagnostics failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPath $log -Action $action -Command 'git remote diagnostics' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'git remote diagnostics' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPaths $log
     exit 1
 }

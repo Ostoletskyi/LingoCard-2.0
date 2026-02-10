@@ -1,4 +1,4 @@
-# LingoCard Toolbox
+﻿# LingoCard Toolbox
 
 ## Entry point
 Run from project root:
@@ -9,7 +9,7 @@ TOOLBOX.bat
 
 ## Structure
 - `_tools/ps/` PowerShell 5.1 scripts
-- `_tools/logs/` runtime logs
+- `_reports/toolbox/YYYY-MM-DD/` runtime logs (`.md` + `.json`)
 - `_tools/backups/` backup archives
 - `_tools/tmp/` temporary restore/output data
 

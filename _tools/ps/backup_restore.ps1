@@ -6,7 +6,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirectories $root
-$log = Resolve-LogPath -ProjectRoot $root -LogPath $LogPath -Prefix 'backup_restore'
+$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'backup_restore'
 $action = 'backup_restore'
 
 try {
@@ -14,8 +14,8 @@ try {
     $backups = Get-ChildItem -Path $backupRoot -Filter 'backup_*.zip' -File | Sort-Object LastWriteTime -Descending
     if (-not $backups) {
         Write-Host 'No backups found.' -ForegroundColor Yellow
-        Write-ToolLog -LogPath $log -Action $action -Command 'list backups' -Result 'error' -ExitCode 1 -Details 'none found'
-        Show-LogHint -LogPath $log
+        Write-ToolLog -LogPaths $log -Action $action -Command 'list backups' -Result 'error' -ExitCode 1 -Details 'none found'
+        Show-LogHint -LogPaths $log
         exit 1
     }
 
@@ -25,9 +25,9 @@ try {
     }
 
     $selected = Read-Host 'Enter backup number'
-    if (-not ($selected -as [int])) { Write-ToolLog -LogPath $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPath $log; exit 2 }
+    if (-not ($selected -as [int])) { Write-ToolLog -LogPaths $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPaths $log; exit 2 }
     $idx = [int]$selected - 1
-    if ($idx -lt 0 -or $idx -ge $backups.Count) { Write-ToolLog -LogPath $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPath $log; exit 2 }
+    if ($idx -lt 0 -or $idx -ge $backups.Count) { Write-ToolLog -LogPaths $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPaths $log; exit 2 }
 
     $picked = $backups[$idx]
     $restoreDir = Join-Path $root ("_tools\tmp\restore_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
@@ -45,14 +45,14 @@ try {
         Write-Host 'Replace skipped. Review restored folder manually.'
     }
 
-    Write-ToolLog -LogPath $log -Action $action -Command 'Expand-Archive and optional replace' -Result 'success' -ExitCode 0 -Details $picked.Name
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'Expand-Archive and optional replace' -Result 'success' -ExitCode 0 -Details $picked.Name
+    Show-LogHint -LogPaths $log
     exit 0
 }
 catch {
     Write-Host 'Backup restore failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPath $log -Action $action -Command 'restore' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPath $log
+    Write-ToolLog -LogPaths $log -Action $action -Command 'restore' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
+    Show-LogHint -LogPaths $log
     exit 1
 }
