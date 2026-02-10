@@ -48,7 +48,6 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const gridRef = useRef<HTMLInputElement | null>(null);
   const snapRef = useRef<HTMLInputElement | null>(null);
   const viewPanelRef = useRef<HTMLDivElement | null>(null);
-  const [captureViewWheel, setCaptureViewWheel] = useState(false);
   const [viewWheelTarget, setViewWheelTarget] = useState<ViewWheelTarget>(null);
 
   useEffect(() => {
@@ -62,24 +61,11 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
     });
   }, [openSection]);
 
-
-  useEffect(() => {
-    const node = viewPanelRef.current;
-    if (!node || !captureViewWheel) return;
-    const handler = (event: WheelEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    node.addEventListener("wheel", handler, { passive: false });
-    return () => node.removeEventListener("wheel", handler);
-  }, [captureViewWheel]);
-
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const node = viewPanelRef.current;
       if (!node) return;
       if (node.contains(event.target as Node)) return;
-      setCaptureViewWheel(false);
       setViewWheelTarget(null);
     };
     window.addEventListener("pointerdown", onPointerDown);
@@ -162,8 +148,13 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 type="button"
                 className="text-left text-xs text-slate-600 dark:text-slate-200"
                 onClick={() => {
-                  setCaptureViewWheel(true);
                   setViewWheelTarget("zoom");
+                }}
+                onPointerEnter={() => {
+                  setViewWheelTarget("zoom");
+                }}
+                onPointerLeave={() => {
+                  setViewWheelTarget(null);
                 }}
               >Масштаб: {Math.round(zoom * 100)}%</button>
               <input
@@ -172,10 +163,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 max={2}
                 step={0.05}
                 value={zoom}
-                onFocus={() => { setCaptureViewWheel(true); setViewWheelTarget("zoom"); }}
-                onBlur={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
-                onPointerEnter={() => { setCaptureViewWheel(true); setViewWheelTarget("zoom"); }}
-                onPointerLeave={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
+                onFocus={() => { setViewWheelTarget("zoom"); }}
+                onBlur={() => { setViewWheelTarget(null); }}
+                onPointerEnter={() => { setViewWheelTarget("zoom"); }}
+                onPointerLeave={() => { setViewWheelTarget(null); }}
                 onChange={(event) => setZoom(Number(event.target.value))}
                 onWheel={(event) => {
                   event.preventDefault();
@@ -190,8 +181,13 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     type="button"
                     className="text-left"
                     onClick={() => {
-                      setCaptureViewWheel(true);
                       setViewWheelTarget("width");
+                    }}
+                    onPointerEnter={() => {
+                      setViewWheelTarget("width");
+                    }}
+                    onPointerLeave={() => {
+                      setViewWheelTarget(null);
                     }}
                   >Card Width (mm)</button>
                   <input
@@ -200,10 +196,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     max={400}
                     step={1}
                     value={layout.widthMm}
-                    onFocus={() => { setCaptureViewWheel(true); setViewWheelTarget("width"); }}
-                    onBlur={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
-                    onPointerEnter={() => { setCaptureViewWheel(true); setViewWheelTarget("width"); }}
-                    onPointerLeave={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
+                    onFocus={() => { setViewWheelTarget("width"); }}
+                    onBlur={() => { setViewWheelTarget(null); }}
+                    onPointerEnter={() => { setViewWheelTarget("width"); }}
+                    onPointerLeave={() => { setViewWheelTarget(null); }}
                     onChange={(event) => setCardSizeMm(clampMm(Number(event.target.value)), layout.heightMm)}
                     onWheel={(event) => {
                       event.preventDefault();
@@ -218,8 +214,13 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     type="button"
                     className="text-left"
                     onClick={() => {
-                      setCaptureViewWheel(true);
                       setViewWheelTarget("height");
+                    }}
+                    onPointerEnter={() => {
+                      setViewWheelTarget("height");
+                    }}
+                    onPointerLeave={() => {
+                      setViewWheelTarget(null);
                     }}
                   >Card Height (mm)</button>
                   <input
@@ -228,10 +229,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     max={400}
                     step={1}
                     value={layout.heightMm}
-                    onFocus={() => { setCaptureViewWheel(true); setViewWheelTarget("height"); }}
-                    onBlur={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
-                    onPointerEnter={() => { setCaptureViewWheel(true); setViewWheelTarget("height"); }}
-                    onPointerLeave={() => { setCaptureViewWheel(false); setViewWheelTarget(null); }}
+                    onFocus={() => { setViewWheelTarget("height"); }}
+                    onBlur={() => { setViewWheelTarget(null); }}
+                    onPointerEnter={() => { setViewWheelTarget("height"); }}
+                    onPointerLeave={() => { setViewWheelTarget(null); }}
                     onChange={(event) => setCardSizeMm(layout.widthMm, clampMm(Number(event.target.value)))}
                     onWheel={(event) => {
                       event.preventDefault();

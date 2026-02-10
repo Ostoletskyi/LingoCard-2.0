@@ -383,20 +383,26 @@ export const useAppStore = create<AppState>()(
       if (!targetSet.size) {
         return;
       }
-      const hasAnyTarget = source.some((card) =>
-        (card.boxes?.length ?? 0) > 0 && card.boxes!.some((box) => targetSet.has(box.fieldId))
-      );
+      const hasAnyTarget = source.some((card) => {
+        const boxes = card.boxes?.length
+          ? card.boxes
+          : applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm).boxes;
+        return (boxes ?? []).some((box) => targetSet.has(box.fieldId));
+      });
       if (!hasAnyTarget) {
         return;
       }
       recordHistory(state, get());
       const next = source.map((card) => {
-        if (!card.boxes?.length) {
-          return card;
+        const baseCard = card.boxes?.length
+          ? card
+          : applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm);
+        if (!baseCard.boxes?.length) {
+          return baseCard;
         }
         return {
-          ...card,
-          boxes: card.boxes.map((box) => {
+          ...baseCard,
+          boxes: baseCard.boxes.map((box) => {
             if (!targetSet.has(box.fieldId)) {
               return box;
             }
