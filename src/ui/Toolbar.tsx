@@ -10,6 +10,7 @@ type ToolbarProps = {
 };
 
 const clampMm = (value: number) => Math.min(400, Math.max(50, value));
+const clampZoom = (value: number) => Math.min(2, Math.max(0.25, value));
 
 export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const zoom = useAppStore((state) => state.zoom);
@@ -119,7 +120,24 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
               className="grid gap-2"
             >
               <label className="text-xs text-slate-600 dark:text-slate-200">Масштаб: {Math.round(zoom * 100)}%</label>
-              <input type="range" min={0.25} max={2} step={0.05} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+              <input
+                type="range"
+                min={0.25}
+                max={2}
+                step={0.05}
+                value={zoom}
+                onFocus={() => setCaptureViewWheel(true)}
+                onBlur={() => setCaptureViewWheel(false)}
+                onPointerEnter={() => setCaptureViewWheel(true)}
+                onPointerLeave={() => setCaptureViewWheel(false)}
+                onChange={(event) => setZoom(Number(event.target.value))}
+                onWheel={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const direction = event.deltaY > 0 ? -1 : 1;
+                  setZoom(clampZoom(zoom + direction * 0.05));
+                }}
+              />
               <button ref={viewRef} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={() => setZoom(1)}>Центр · 100%</button>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[11px] text-slate-500 dark:text-slate-300">Card Width (mm)
@@ -136,6 +154,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     onChange={(event) => setCardSizeMm(clampMm(Number(event.target.value)), layout.heightMm)}
                     onWheel={(event) => {
                       event.preventDefault();
+                      event.stopPropagation();
                       const delta = event.deltaY > 0 ? -1 : 1;
                       const factor = event.shiftKey ? 10 : 1;
                       setCardSizeMm(clampMm(layout.widthMm + delta * factor), layout.heightMm);
@@ -157,6 +176,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     onChange={(event) => setCardSizeMm(layout.widthMm, clampMm(Number(event.target.value)))}
                     onWheel={(event) => {
                       event.preventDefault();
+                      event.stopPropagation();
                       const delta = event.deltaY > 0 ? -1 : 1;
                       const factor = event.shiftKey ? 10 : 1;
                       setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + delta * factor));
