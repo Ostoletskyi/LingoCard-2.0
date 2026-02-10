@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BoxSchema } from "./layoutSchema";
 
 export const FrequencySchema = z.union([
   z.literal(1),
@@ -75,7 +76,8 @@ export const CardSchema = z.object({
   ...formsSchema,
   ...synonymSchema,
   ...examplesSchema,
-  ...rektionSchema
+  ...rektionSchema,
+  boxes: z.array(BoxSchema).optional()
 });
 
 export type Card = z.infer<typeof CardSchema>;
@@ -127,14 +129,16 @@ export const emptyCard: Card = {
   rek_4_de: "",
   rek_4_ru: "",
   rek_5_de: "",
-  rek_5_ru: ""
+  rek_5_ru: "",
+  boxes: []
 };
 
 export const normalizeCard = (input: Partial<Card>): Card => {
   const normalized: Card = {
     ...emptyCard,
     ...input,
-    tags: input.tags ?? []
+    tags: input.tags ?? [],
+    boxes: input.boxes ?? []
   };
   if (!normalized.id) {
     normalized.id = crypto.randomUUID();

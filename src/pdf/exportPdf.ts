@@ -5,10 +5,9 @@ import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
 
 export type PdfExportOptions = {
-  pageFormat?: "a4" | "a5";
-  cardsPerRow: number;
-  cardsPerColumn: number;
-  marginMm: number;
+  cardsPerRow?: number;
+  cardsPerColumn?: number;
+  marginMm?: number;
 };
 
 export const exportCardsToPdf = (
@@ -17,26 +16,18 @@ export const exportCardsToPdf = (
   options: PdfExportOptions,
   fileName: string = "cards.pdf"
 ) => {
-  const { cardsPerRow, cardsPerColumn, marginMm, pageFormat = "a4" } = options;
+  const { cardsPerRow = 1, cardsPerColumn = 1, marginMm = 0 } = options;
+  const pdfDebug =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("pdfDebug") === "1";
   const doc = new jsPDF({
-    orientation: "landscape",
+    orientation: layout.widthMm >= layout.heightMm ? "landscape" : "portrait",
     unit: "mm",
-    format: pageFormat
+    format: [layout.widthMm, layout.heightMm]
   });
 
   const cardWidth = layout.widthMm;
   const cardHeight = layout.heightMm;
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const requiredWidth = marginMm * 2 + cardsPerRow * cardWidth;
-  const requiredHeight = marginMm * 2 + cardsPerColumn * cardHeight;
-
-  if (requiredWidth > pageWidth || requiredHeight > pageHeight) {
-    logger.warn(
-      "Cards grid exceeds page size",
-      `required ${requiredWidth}x${requiredHeight}mm, page ${pageWidth}x${pageHeight}mm`
-    );
-  }
 
   cards.forEach((card, index) => {
     const localIndex = index % (cardsPerRow * cardsPerColumn);
@@ -48,16 +39,23 @@ export const exportCardsToPdf = (
     const x = marginMm + col * cardWidth;
     const y = marginMm + row * cardHeight;
 
-    doc.setLineWidth(0.2);
-    doc.setDrawColor(60, 60, 60);
-    doc.rect(x, y, cardWidth, cardHeight);
+    if (marginMm > 0) {
+      logger.warn("PDF export uses margin", `${marginMm}mm margin applied`);
+    }
+    if (pdfDebug) {
+      doc.setLineWidth(0.2);
+      doc.setDrawColor(60, 60, 60);
+      doc.rect(x, y, cardWidth, cardHeight);
+    }
 
     layout.boxes.forEach((box) => {
       const value = getFieldText(card, box.fieldId).text;
       if (box.style.visible === false) return;
-      doc.setLineWidth(0.1);
-      doc.setDrawColor(90, 90, 90);
-      doc.rect(x + box.xMm, y + box.yMm, box.wMm, box.hMm);
+      if (pdfDebug) {
+        doc.setLineWidth(0.1);
+        doc.setDrawColor(90, 90, 90);
+        doc.rect(x + box.xMm, y + box.yMm, box.wMm, box.hMm);
+      }
       const textX = x + box.xMm + box.style.paddingMm;
       const textY = y + box.yMm + box.style.paddingMm + box.style.fontSizePt * 0.3527;
       const maxWidth = Math.max(1, box.wMm - box.style.paddingMm * 2);

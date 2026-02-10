@@ -8,6 +8,7 @@ import { selectCardById } from "../utils/selectCard";
 
 export const App = () => {
   const { selectedId, selectedSide, cardsA, cardsB } = useAppStore();
+  const resetState = useAppStore((state) => state.resetState);
   const isExporting = useAppStore((state) => state.isExporting);
   const exportStartedAt = useAppStore((state) => state.exportStartedAt);
   const exportLabel = useAppStore((state) => state.exportLabel);
@@ -67,11 +68,23 @@ export const App = () => {
             Дневной редактор карточек немецких глаголов
           </p>
         </div>
-        <div
-          className="rounded-full bg-white px-4 py-2 text-xs text-slate-500 shadow-soft dark:bg-slate-900 dark:text-slate-300"
-          title={selectedCard?.id ?? ""}
-        >
-          {headline}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (window.confirm("Сбросить состояние? Это удалит временные данные.")) {
+                resetState();
+              }
+            }}
+            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:text-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:text-white"
+          >
+            Сбросить состояние
+          </button>
+          <div
+            className="rounded-full bg-white px-4 py-2 text-xs text-slate-500 shadow-soft dark:bg-slate-900 dark:text-slate-300"
+            title={selectedCard?.id ?? ""}
+          >
+            {headline}
+          </div>
         </div>
       </header>
       <div className="grid grid-cols-[300px_1fr_300px] gap-6">

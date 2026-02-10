@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { useAppStore, type ListSide } from "../state/store";
 import {
@@ -15,7 +15,13 @@ type Props = {
 };
 
 export const CardListPanel = ({ side }: Props) => {
+  type SidebarSection = "data" | "selection" | "export";
   const [filter, setFilter] = useState("");
+  const storageKey = side === "A" ? "ui.sidebarA.openSection" : "ui.sidebarB.openSection";
+  const [openSection, setOpenSection] = useState<SidebarSection>(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
+    return saved === "data" || saved === "selection" || saved === "export" ? saved : "data";
+  });
   const cards = useAppStore((state) => (side === "A" ? state.cardsA : state.cardsB));
   const selectCard = useAppStore((state) => state.selectCard);
   const addCard = useAppStore((state) => state.addCard);
@@ -37,6 +43,32 @@ export const CardListPanel = ({ side }: Props) => {
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importErrorLog, setImportErrorLog] = useState<ImportErrorLog | null>(null);
   const [importModalType, setImportModalType] = useState<"error" | "warning" | null>(null);
+  const buttonBase =
+    "inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-200";
+  const buttonSolid =
+    "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
+  const buttonLight =
+    "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700";
+  const buttonGhost =
+    "border border-slate-200 text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:text-white";
+  const firstDataButtonRef = useRef<HTMLButtonElement | null>(null);
+  const firstSelectionButtonRef = useRef<HTMLButtonElement | null>(null);
+  const firstExportButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const toggleSection = (section: SidebarSection) => {
+    setOpenSection((prev) => (prev === section ? prev : section));
+  };
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(storageKey, openSection);
+      window.requestAnimationFrame(() => {
+        if (openSection === "data") firstDataButtonRef.current?.focus();
+        if (openSection === "selection") firstSelectionButtonRef.current?.focus();
+        if (openSection === "export") firstExportButtonRef.current?.focus();
+      });
+    }
+  }, [openSection, storageKey]);
 
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -128,7 +160,7 @@ export const CardListPanel = ({ side }: Props) => {
     exportCardsToPdf(exportCards, layout, {
       cardsPerRow: 1,
       cardsPerColumn: 1,
-      marginMm: 5
+      marginMm: 0
     }, fileName);
     finishExport();
   };
@@ -181,71 +213,112 @@ export const CardListPanel = ({ side }: Props) => {
         placeholder="Поиск"
         className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900/60"
       />
-      <div className="flex flex-wrap gap-2 text-xs text-slate-600 dark:text-slate-300">
-        <button
-          onClick={handleCreate}
-          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-        >
-          + Новая карточка
-        </button>
-        <label className="cursor-pointer">
-          <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
-          <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition">
-            Импорт JSON
-          </span>
-        </label>
-        <button
-          onClick={downloadSample}
-          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700"
-        >
-          Пример файла
-        </button>
-        <button
-          onClick={handleTextImport}
-          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition"
-        >
-          Импорт TXT
-        </button>
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition disabled:opacity-50"
-        >
-          Экспорт
-        </button>
-        <button
-          onClick={() => handlePdfExport("current")}
-          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700"
-        >
-          PDF: Текущая
-        </button>
-        <button
-          onClick={() => handlePdfExport("selected")}
-          disabled={selectedCardIds.length === 0}
-          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700 disabled:opacity-50"
-        >
-          PDF: Выбранные
-        </button>
-        <button
-          onClick={() => handlePdfExport("all")}
-          className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border border-slate-200 text-slate-500 hover:text-slate-700"
-        >
-          PDF: Все
-        </button>
-      </div>
-      <div className="flex items-center gap-2 text-xs text-slate-500">
-        <button
-          onClick={() => selectAllCards(side)}
-          className="inline-flex items-center justify-center px-2 py-1 rounded-full border border-slate-200"
-        >
-          Выделить всё
-        </button>
-        <button
-          onClick={() => clearCardSelection(side)}
-          className="inline-flex items-center justify-center px-2 py-1 rounded-full border border-slate-200"
-        >
-          Снять выделение
-        </button>
+      <div
+        className="space-y-3 text-xs text-slate-600 dark:text-slate-300"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setOpenSection("data");
+          }
+        }}
+      >
+        <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          <button
+            type="button"
+            aria-expanded={openSection === "data"}
+            aria-controls={`section-data-${side}`}
+            className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "data" ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
+            onClick={() => toggleSection("data")}
+          >
+            <span>📁 Данные</span>
+            <span className={`transition-transform duration-200 ${openSection === "data" ? "rotate-180" : "rotate-0"}`}>▾</span>
+          </button>
+          <div
+            id={`section-data-${side}`}
+            className={`grid overflow-hidden transition-all duration-200 ${openSection === "data" ? "mt-2 max-h-80 opacity-100" : "max-h-0 opacity-0"}`}
+          >
+            <div className="grid gap-2">
+            <button ref={firstDataButtonRef} onClick={handleCreate} className={`${buttonBase} ${buttonSolid}`}>
+              + Новая карточка
+            </button>
+            <label className="cursor-pointer">
+              <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
+              <span className={`${buttonBase} ${buttonLight} w-full`}>Импорт JSON</span>
+            </label>
+            <button onClick={handleTextImport} className={`${buttonBase} ${buttonLight}`}>
+              Импорт TXT
+            </button>
+            <button onClick={downloadSample} className={`${buttonBase} ${buttonGhost}`}>
+              Пример файла
+            </button>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          <button
+            type="button"
+            aria-expanded={openSection === "selection"}
+            aria-controls={`section-selection-${side}`}
+            className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "selection" ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
+            onClick={() => toggleSection("selection")}
+          >
+            <span>☑️ Выбор</span>
+            <span className={`transition-transform duration-200 ${openSection === "selection" ? "rotate-180" : "rotate-0"}`}>▾</span>
+          </button>
+          <div
+            id={`section-selection-${side}`}
+            className={`grid overflow-hidden transition-all duration-200 ${openSection === "selection" ? "mt-2 max-h-48 opacity-100" : "max-h-0 opacity-0"}`}
+          >
+            <div className="grid gap-2">
+            <button ref={firstSelectionButtonRef} onClick={() => selectAllCards(side)} className={`${buttonBase} ${buttonLight}`}>
+              Выделить всё
+            </button>
+            <button onClick={() => clearCardSelection(side)} className={`${buttonBase} ${buttonGhost}`}>
+              Снять выделение
+            </button>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          <button
+            type="button"
+            aria-expanded={openSection === "export"}
+            aria-controls={`section-export-${side}`}
+            className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "export" ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
+            onClick={() => toggleSection("export")}
+          >
+            <span>📤 Экспорт</span>
+            <span className={`transition-transform duration-200 ${openSection === "export" ? "rotate-180" : "rotate-0"}`}>▾</span>
+          </button>
+          <div
+            id={`section-export-${side}`}
+            className={`grid overflow-hidden transition-all duration-200 ${openSection === "export" ? "mt-2 max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
+          >
+            <div className="grid gap-2">
+            <button
+              ref={firstExportButtonRef}
+              onClick={handleExport}
+              disabled={isExporting}
+              className={`${buttonBase} ${buttonLight} disabled:opacity-50`}
+            >
+              Экспорт JSON
+            </button>
+            <button onClick={() => handlePdfExport("current")} className={`${buttonBase} ${buttonGhost}`}>
+              PDF: Текущая
+            </button>
+            <button
+              onClick={() => handlePdfExport("selected")}
+              disabled={selectedCardIds.length === 0}
+              className={`${buttonBase} ${buttonGhost} disabled:opacity-50`}
+            >
+              PDF: Выбранные
+            </button>
+            <button onClick={() => handlePdfExport("all")} className={`${buttonBase} ${buttonGhost}`}>
+              PDF: Все
+            </button>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="flex-1 overflow-auto rounded-xl border border-slate-100 bg-slate-50/40 p-3 text-sm space-y-3 dark:border-slate-800 dark:bg-slate-900/60">
         {importNotice && (
