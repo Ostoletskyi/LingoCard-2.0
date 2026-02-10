@@ -3,6 +3,7 @@ import type { Card } from "../model/cardSchema";
 import type { Layout } from "../model/layoutSchema";
 import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
+import { MM_PER_INCH } from "../utils/mmPx";
 
 export type PdfExportOptions = {
   cardsPerRow?: number;
@@ -10,7 +11,6 @@ export type PdfExportOptions = {
   marginMm?: number;
 };
 
-const MM_PER_INCH = 25.4;
 const CANVAS_DPI = 300;
 
 const mmToCanvasPx = (mm: number) => Math.round((mm / MM_PER_INCH) * CANVAS_DPI);

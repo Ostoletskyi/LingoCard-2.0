@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
-import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
+import { getPxPerMm, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
 import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
@@ -25,10 +25,15 @@ type DragState = {
 const applySnap = (valueMm: number, enabled: boolean) =>
   enabled ? Math.round(valueMm / GRID_STEP_MM) * GRID_STEP_MM : valueMm;
 
-const RULER_SIZE_PX = 28;
+const RULER_SIZE_MM = 7;
 const RULER_GAP_MM = 1;
 
-const buildRange = (max: number) => Array.from({ length: Math.floor(max) + 1 }, (_, i) => i);
+const buildRulerTicks = (maxMm: number) => {
+  const full = Array.from({ length: Math.floor(maxMm) + 1 }, (_, i) => i);
+  const last = full.at(-1) ?? 0;
+  const hasEndpoint = Math.abs(last - maxMm) < 0.001;
+  return hasEndpoint ? full : [...full, maxMm];
+};
 
 type RenderMode = "editor" | "print";
 
@@ -93,7 +98,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     return selectCardById(selectedId, selectedSide, cardsA, cardsB);
   }, [selectedId, selectedSide, cardsA, cardsB]);
 
-  const pxPerMm = DEFAULT_PX_PER_MM * zoom;
+  const pxPerMm = getPxPerMm(zoom);
+  const rulerSizePx = mmToPx(RULER_SIZE_MM, pxPerMm);
   const widthPx = mmToPx(layout.widthMm, pxPerMm);
   const heightPx = mmToPx(layout.heightMm, pxPerMm);
   const rulerGapPx = mmToPx(RULER_GAP_MM, pxPerMm);
@@ -290,15 +296,15 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     <div
       className="absolute left-0"
       style={{
-        height: RULER_SIZE_PX,
+        height: rulerSizePx,
         width: widthPx,
-        marginLeft: rulersPlacement === "outside" ? RULER_SIZE_PX + rulerGapPx : 0,
+        marginLeft: rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0,
         top: 0
       }}
     >
-      {buildRange(layout.widthMm).map((mm) => {
-        const isCm = mm % 10 === 0;
-        const isMid = mm % 5 === 0;
+      {buildRulerTicks(layout.widthMm).map((mm) => {
+        const isCm = Math.round(mm) % 10 === 0;
+        const isMid = Math.round(mm) % 5 === 0;
         const height = isCm ? 14 : isMid ? 10 : 6;
         return (
           <div
@@ -316,7 +322,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 className="absolute -top-4 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200"
                 style={{ transform: "translateX(-4px)" }}
               >
-                {mm / 10}
+                {Number((mm / 10).toFixed(1))}
               </span>
             )}
             {cursorX === mm && (
@@ -332,15 +338,15 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     <div
       className="absolute left-0"
       style={{
-        width: RULER_SIZE_PX,
+        width: rulerSizePx,
         height: heightPx,
-        marginTop: rulersPlacement === "outside" ? RULER_SIZE_PX + rulerGapPx : 0,
+        marginTop: rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0,
         top: 0
       }}
     >
-      {buildRange(layout.heightMm).map((mm) => {
-        const isCm = mm % 10 === 0;
-        const isMid = mm % 5 === 0;
+      {buildRulerTicks(layout.heightMm).map((mm) => {
+        const isCm = Math.round(mm) % 10 === 0;
+        const isMid = Math.round(mm) % 5 === 0;
         const width = isCm ? 14 : isMid ? 10 : 6;
         return (
           <div
@@ -355,7 +361,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           >
             {isCm && (
               <span className="absolute left-0 -translate-x-full -translate-y-2 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200">
-                {mm / 10}
+                {Number((mm / 10).toFixed(1))}
               </span>
             )}
             {cursorY === mm && (
@@ -372,7 +378,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       {rulersPlacement === "outside" && (
         <div
           className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
-          style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
+          style={{ width: rulerSizePx, height: rulerSizePx }}
         />
       )}
       {renderHorizontalRuler()}
@@ -411,11 +417,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               height: heightPx,
               marginLeft:
                 rulersEnabled && rulersPlacement === "outside"
-                  ? RULER_SIZE_PX + rulerGapPx
+                  ? rulerSizePx + rulerGapPx
                   : 0,
               marginTop:
                 rulersEnabled && rulersPlacement === "outside"
-                  ? RULER_SIZE_PX + rulerGapPx
+                  ? rulerSizePx + rulerGapPx
                   : 0
             }}
             onPointerMove={handlePointerMove}
