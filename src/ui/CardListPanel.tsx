@@ -38,6 +38,7 @@ export const CardListPanel = ({ side }: Props) => {
   const toggleCardSelection = useAppStore((state) => state.toggleCardSelection);
   const selectAllCards = useAppStore((state) => state.selectAllCards);
   const clearCardSelection = useAppStore((state) => state.clearCardSelection);
+  const autoLayoutAllCards = useAppStore((state) => state.autoLayoutAllCards);
   const layout = useAppStore((state) => state.layout);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
@@ -256,6 +257,9 @@ export const CardListPanel = ({ side }: Props) => {
             </button>
             <button onClick={downloadSample} className={`${buttonBase} ${buttonGhost}`}>
               Пример файла
+            </button>
+            <button onClick={() => autoLayoutAllCards(side)} className={`${buttonBase} ${buttonGhost}`}>
+              Авто-компоновка всех
             </button>
             </div>
           </div>

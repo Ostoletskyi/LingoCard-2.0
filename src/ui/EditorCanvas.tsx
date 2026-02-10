@@ -5,6 +5,7 @@ import { selectCardById } from "../utils/selectCard";
 import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
+import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -36,126 +37,8 @@ const buildRulerTicks = (maxMm: number) => {
 };
 
 
-const FALLBACK_FIELDS_ORDER: Array<keyof Card | "freq" | "tags"> = [
-  "inf",
-  "freq",
-  "tags",
-  "tr_1_ru",
-  "tr_1_ctx",
-  "tr_2_ru",
-  "tr_2_ctx",
-  "tr_3_ru",
-  "tr_3_ctx",
-  "tr_4_ru",
-  "tr_4_ctx",
-  "forms_p3",
-  "forms_prat",
-  "forms_p2",
-  "forms_aux",
-  "syn_1_de",
-  "syn_1_ru",
-  "syn_2_de",
-  "syn_2_ru",
-  "syn_3_de",
-  "syn_3_ru",
-  "ex_1_de",
-  "ex_1_ru",
-  "ex_1_tag",
-  "ex_2_de",
-  "ex_2_ru",
-  "ex_2_tag",
-  "ex_3_de",
-  "ex_3_ru",
-  "ex_3_tag",
-  "ex_4_de",
-  "ex_4_ru",
-  "ex_4_tag",
-  "ex_5_de",
-  "ex_5_ru",
-  "ex_5_tag",
-  "rek_1_de",
-  "rek_1_ru",
-  "rek_2_de",
-  "rek_2_ru",
-  "rek_3_de",
-  "rek_3_ru",
-  "rek_4_de",
-  "rek_4_ru",
-  "rek_5_de",
-  "rek_5_ru"
-];
-
-const buildFallbackBoxes = (card: Card, widthMm: number, heightMm: number): Box[] => {
-  const margin = 4;
-  const gap = 1;
-  const colGap = 3;
-  const colCount = 2;
-  const lineHeightMm = 4.8;
-  const titleHeight = 8;
-  const columnWidth = (widthMm - margin * 2 - colGap) / colCount;
-  let col = 0;
-  let y = margin + titleHeight;
-  const boxes: Box[] = [
-    {
-      id: "auto_title",
-      fieldId: "inf",
-      xMm: margin,
-      yMm: margin,
-      wMm: widthMm - margin * 2,
-      hMm: titleHeight,
-      z: 1,
-      style: { fontSizePt: 14, fontWeight: "bold", align: "left", lineHeight: 1.1, paddingMm: 0.6, visible: true, border: false },
-      textMode: "dynamic",
-      label: "Инфинитив"
-    }
-  ];
-
-  const readField = (fieldId: string) => {
-    if (fieldId === "tags") return card.tags.join(", ");
-    if (fieldId === "freq") return String(card.freq ?? "");
-    const value = card[fieldId as keyof Card];
-    return typeof value === "string" ? value : "";
-  };
-
-  FALLBACK_FIELDS_ORDER.forEach((fieldId) => {
-    if (fieldId === "inf") return;
-    const value = readField(fieldId);
-    if (!value || value.trim().length === 0) return;
-
-    if (y + lineHeightMm > heightMm - margin) {
-      col += 1;
-      y = margin;
-    }
-    if (col >= colCount) return;
-
-    const x = margin + col * (columnWidth + colGap);
-    boxes.push({
-      id: `auto_${String(fieldId)}`,
-      fieldId: String(fieldId),
-      xMm: x,
-      yMm: y,
-      wMm: columnWidth,
-      hMm: lineHeightMm,
-      z: 1,
-      style: {
-        fontSizePt: 8.5,
-        fontWeight: "normal",
-        align: "left",
-        lineHeight: 1.15,
-        paddingMm: 0.5,
-        visible: true,
-        border: false
-      },
-      textMode: "dynamic",
-      label: getFieldLabel(String(fieldId))
-    });
-    y += lineHeightMm + gap;
-  });
-
-  return boxes;
-};
-
 type RenderMode = "editor" | "print";
+
 
 type EditorCanvasProps = {
   renderMode?: RenderMode;
@@ -223,10 +106,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const rulerGapPx = mmToPx(RULER_GAP_MM, pxPerMm);
   const cardOffsetPx =
     rulersEnabled && rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0;
+  const stageWidthPx = widthPx + cardOffsetPx;
+  const stageHeightPx = heightPx + cardOffsetPx;
   const hasCardBoxes = Boolean(card?.boxes?.length);
   const generatedFallbackBoxes = useMemo(() => {
     if (!card || hasCardBoxes) return [];
-    return buildFallbackBoxes(card, layout.widthMm, layout.heightMm);
+    return buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm);
   }, [card, hasCardBoxes, layout.widthMm, layout.heightMm]);
   const activeBoxes = hasCardBoxes ? (card?.boxes ?? []) : generatedFallbackBoxes;
   const visibleBoxes = activeBoxes.filter((box) => box.style.visible !== false);
@@ -509,7 +394,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   );
 
   const renderRulers = () => (
-    <div className="absolute inset-0 z-20 pointer-events-none">
+    <div
+      className="absolute left-0 top-0 z-20 pointer-events-none"
+      style={{ width: stageWidthPx, height: stageHeightPx }}
+    >
       {rulersPlacement === "outside" && (
         <div
           className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
@@ -542,16 +430,16 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           </span>
           </div>
         )}
-        <div className="relative">
+        <div className="relative" style={{ width: stageWidthPx, height: stageHeightPx }}>
           {renderMode === "editor" && rulersEnabled && renderRulers()}
           <div
             ref={cardRef}
-            className="relative z-10 bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
+            className="absolute z-10 bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
             style={{
               width: widthPx,
               height: heightPx,
-              marginLeft: cardOffsetPx,
-              marginTop: cardOffsetPx
+              left: cardOffsetPx,
+              top: cardOffsetPx
             }}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}

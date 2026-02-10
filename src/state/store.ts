@@ -3,6 +3,7 @@ import { immer } from "zustand/middleware/immer";
 import type { Card } from "../model/cardSchema";
 import { defaultLayout, type Layout } from "../model/layoutSchema";
 import { normalizeCard } from "../model/cardSchema";
+import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 
 export type ListSide = "A" | "B";
 
@@ -86,6 +87,7 @@ export type AppState = AppStateSnapshot &
     selectAllCards: (side: ListSide) => void;
     clearCardSelection: (side: ListSide) => void;
     updateCardSilent: (card: Card, side: ListSide) => void;
+    autoLayoutAllCards: (side: ListSide) => void;
     resetState: () => void;
     pushHistory: () => void;
     undo: () => void;
@@ -362,6 +364,16 @@ export const useAppStore = create<AppState>()(
         state.selectedCardIdsA = [];
       } else {
         state.selectedCardIdsB = [];
+      }
+    }),
+    autoLayoutAllCards: (side) => set((state) => {
+      recordHistory(state, get());
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm));
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
       }
     }),
     resetState: () => set((state) => {
