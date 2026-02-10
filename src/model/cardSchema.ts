@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BoxSchema, type Box } from "./layoutSchema";
 
 export const FrequencySchema = z.union([
   z.literal(1),
@@ -75,7 +76,8 @@ export const CardSchema = z.object({
   ...formsSchema,
   ...synonymSchema,
   ...examplesSchema,
-  ...rektionSchema
+  ...rektionSchema,
+  boxes: z.array(BoxSchema).optional()
 });
 
 export type Card = z.infer<typeof CardSchema>;
@@ -127,14 +129,68 @@ export const emptyCard: Card = {
   rek_4_de: "",
   rek_4_ru: "",
   rek_5_de: "",
-  rek_5_ru: ""
+  rek_5_ru: "",
+  boxes: []
+};
+
+const toNumber = (value: unknown, fallback: number) =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const toString = (value: unknown, fallback = "") =>
+  typeof value === "string" ? value : fallback;
+
+const normalizeImportedBoxes = (boxes: unknown): Box[] => {
+  if (!Array.isArray(boxes)) return [];
+  return boxes.map((raw, index) => {
+    const source = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const style = source.style && typeof source.style === "object"
+      ? source.style as Record<string, unknown>
+      : {};
+    const normalized: Box = {
+      id: toString(source.id, `box_${index + 1}`),
+      xMm: toNumber(source.xMm, 0),
+      yMm: toNumber(source.yMm, 0),
+      wMm: Math.max(1, toNumber(source.wMm, 20)),
+      hMm: Math.max(1, toNumber(source.hMm, 8)),
+      z: toNumber(source.z, index + 1),
+      fieldId: toString(source.fieldId, toString(source.id, `box_${index + 1}`)),
+      style: {
+        fontSizePt: Math.max(6, toNumber(style.fontSizePt ?? source.fontPt, 11)),
+        fontWeight:
+          style.fontWeight === "bold" || typeof style.fontWeight === "number"
+            ? style.fontWeight
+            : "normal",
+        align:
+          style.align === "center" || style.align === "right"
+            ? style.align
+            : "left",
+        lineHeight: Math.max(1, toNumber(style.lineHeight, 1.2)),
+        paddingMm: Math.max(0, toNumber(style.paddingMm, 0.6)),
+        border: typeof style.border === "boolean" ? style.border : false,
+        visible: typeof style.visible === "boolean" ? style.visible : true
+      },
+      rotateDeg: toNumber(source.rotateDeg, 0),
+      locked: typeof source.locked === "boolean" ? source.locked : false,
+      text: toString(source.text),
+      staticText: toString(source.staticText),
+      textMode:
+        source.textMode === "static" || source.textMode === "dynamic"
+          ? source.textMode
+          : undefined,
+      label: toString(source.label),
+      label_i18n: toString(source.label_i18n),
+      type: toString(source.type)
+    };
+    return normalized;
+  });
 };
 
 export const normalizeCard = (input: Partial<Card>): Card => {
   const normalized: Card = {
     ...emptyCard,
     ...input,
-    tags: input.tags ?? []
+    tags: input.tags ?? [],
+    boxes: normalizeImportedBoxes(input.boxes)
   };
   if (!normalized.id) {
     normalized.id = crypto.randomUUID();

@@ -53,6 +53,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     debugOverlays,
     selectBox,
     updateBox,
+    updateCardSilent,
     beginLayoutEdit,
     endLayoutEdit
   } = useAppStore((state) => ({
@@ -71,6 +72,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     debugOverlays: state.debugOverlays,
     selectBox: state.selectBox,
     updateBox: state.updateBox,
+    updateCardSilent: state.updateCardSilent,
     beginLayoutEdit: state.beginLayoutEdit,
     endLayoutEdit: state.endLayoutEdit
   }));
@@ -138,7 +140,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (dragState.mode.type === "move") {
       const nextX = applySnap(dragState.startBox.xMm + deltaXMm, snapEnabled);
       const nextY = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
-      updateBox(dragState.boxId, { xMm: nextX, yMm: nextY });
+      updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY });
       return;
     }
 
@@ -171,7 +173,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = applySnap(nextW, snapEnabled);
     nextH = applySnap(nextH, snapEnabled);
 
-    updateBox(dragState.boxId, { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
+    updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
   };
 
   const handlePointerUp = () => {
@@ -189,9 +191,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     setEditValue(fieldValue);
   };
 
-  type StringCardField = Exclude<keyof Card, "freq" | "tags" | "forms_aux">;
+  type StringCardField = Exclude<keyof Card, "freq" | "tags" | "forms_aux" | "boxes">;
   const isStringCardField = (fieldId: string): fieldId is StringCardField =>
-    fieldId !== "freq" && fieldId !== "tags" && fieldId in emptyCard;
+    fieldId !== "freq" && fieldId !== "tags" && fieldId !== "boxes" && fieldId in emptyCard;
 
   const updateCardField = (current: Card, fieldId: string, value: string): Card => {
     const next: Card = { ...current };
@@ -227,7 +229,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       return;
     }
     if (shouldSave && editValue !== originalValue) {
-      const box = layout.boxes.find((item) => item.id === editingBoxId);
+      const box = activeBoxes.find((item) => item.id === editingBoxId);
       if (box) {
         const updated = updateCardField(card, box.fieldId, editValue);
         useAppStore.getState().updateCard(updated, selectedSide);
@@ -427,9 +429,16 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 }}
               />
             )}
-            {layout.boxes.map((box) => {
+            {activeBoxes.map((box) => {
               const fieldText = getFieldText(card, box.fieldId);
-              const label = getFieldLabel(box.fieldId);
+              const staticValue = box.staticText || box.text || "";
+              const dynamicValue = box.text || fieldText.text;
+              const resolvedText = box.textMode === "static" ? staticValue : dynamicValue;
+              const isPlaceholder =
+                box.textMode === "static"
+                  ? staticValue.trim().length === 0
+                  : fieldText.isPlaceholder && dynamicValue.trim().length === 0;
+              const label = box.label || box.label_i18n || getFieldLabel(box.fieldId);
               const isSelected = selectedBoxId === box.id;
               const isEditing = editingBoxId === box.id;
               return (
@@ -447,14 +456,20 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     textAlign: box.style.align,
                     lineHeight: box.style.lineHeight,
                     padding: mmToPx(box.style.paddingMm, pxPerMm),
-                    color: fieldText.isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
+                    color: isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
                     border:
                       renderMode === "editor"
-                        ? isSelected
-                          ? "1px solid #38bdf8"
-                          : "1px solid rgba(148,163,184,0.4)"
+                        ? isEditing
+                          ? "1px solid #22c55e"
+                          : isSelected
+                            ? "1px solid #38bdf8"
+                            : "1px solid rgba(148,163,184,0.4)"
                         : "none",
-                    outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
+                    outline: isEditing
+                      ? "2px solid rgba(34,197,94,0.25)"
+                      : isSelected
+                        ? "2px solid rgba(14,165,233,0.25)"
+                        : "none",
                     display: box.style.visible === false ? "none" : "block"
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
@@ -477,7 +492,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                   {isEditing ? (
                     <textarea
                       ref={editRef}
-                      className="w-full h-full resize-none bg-white/80 text-sm outline-none cursor-text"
+                      className="w-full h-full resize-none bg-white/80 text-sm text-slate-800 outline-none cursor-text dark:bg-slate-900/80 dark:text-slate-100"
+                      style={{ padding: mmToPx(2, pxPerMm) }}
                       value={editValue}
                       onChange={(event) => setEditValue(event.target.value)}
                       onBlur={() => commitEdit(true)}
@@ -500,8 +516,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : (
-                    <div className={fieldText.isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
-                      {fieldText.text}
+                    <div className={isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
+                      {resolvedText || fieldText.text}
                     </div>
                   )}
                   {renderMode === "editor" && debugOverlays && (
