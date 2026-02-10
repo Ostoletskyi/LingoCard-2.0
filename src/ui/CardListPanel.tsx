@@ -200,6 +200,17 @@ export const CardListPanel = ({ side }: Props) => {
     URL.revokeObjectURL(link.href);
   };
 
+  const handleAutoLayoutAll = () => {
+    startExport("Авто-компоновка...");
+    window.setTimeout(() => {
+      autoLayoutAllCards(side);
+      finishExport();
+      setImportNotice(`Авто-компоновка выполнена: ${cards.length} карточек (${side}).`);
+      console.info(`[AutoLayout] Коллекция ${side}: обработано карточек ${cards.length}`);
+    }, 0);
+  };
+
+
   return (
     <div className="rounded-2xl bg-white p-4 shadow-soft flex flex-col gap-3 dark:bg-slate-900/80">
       <div className="flex items-center justify-between">
@@ -258,7 +269,7 @@ export const CardListPanel = ({ side }: Props) => {
             <button onClick={downloadSample} className={`${buttonBase} ${buttonGhost}`}>
               Пример файла
             </button>
-            <button onClick={() => autoLayoutAllCards(side)} className={`${buttonBase} ${buttonGhost}`}>
+            <button onClick={handleAutoLayoutAll} className={`${buttonBase} ${buttonGhost}`}>
               Авто-компоновка всех
             </button>
             </div>
