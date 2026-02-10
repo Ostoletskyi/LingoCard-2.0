@@ -3,7 +3,7 @@ import type { Card } from "../model/cardSchema";
 import type { Layout } from "../model/layoutSchema";
 import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
-import { MM_PER_INCH } from "../utils/mmPx";
+import { MM_PER_INCH, mmToPdf } from "../utils/mmPx";
 
 export type PdfExportOptions = {
   cardsPerRow?: number;
@@ -62,6 +62,7 @@ export const exportCardsToPdf = (
   fileName: string = "cards.pdf"
 ) => {
   const { cardsPerRow = 1, cardsPerColumn = 1, marginMm = 0 } = options;
+  logger.info("PDF export start", `cards=${cards.length}, size=${layout.widthMm}x${layout.heightMm}mm, mode=${cardsPerRow}x${cardsPerColumn}, margin=${marginMm}mm, font=DejaVu Sans/Noto Sans fallback`);
   const pdfDebug =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("pdfDebug") === "1";
@@ -69,7 +70,7 @@ export const exportCardsToPdf = (
   const doc = new jsPDF({
     orientation: layout.widthMm >= layout.heightMm ? "landscape" : "portrait",
     unit: "mm",
-    format: [layout.widthMm, layout.heightMm]
+    format: [mmToPdf(layout.widthMm), mmToPdf(layout.heightMm)]
   });
 
   const cardWidth = layout.widthMm;
@@ -148,8 +149,9 @@ export const exportCardsToPdf = (
     }
 
     const image = canvas.toDataURL("image/png");
-    doc.addImage(image, "PNG", x, y, cardWidth, cardHeight);
+    doc.addImage(image, "PNG", mmToPdf(x), mmToPdf(y), mmToPdf(cardWidth), mmToPdf(cardHeight));
   });
 
+  logger.info("PDF export done", `file=${fileName}, pages=${doc.getNumberOfPages()}`);
   doc.save(fileName);
 };

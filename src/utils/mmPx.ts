@@ -9,3 +9,5 @@ export const getPxPerMm = (scale: number) => DEFAULT_PX_PER_MM * scale;
 export const mmToPx = (mm: number, pxPerMm: number) => mm * pxPerMm;
 
 export const pxToMm = (px: number, pxPerMm: number) => px / pxPerMm;
+
+export const mmToPdf = (mm: number) => mm;

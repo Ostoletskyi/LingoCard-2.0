@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BoxSchema, type Box } from "./layoutSchema";
+import { normalizeFieldId } from "../utils/fieldAlias";
 
 export const FrequencySchema = z.union([
   z.literal(1),
@@ -153,7 +154,7 @@ const normalizeImportedBoxes = (boxes: unknown): Box[] => {
       wMm: Math.max(1, toNumber(source.wMm, 20)),
       hMm: Math.max(1, toNumber(source.hMm, 8)),
       z: toNumber(source.z, index + 1),
-      fieldId: toString(source.fieldId, toString(source.id, `box_${index + 1}`)),
+      fieldId: normalizeFieldId(toString(source.fieldId, toString(source.id, `box_${index + 1}`))),
       style: {
         fontSizePt: Math.max(6, toNumber(style.fontSizePt ?? source.fontPt, 11)),
         fontWeight:

@@ -1,4 +1,5 @@
 import type { Card } from "../model/cardSchema";
+import { normalizeFieldId } from "./fieldAlias";
 
 type FieldTextResult = {
   text: string;
@@ -20,41 +21,46 @@ const fieldLabels: Record<string, string> = {
   tags: "Теги"
 };
 
-export const getFieldLabel = (fieldId: string) => fieldLabels[fieldId] ?? `Поле: ${fieldId}`;
+export const getFieldLabel = (fieldId: string) => {
+  const normalized = normalizeFieldId(fieldId);
+  return fieldLabels[normalized] ?? `Поле: ${normalized}`;
+};
 
 export const getFieldEditValue = (card: Card | null, fieldId: string): string => {
   if (!card) return "";
-  if (fieldId === "tags") {
+  const normalizedFieldId = normalizeFieldId(fieldId);
+  if (normalizedFieldId === "tags") {
     return card.tags.join(", ");
   }
-  if (fieldId === "freq") {
+  if (normalizedFieldId === "freq") {
     return String(card.freq ?? "");
   }
-  if (fieldId in card) {
-    const value = card[fieldId as keyof Card];
+  if (normalizedFieldId in card) {
+    const value = card[normalizedFieldId as keyof Card];
     return typeof value === "string" ? value : "";
   }
   return "";
 };
 
 export const getFieldText = (card: Card | null, fieldId: string): FieldTextResult => {
+  const normalizedFieldId = normalizeFieldId(fieldId);
   if (!card) {
     return { text: "Введите текст…", isPlaceholder: true };
   }
   const placeholder =
-    fieldId.startsWith("tr_") ? "Перевод…" : fieldId.startsWith("ex_") ? "Пример…" : "Введите текст…";
-  if (fieldId === "freq") {
+    normalizedFieldId.startsWith("tr_") ? "Перевод…" : normalizedFieldId.startsWith("ex_") ? "Пример…" : "Введите текст…";
+  if (normalizedFieldId === "freq") {
     const count = card.freq;
     return { text: count ? "●".repeat(count) : "1–5", isPlaceholder: !count };
   }
-  if (fieldId === "tags") {
+  if (normalizedFieldId === "tags") {
     return {
       text: card.tags.length ? card.tags.join(", ") : "Теги…",
       isPlaceholder: card.tags.length === 0
     };
   }
-  if (fieldId in card) {
-    const value = card[fieldId as keyof Card];
+  if (normalizedFieldId in card) {
+    const value = card[normalizedFieldId as keyof Card];
     if (typeof value === "string" && value.trim().length > 0) {
       return { text: value, isPlaceholder: false };
     }
