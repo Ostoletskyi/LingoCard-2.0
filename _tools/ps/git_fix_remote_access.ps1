@@ -1,4 +1,4 @@
-param([string]$ProjectRoot)
+﻿param([string]$ProjectRoot)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
@@ -12,37 +12,44 @@ try {
     Push-Location $root
     try {
         $remote = git remote -v
-        if (-not $remote) { throw 'Не найден git remote. Добавьте remote вручную: git remote add origin <url>' }
+        if (-not $remote) {
+            throw 'Не найден git remote. Пример: git remote add origin https://github.com/your-user/your-repo.git'
+        }
 
         Write-Host "Текущие remote:`n$remote"
-        $firstUrl = (git remote get-url origin 2>$null)
+        $firstUrl = git remote get-url origin 2>$null
         $instructions = @()
 
         if ($firstUrl -match '^https://') {
             Write-Host 'Обнаружен HTTPS remote.'
             $instructions += 'Используется HTTPS. Для GitHub нужен Personal Access Token (PAT), обычный пароль не работает.'
             $instructions += 'Шаги: GitHub -> Settings -> Developer settings -> Personal access tokens -> Generate token.'
-            $instructions += 'При запросе пароля в git используйте PAT как пароль.'
-        } elseif ($firstUrl -match 'git@github.com:') {
+            $instructions += 'При запросе пароля в git вставляйте PAT вместо пароля.'
+        }
+        elseif ($firstUrl -match 'git@github.com:') {
             Write-Host 'Обнаружен SSH remote.'
             $sshDir = Join-Path $env:USERPROFILE '.ssh'
             $keys = @()
             if (Test-Path $sshDir) {
                 $keys = Get-ChildItem -Path $sshDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^id_(rsa|ed25519)$' }
             }
+
             if ($keys.Count -gt 0) {
                 Write-Host ('SSH-ключи найдены: ' + (($keys | Select-Object -ExpandProperty Name) -join ', '))
-            } else {
+            }
+            else {
                 Write-Host 'SSH-ключи не найдены.' -ForegroundColor Yellow
             }
 
             $instructions += 'Используется SSH remote.'
-            $instructions += 'Проверьте ключи в ~/.ssh. Если ключей нет: ssh-keygen -t ed25519 -C "your_email@example.com"'
+            $instructions += 'Если ключей нет: ssh-keygen -t ed25519 -C "your_email@example.com"'
             $instructions += 'Добавьте публичный ключ в GitHub: Settings -> SSH and GPG keys.'
             $instructions += 'Проверьте соединение: ssh -T git@github.com'
-        } else {
+        }
+        else {
             Write-Host 'Тип remote не распознан автоматически.' -ForegroundColor Yellow
-            $instructions += 'Проверьте URL remote и убедитесь, что он указывает на GitHub (HTTPS или SSH).'
+            $instructions += 'Проверьте URL remote: git remote -v'
+            $instructions += 'Для GitHub используйте HTTPS или SSH-URL.'
         }
 
         $instructions += 'После исправления доступа повторите git push или git pull --rebase.'
@@ -52,16 +59,22 @@ try {
         $copy = Read-Host 'Скопировать инструкцию в буфер обмена? (Y/N)'
         if ($copy -match '^(Y|y|Д|д)$') {
             Set-Clipboard -Value $text
-            Write-Host 'Инструкция скопирована в буфер.'
+            Write-Host 'Инструкция скопирована в буфер обмена.'
         }
 
         Write-ToolLog -ProjectRoot $root -Action $action -Command 'git remote -v analysis' -ExitCode 0 -Result 'success'
+        Show-LogHint -ProjectRoot $root
         exit 0
-    } finally { Pop-Location }
-} catch {
+    }
+    finally {
+        Pop-Location
+    }
+}
+catch {
     Write-Host '[Ошибка] Не удалось собрать диагностику доступа к GitHub.' -ForegroundColor Red
     Write-Host 'Что делать дальше: проверьте git remote -v и сетевое подключение.'
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-ToolLog -ProjectRoot $root -Action $action -Command 'git remote -v' -ExitCode 1 -Result 'error' -Details $_.Exception.Message
+    Show-LogHint -ProjectRoot $root
     exit 1
 }

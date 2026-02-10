@@ -1,4 +1,4 @@
-param([string]$ProjectRoot)
+﻿param([string]$ProjectRoot)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
@@ -56,5 +56,6 @@ try {
     Write-Host 'Что делать дальше: проверьте интернет/доступ к remote и повторите попытку.'
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-ToolLog -ProjectRoot $root -Action $action -Command 'git pull --rebase' -ExitCode 1 -Result 'error' -Details $_.Exception.Message
+    Show-LogHint -ProjectRoot $root
     exit 1
 }

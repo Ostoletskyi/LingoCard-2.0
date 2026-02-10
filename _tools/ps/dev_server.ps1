@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [switch]$OpenBrowser
 )
@@ -34,5 +34,6 @@ try {
     Write-Host 'Что делать дальше: проверьте зависимости и скрипт npm run dev.'
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-ToolLog -ProjectRoot $root -Action $action -Command 'npm run dev' -ExitCode 1 -Result 'error' -Details $_.Exception.Message
+    Show-LogHint -ProjectRoot $root
     exit 1
 }

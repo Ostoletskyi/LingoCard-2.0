@@ -1,4 +1,4 @@
-param([string]$ProjectRoot)
+﻿param([string]$ProjectRoot)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
@@ -36,5 +36,6 @@ try {
     Write-Host 'Что делать дальше: проверьте Node.js/npm и зависимости проекта.'
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-ToolLog -ProjectRoot $root -Action $action -Command 'npm run tools:smoke' -ExitCode 1 -Result 'error' -Details $_.Exception.Message
+    Show-LogHint -ProjectRoot $root
     exit 1
 }

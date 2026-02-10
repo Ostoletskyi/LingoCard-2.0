@@ -4,7 +4,7 @@ chcp 65001 >nul
 
 set "PROJECT_ROOT=%~dp0"
 if "%PROJECT_ROOT:~-1%"=="\" set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
-set "PS_EXE=powershell.exe"
+set "PS_EXE=powershell"
 
 title LingoCard 2.0 - Пульт управления
 

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [string]$Tag = 'manual'
 )
@@ -63,6 +63,7 @@ try {
     Write-Host "Что делать дальше: проверьте права доступа и свободное место на диске."
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-ToolLog -ProjectRoot $root -Action $action -Command $commandText -ExitCode 1 -Result 'error' -Details $_.Exception.Message
+    Show-LogHint -ProjectRoot $root
     exit 1
 } finally {
     if ($tempDir -and (Test-Path $tempDir)) { Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue }

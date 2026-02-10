@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot
 )
 
@@ -59,6 +59,7 @@ try {
     Write-Host 'Что делать дальше: проверьте целостность архива и повторите попытку.'
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-ToolLog -ProjectRoot $root -Action $action -Command $commandText -ExitCode 1 -Result 'error' -Details $_.Exception.Message
+    Show-LogHint -ProjectRoot $root
     exit 1
 } finally {
     if ($tempDir -and (Test-Path $tempDir)) { Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue }

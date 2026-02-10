@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -30,6 +30,37 @@ const checkFiles = (files) => {
     const exists = fs.existsSync(path.join(projectRoot, file));
     record(`File ${file}`, exists ? "OK" : "MISSING");
     if (!exists) process.exitCode = 1;
+  });
+};
+
+const checkPowerShellParsers = () => {
+  const psExe = process.platform === "win32" ? "powershell" : null;
+  if (!psExe) {
+    record("PowerShell parser", "SKIP", "Not running on Windows host");
+    return;
+  }
+
+  const scripts = fs.readdirSync(path.join(projectRoot, "_tools", "ps")).filter((f) => f.endsWith(".ps1"));
+  scripts.forEach((file) => {
+    const fullPath = path.join(projectRoot, "_tools", "ps", file);
+    const escaped = fullPath.replace(/'/g, "''");
+    const cmd = `$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile('${escaped}', [ref]$tokens, [ref]$errors) | Out-Null; if ($errors.Count -gt 0) { $errors | ForEach-Object { $_.Message }; exit 1 }`;
+    const result = spawnSync(psExe, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd], {
+      cwd: projectRoot,
+      encoding: "utf-8"
+    });
+
+    if (result.error) {
+      record(`PS parse ${file}`, "SKIP", result.error.message);
+      return;
+    }
+
+    if (result.status === 0) {
+      record(`PS parse ${file}`, "OK");
+    } else {
+      record(`PS parse ${file}`, "FAIL", (result.stdout || result.stderr || "ParserError").trim());
+      process.exitCode = 1;
+    }
   });
 };
 
@@ -76,6 +107,8 @@ const main = async () => {
     "src/ai/lmStudioClient.ts",
     "_tools/ps/backup_create.ps1"
   ]);
+
+  checkPowerShellParsers();
 
   const serverProcess = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
     cwd: projectRoot,
