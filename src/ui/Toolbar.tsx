@@ -1,4 +1,4 @@
-import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 
 type ThemeMode = "light" | "dark";
@@ -15,7 +15,6 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const zoom = useAppStore((state) => state.zoom);
   const layout = useAppStore((state) => state.layout);
   const setZoom = useAppStore((state) => state.setZoom);
-  const layout = useAppStore((state) => state.layout);
   const setCardSizeMm = useAppStore((state) => state.setCardSizeMm);
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
@@ -35,19 +34,60 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const toggleDebugOverlays = useAppStore((state) => state.toggleDebugOverlays);
   const setRulersPlacement = useAppStore((state) => state.setRulersPlacement);
 
+  const [openSection, setOpenSection] = useState<ToolbarSection>(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("ui.toolbar.openSection") : null;
+    return saved === "history" || saved === "view" || saved === "grid" || saved === "snap"
+      ? saved
+      : "view";
+  });
 
-  const handleCardSizeWheel = (
-    event: React.WheelEvent<HTMLInputElement>,
-    axis: "width" | "height"
-  ) => {
-    event.preventDefault();
-    const step = event.shiftKey ? 10 : 1;
-    const delta = event.deltaY < 0 ? step : -step;
-    setCardSizeMm({
-      widthMm: axis === "width" ? layout.widthMm + delta : layout.widthMm,
-      heightMm: axis === "height" ? layout.heightMm + delta : layout.heightMm
+  const historyRef = useRef<HTMLButtonElement | null>(null);
+  const viewRef = useRef<HTMLButtonElement | null>(null);
+  const gridRef = useRef<HTMLInputElement | null>(null);
+  const snapRef = useRef<HTMLInputElement | null>(null);
+  const viewPanelRef = useRef<HTMLDivElement | null>(null);
+  const [captureViewWheel, setCaptureViewWheel] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("ui.toolbar.openSection", openSection);
+    window.requestAnimationFrame(() => {
+      if (openSection === "history") historyRef.current?.focus();
+      if (openSection === "view") viewRef.current?.focus();
+      if (openSection === "grid") gridRef.current?.focus();
+      if (openSection === "snap") snapRef.current?.focus();
     });
-  };
+  }, [openSection]);
+
+
+  useEffect(() => {
+    const node = viewPanelRef.current;
+    if (!node || !captureViewWheel) return;
+    const handler = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    node.addEventListener("wheel", handler, { passive: false });
+    return () => node.removeEventListener("wheel", handler);
+  }, [captureViewWheel]);
+
+  const sectionHeader = (label: string, section: ToolbarSection, icon: string) => (
+    <button
+      type="button"
+      aria-expanded={openSection === section}
+      aria-controls={`toolbar-${section}`}
+      className={[
+        "flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition",
+        openSection === section
+          ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300"
+          : "text-slate-600 dark:text-slate-200"
+      ].join(" ")}
+      onClick={() => setOpenSection(section)}
+    >
+      <span>{icon} {label}</span>
+      <span className={`transition-transform duration-200 ${openSection === section ? "rotate-180" : "rotate-0"}`}>▾</span>
+    </button>
+  );
 
   return (
     <div
@@ -161,108 +201,6 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Card (mm)</span>
-          <input
-            type="number"
-            min={10}
-            step={1}
-            value={layout.widthMm}
-            onChange={(event) =>
-              setCardSizeMm({ widthMm: Number(event.target.value), heightMm: layout.heightMm })
-            }
-            onWheel={(event) => handleCardSizeWheel(event, "width")}
-            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
-            title="Width mm (wheel: 1mm, Shift+wheel: 10mm)"
-          />
-          <span className="text-xs text-slate-400">×</span>
-          <input
-            type="number"
-            min={10}
-            step={1}
-            value={layout.heightMm}
-            onChange={(event) =>
-              setCardSizeMm({ widthMm: layout.widthMm, heightMm: Number(event.target.value) })
-            }
-            onWheel={(event) => handleCardSizeWheel(event, "height")}
-            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
-            title="Height mm (wheel: 1mm, Shift+wheel: 10mm)"
-          />
-        </div>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
-          Сетка
-        </label>
-        <select
-          value={gridIntensity}
-          onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")}
-          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-          title="Интенсивность сетки"
-        >
-          <option value="low">Сетка: Мягкая</option>
-          <option value="medium">Сетка: Нормальная</option>
-          <option value="high">Сетка: Контрастная</option>
-        </select>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />
-          Только см
-        </label>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input
-            type="checkbox"
-            checked={rulersEnabled}
-            onChange={toggleRulers}
-            title="Показать линейки"
-          />
-          Линейки
-        </label>
-        <select
-          value={rulersPlacement}
-          onChange={(event) =>
-            setRulersPlacement(event.target.value as "outside" | "inside")
-          }
-          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-        >
-          <option value="outside">Линейки: Снаружи</option>
-          <option value="inside">Линейки: Внутри</option>
-        </select>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input
-            type="checkbox"
-            checked={snapEnabled}
-            onChange={toggleSnap}
-            title="Мягкая привязка к сетке"
-          />
-          Привязка
-        </label>
-        <label className="flex items-center gap-1 text-xs text-slate-600">
-          <input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />
-          Отладка
-        </label>
-        <button
-          className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
-          onClick={() => setZoom(1)}
-        >
-          Центр · 100%
-        </button>
-      </div>
-      <div className="flex items-center gap-2 border-l border-slate-100 pl-3 dark:border-slate-700">
-        <button
-          className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
-          onClick={pushHistory}
-        >
-          Снимок
-        </button>
-      </div>
-      <div className="flex items-center gap-2 border-l border-slate-100 pl-3 dark:border-slate-700">
-        <button
-          onClick={onToggleTheme}
-          title="Переключить тему"
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:text-white"
-        >
-          <span>{theme === "light" ? "☀️" : "🌙"}</span>
-          {theme === "light" ? "Светлая" : "Тёмная"}
-        </button>
       </div>
     </div>
   );

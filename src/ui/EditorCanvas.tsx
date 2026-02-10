@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
-import { getPxPerMm, mmToPx, pxToMm } from "../utils/mmPx";
+import { DEFAULT_PX_PER_MM, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
 import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
@@ -51,6 +51,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     gridIntensity,
     showOnlyCmLines,
     debugOverlays,
+    rulersPlacement,
     selectBox,
     updateBox,
     updateCardSilent,
@@ -70,6 +71,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     gridIntensity: state.gridIntensity,
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
+    rulersPlacement: state.rulersPlacement,
     selectBox: state.selectBox,
     updateBox: state.updateBox,
     updateCardSilent: state.updateCardSilent,
@@ -91,10 +93,23 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     return selectCardById(selectedId, selectedSide, cardsA, cardsB);
   }, [selectedId, selectedSide, cardsA, cardsB]);
 
-  const pxPerMm = getPxPerMm(zoom);
+  const pxPerMm = DEFAULT_PX_PER_MM * zoom;
   const widthPx = mmToPx(layout.widthMm, pxPerMm);
   const heightPx = mmToPx(layout.heightMm, pxPerMm);
   const rulerGapPx = mmToPx(RULER_GAP_MM, pxPerMm);
+  const activeBoxes = card?.boxes?.length ? card.boxes : layout.boxes;
+  const visibleBoxes = activeBoxes.filter((box) => box.style.visible !== false);
+
+  const updateActiveBox = (boxId: string, update: Partial<Box>) => {
+    if (!card || !card.boxes || card.boxes.length === 0) {
+      updateBox(boxId, update);
+      return;
+    }
+    const nextBoxes = card.boxes.map((box) =>
+      box.id === boxId ? { ...box, ...update } : box
+    );
+    updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide);
+  };
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
     if (editingBoxId) return;
@@ -277,8 +292,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       style={{
         height: RULER_SIZE_PX,
         width: widthPx,
-        marginLeft: RULER_SIZE_PX,
-        top: -rulerGapPx
+        marginLeft: rulersPlacement === "outside" ? RULER_SIZE_PX + rulerGapPx : 0,
+        top: 0
       }}
     >
       {buildRange(layout.widthMm).map((mm) => {
@@ -301,7 +316,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 className="absolute -top-4 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200"
                 style={{ transform: "translateX(-4px)" }}
               >
-                {mm}
+                {mm / 10}
               </span>
             )}
             {cursorX === mm && (
@@ -319,8 +334,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       style={{
         width: RULER_SIZE_PX,
         height: heightPx,
-        marginTop: RULER_SIZE_PX,
-        top: -rulerGapPx
+        marginTop: rulersPlacement === "outside" ? RULER_SIZE_PX + rulerGapPx : 0,
+        top: 0
       }}
     >
       {buildRange(layout.heightMm).map((mm) => {
@@ -340,7 +355,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           >
             {isCm && (
               <span className="absolute left-0 -translate-x-full -translate-y-2 text-[10px] text-slate-500 bg-slate-50 px-1 rounded dark:bg-slate-900 dark:text-slate-200">
-                {mm}
+                {mm / 10}
               </span>
             )}
             {cursorY === mm && (
@@ -354,7 +369,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
   const renderRulers = () => (
     <>
-      {(
+      {rulersPlacement === "outside" && (
         <div
           className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
           style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
@@ -380,8 +395,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         {renderMode === "editor" && (
           <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
-          {debugOverlays && <span>Debug physical size: {layout.widthMm.toFixed(1)}mm × {layout.heightMm.toFixed(1)}mm</span>}
-          <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"} · Двойной клик = редактирование</span>
+          <span>
+            {gridEnabled ? "Сетка включена" : "Сетка выключена"} · Двойной клик = редактирование ·
+            Блоки: {activeBoxes.length} / {visibleBoxes.length}
+          </span>
           </div>
         )}
         <div className="relative">
@@ -392,8 +409,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
             style={{
               width: widthPx,
               height: heightPx,
-              marginLeft: rulersEnabled ? RULER_SIZE_PX : 0,
-              marginTop: rulersEnabled ? RULER_SIZE_PX + rulerGapPx : 0
+              marginLeft:
+                rulersEnabled && rulersPlacement === "outside"
+                  ? RULER_SIZE_PX + rulerGapPx
+                  : 0,
+              marginTop:
+                rulersEnabled && rulersPlacement === "outside"
+                  ? RULER_SIZE_PX + rulerGapPx
+                  : 0
             }}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
