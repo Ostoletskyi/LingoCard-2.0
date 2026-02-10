@@ -35,6 +35,126 @@ const buildRulerTicks = (maxMm: number) => {
   return hasEndpoint ? full : [...full, maxMm];
 };
 
+
+const FALLBACK_FIELDS_ORDER: Array<keyof Card | "freq" | "tags"> = [
+  "inf",
+  "freq",
+  "tags",
+  "tr_1_ru",
+  "tr_1_ctx",
+  "tr_2_ru",
+  "tr_2_ctx",
+  "tr_3_ru",
+  "tr_3_ctx",
+  "tr_4_ru",
+  "tr_4_ctx",
+  "forms_p3",
+  "forms_prat",
+  "forms_p2",
+  "forms_aux",
+  "syn_1_de",
+  "syn_1_ru",
+  "syn_2_de",
+  "syn_2_ru",
+  "syn_3_de",
+  "syn_3_ru",
+  "ex_1_de",
+  "ex_1_ru",
+  "ex_1_tag",
+  "ex_2_de",
+  "ex_2_ru",
+  "ex_2_tag",
+  "ex_3_de",
+  "ex_3_ru",
+  "ex_3_tag",
+  "ex_4_de",
+  "ex_4_ru",
+  "ex_4_tag",
+  "ex_5_de",
+  "ex_5_ru",
+  "ex_5_tag",
+  "rek_1_de",
+  "rek_1_ru",
+  "rek_2_de",
+  "rek_2_ru",
+  "rek_3_de",
+  "rek_3_ru",
+  "rek_4_de",
+  "rek_4_ru",
+  "rek_5_de",
+  "rek_5_ru"
+];
+
+const buildFallbackBoxes = (card: Card, widthMm: number, heightMm: number): Box[] => {
+  const margin = 4;
+  const gap = 1;
+  const colGap = 3;
+  const colCount = 2;
+  const lineHeightMm = 4.8;
+  const titleHeight = 8;
+  const columnWidth = (widthMm - margin * 2 - colGap) / colCount;
+  let col = 0;
+  let y = margin + titleHeight;
+  const boxes: Box[] = [
+    {
+      id: "auto_title",
+      fieldId: "inf",
+      xMm: margin,
+      yMm: margin,
+      wMm: widthMm - margin * 2,
+      hMm: titleHeight,
+      z: 1,
+      style: { fontSizePt: 14, fontWeight: "bold", align: "left", lineHeight: 1.1, paddingMm: 0.6, visible: true, border: false },
+      textMode: "dynamic",
+      label: "Инфинитив"
+    }
+  ];
+
+  const readField = (fieldId: string) => {
+    if (fieldId === "tags") return card.tags.join(", ");
+    if (fieldId === "freq") return String(card.freq ?? "");
+    const value = card[fieldId as keyof Card];
+    return typeof value === "string" ? value : "";
+  };
+
+  FALLBACK_FIELDS_ORDER.forEach((fieldId) => {
+    if (fieldId === "inf") return;
+    const value = readField(fieldId);
+    if (!value || value.trim().length === 0) return;
+
+    if (y + lineHeightMm > heightMm - margin) {
+      col += 1;
+      y = margin;
+    }
+    if (col >= colCount) return;
+
+    const x = margin + col * (columnWidth + colGap);
+    boxes.push({
+      id: `auto_${String(fieldId)}`,
+      fieldId: String(fieldId),
+      xMm: x,
+      yMm: y,
+      wMm: columnWidth,
+      hMm: lineHeightMm,
+      z: 1,
+      style: {
+        fontSizePt: 8.5,
+        fontWeight: "normal",
+        align: "left",
+        lineHeight: 1.15,
+        paddingMm: 0.5,
+        visible: true,
+        border: false
+      },
+      textMode: "dynamic",
+      label: getFieldLabel(String(fieldId))
+    });
+    y += lineHeightMm + gap;
+  });
+
+  return boxes;
+};
+
 type RenderMode = "editor" | "print";
 
 type EditorCanvasProps = {
@@ -58,7 +178,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     debugOverlays,
     rulersPlacement,
     selectBox,
-    updateBox,
     updateCardSilent,
     beginLayoutEdit,
     endLayoutEdit
@@ -78,7 +197,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     debugOverlays: state.debugOverlays,
     rulersPlacement: state.rulersPlacement,
     selectBox: state.selectBox,
-    updateBox: state.updateBox,
     updateCardSilent: state.updateCardSilent,
     beginLayoutEdit: state.beginLayoutEdit,
     endLayoutEdit: state.endLayoutEdit
@@ -105,12 +223,17 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const rulerGapPx = mmToPx(RULER_GAP_MM, pxPerMm);
   const cardOffsetPx =
     rulersEnabled && rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0;
-  const activeBoxes = card?.boxes?.length ? card.boxes : layout.boxes;
+  const hasCardBoxes = Boolean(card?.boxes?.length);
+  const generatedFallbackBoxes = useMemo(() => {
+    if (!card || hasCardBoxes) return [];
+    return buildFallbackBoxes(card, layout.widthMm, layout.heightMm);
+  }, [card, hasCardBoxes, layout.widthMm, layout.heightMm]);
+  const activeBoxes = hasCardBoxes ? (card?.boxes ?? []) : generatedFallbackBoxes;
   const visibleBoxes = activeBoxes.filter((box) => box.style.visible !== false);
+  const canEditLayoutGeometry = hasCardBoxes;
 
   const updateActiveBox = (boxId: string, update: Partial<Box>) => {
-    if (!card || !card.boxes || card.boxes.length === 0) {
-      updateBox(boxId, update);
+    if (!canEditLayoutGeometry || !card || !card.boxes || card.boxes.length === 0) {
       return;
     }
     const nextBoxes = card.boxes.map((box) =>
@@ -121,6 +244,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
     if (editingBoxId) return;
+    if (!canEditLayoutGeometry) return;
     if (box.locked) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -161,8 +285,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     }
 
     if (dragState.mode.type === "move") {
-      const nextX = applySnap(dragState.startBox.xMm + deltaXMm, snapEnabled);
-      const nextY = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
+      const nextXRaw = applySnap(dragState.startBox.xMm + deltaXMm, snapEnabled);
+      const nextYRaw = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
+      const nextX = Math.min(Math.max(0, nextXRaw), Math.max(0, layout.widthMm - dragState.startBox.wMm));
+      const nextY = Math.min(Math.max(0, nextYRaw), Math.max(0, layout.heightMm - dragState.startBox.hMm));
       updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY });
       return;
     }
@@ -195,6 +321,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextY = applySnap(nextY, snapEnabled);
     nextW = applySnap(nextW, snapEnabled);
     nextH = applySnap(nextH, snapEnabled);
+
+    nextX = Math.max(0, nextX);
+    nextY = Math.max(0, nextY);
+    nextW = Math.min(nextW, layout.widthMm - nextX);
+    nextH = Math.min(nextH, layout.heightMm - nextY);
+    nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
+    nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
 
     updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
   };
@@ -469,7 +602,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               return (
                 <div
                   key={box.id}
-                  className="absolute group cursor-move"
+                  className={`absolute group ${canEditLayoutGeometry ? "cursor-move" : "cursor-text"}`}
                   tabIndex={renderMode === "editor" ? 0 : -1}
                   style={{
                     left: mmToPx(box.xMm, pxPerMm),
@@ -560,7 +693,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       {box.wMm.toFixed(1)}×{box.hMm.toFixed(1)} мм
                     </span>
                   )}
-                  {renderMode === "editor" && isSelected && (
+                  {renderMode === "editor" && canEditLayoutGeometry && isSelected && (
                     <>
                       {([
                         "nw",
