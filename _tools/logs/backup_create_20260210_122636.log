@@ -1,0 +1,1 @@
+[2026-02-10 12:26:36] ACTION=backup_create; COMMAND=Compress-Archive; RESULT=error; EXIT=1; DETAILS=fatal: detected dubious ownership in repository at 'C:/Labor/LingoCard2/LingoCard-2.0'
