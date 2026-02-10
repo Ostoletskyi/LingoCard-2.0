@@ -104,6 +104,12 @@ export const CardListPanel = ({ side }: Props) => {
     setImportErrorLog(null);
     setImportModalType(null);
     validation.cards.forEach((card) => addCard(card, side));
+    console.info(`[Import] Коллекция ${side}: импортировано карточек ${validation.cards.length}`);
+    const first = validation.cards[0];
+    if (first) {
+      const boxIds = (first.boxes ?? []).map((box) => box.id).join(", ");
+      console.info(`[Import] Активная карточка boxes=${first.boxes?.length ?? 0}; ids=[${boxIds}]`);
+    }
     setImportWarnings(validation.warnings);
     setImportNotice(
       validation.status === "warning"

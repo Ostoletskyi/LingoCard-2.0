@@ -45,6 +45,8 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const viewRef = useRef<HTMLButtonElement | null>(null);
   const gridRef = useRef<HTMLInputElement | null>(null);
   const snapRef = useRef<HTMLInputElement | null>(null);
+  const viewPanelRef = useRef<HTMLDivElement | null>(null);
+  const [captureViewWheel, setCaptureViewWheel] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -56,6 +58,18 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
       if (openSection === "snap") snapRef.current?.focus();
     });
   }, [openSection]);
+
+
+  useEffect(() => {
+    const node = viewPanelRef.current;
+    if (!node || !captureViewWheel) return;
+    const handler = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    node.addEventListener("wheel", handler, { passive: false });
+    return () => node.removeEventListener("wheel", handler);
+  }, [captureViewWheel]);
 
   const sectionHeader = (label: string, section: ToolbarSection, icon: string) => (
     <button
@@ -100,7 +114,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
         <div className="rounded-xl border border-slate-100 bg-white/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
           {sectionHeader("View", "view", "👁️")}
           <div id="toolbar-view" className={`grid overflow-hidden transition-all duration-200 ${openSection === "view" ? "mt-2 max-h-80 opacity-100" : "max-h-0 opacity-0"}`}>
-            <div className="grid gap-2">
+            <div
+              ref={viewPanelRef}
+              className="grid gap-2"
+            >
               <label className="text-xs text-slate-600 dark:text-slate-200">Масштаб: {Math.round(zoom * 100)}%</label>
               <input type="range" min={0.25} max={2} step={0.05} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
               <button ref={viewRef} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={() => setZoom(1)}>Центр · 100%</button>
@@ -112,6 +129,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     max={400}
                     step={1}
                     value={layout.widthMm}
+                    onFocus={() => setCaptureViewWheel(true)}
+                    onBlur={() => setCaptureViewWheel(false)}
+                    onPointerEnter={() => setCaptureViewWheel(true)}
+                    onPointerLeave={() => setCaptureViewWheel(false)}
                     onChange={(event) => setCardSizeMm(clampMm(Number(event.target.value)), layout.heightMm)}
                     onWheel={(event) => {
                       event.preventDefault();
@@ -129,6 +150,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     max={400}
                     step={1}
                     value={layout.heightMm}
+                    onFocus={() => setCaptureViewWheel(true)}
+                    onBlur={() => setCaptureViewWheel(false)}
+                    onPointerEnter={() => setCaptureViewWheel(true)}
+                    onPointerLeave={() => setCaptureViewWheel(false)}
                     onChange={(event) => setCardSizeMm(layout.widthMm, clampMm(Number(event.target.value)))}
                     onWheel={(event) => {
                       event.preventDefault();

@@ -455,7 +455,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
             )}
             {activeBoxes.map((box) => {
               const fieldText = getFieldText(card, box.fieldId);
-              const label = getFieldLabel(box.fieldId);
+              const staticValue = box.staticText || box.text || "";
+              const dynamicValue = box.text || fieldText.text;
+              const resolvedText = box.textMode === "static" ? staticValue : dynamicValue;
+              const isPlaceholder =
+                box.textMode === "static"
+                  ? staticValue.trim().length === 0
+                  : fieldText.isPlaceholder && dynamicValue.trim().length === 0;
+              const label = box.label || box.label_i18n || getFieldLabel(box.fieldId);
               const isSelected = selectedBoxId === box.id;
               const isEditing = editingBoxId === box.id;
               return (
@@ -473,7 +480,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     textAlign: box.style.align,
                     lineHeight: box.style.lineHeight,
                     padding: mmToPx(box.style.paddingMm, pxPerMm),
-                    color: fieldText.isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
+                    color: isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
                     border:
                       renderMode === "editor"
                         ? isEditing
@@ -533,8 +540,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : (
-                    <div className={fieldText.isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
-                      {fieldText.text}
+                    <div className={isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
+                      {resolvedText || fieldText.text}
                     </div>
                   )}
                   {renderMode === "editor" && debugOverlays && (
