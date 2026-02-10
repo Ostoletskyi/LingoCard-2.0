@@ -103,6 +103,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const widthPx = mmToPx(layout.widthMm, pxPerMm);
   const heightPx = mmToPx(layout.heightMm, pxPerMm);
   const rulerGapPx = mmToPx(RULER_GAP_MM, pxPerMm);
+  const cardOffsetPx =
+    rulersEnabled && rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0;
   const activeBoxes = card?.boxes?.length ? card.boxes : layout.boxes;
   const visibleBoxes = activeBoxes.filter((box) => box.style.visible !== false);
 
@@ -298,7 +300,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       style={{
         height: rulerSizePx,
         width: widthPx,
-        marginLeft: rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0,
+        left: cardOffsetPx,
         top: 0
       }}
     >
@@ -340,8 +342,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       style={{
         width: rulerSizePx,
         height: heightPx,
-        marginTop: rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0,
-        top: 0
+        left: 0,
+        top: cardOffsetPx
       }}
     >
       {buildRulerTicks(layout.heightMm).map((mm) => {
@@ -374,7 +376,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   );
 
   const renderRulers = () => (
-    <>
+    <div className="absolute inset-0 z-20 pointer-events-none">
       {rulersPlacement === "outside" && (
         <div
           className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
@@ -383,7 +385,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       )}
       {renderHorizontalRuler()}
       {renderVerticalRuler()}
-    </>
+    </div>
   );
 
   return (
@@ -411,18 +413,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           {renderMode === "editor" && rulersEnabled && renderRulers()}
           <div
             ref={cardRef}
-            className="relative bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
+            className="relative z-10 bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
             style={{
               width: widthPx,
               height: heightPx,
-              marginLeft:
-                rulersEnabled && rulersPlacement === "outside"
-                  ? rulerSizePx + rulerGapPx
-                  : 0,
-              marginTop:
-                rulersEnabled && rulersPlacement === "outside"
-                  ? rulerSizePx + rulerGapPx
-                  : 0
+              marginLeft: cardOffsetPx,
+              marginTop: cardOffsetPx
             }}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
