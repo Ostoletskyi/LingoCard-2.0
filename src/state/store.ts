@@ -88,7 +88,7 @@ export type AppState = AppStateSnapshot &
     clearCardSelection: (side: ListSide) => void;
     updateCardSilent: (card: Card, side: ListSide) => void;
     autoLayoutAllCards: (side: ListSide) => void;
-    adjustColumnFontSize: (side: ListSide, deltaPt: number) => void;
+    adjustColumnFontSizeByField: (side: ListSide, fieldIds: string[], deltaPt: number) => void;
     resetState: () => void;
     pushHistory: () => void;
     undo: () => void;
@@ -377,10 +377,16 @@ export const useAppStore = create<AppState>()(
         state.cardsB = next;
       }
     }),
-    adjustColumnFontSize: (side, deltaPt) => set((state) => {
+    adjustColumnFontSizeByField: (side, fieldIds, deltaPt) => set((state) => {
       const source = side === "A" ? state.cardsA : state.cardsB;
-      const hasAnyBoxes = source.some((card) => (card.boxes?.length ?? 0) > 0);
-      if (!hasAnyBoxes) {
+      const targetSet = new Set(fieldIds);
+      if (!targetSet.size) {
+        return;
+      }
+      const hasAnyTarget = source.some((card) =>
+        (card.boxes?.length ?? 0) > 0 && card.boxes!.some((box) => targetSet.has(box.fieldId))
+      );
+      if (!hasAnyTarget) {
         return;
       }
       recordHistory(state, get());
@@ -390,13 +396,18 @@ export const useAppStore = create<AppState>()(
         }
         return {
           ...card,
-          boxes: card.boxes.map((box) => ({
-            ...box,
-            style: {
-              ...box.style,
-              fontSizePt: Math.min(36, Math.max(5, box.style.fontSizePt + deltaPt))
+          boxes: card.boxes.map((box) => {
+            if (!targetSet.has(box.fieldId)) {
+              return box;
             }
-          }))
+            return {
+              ...box,
+              style: {
+                ...box.style,
+                fontSizePt: Math.min(36, Math.max(5, box.style.fontSizePt + deltaPt))
+              }
+            };
+          })
         };
       });
       if (side === "A") {

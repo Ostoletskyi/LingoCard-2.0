@@ -76,7 +76,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     updateCardSilent,
     beginLayoutEdit,
     endLayoutEdit,
-    adjustColumnFontSize
+    adjustColumnFontSizeByField,
+    setZoom
   } = useAppStore((state) => ({
     layout: state.layout,
     zoom: state.zoom,
@@ -96,12 +97,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     updateCardSilent: state.updateCardSilent,
     beginLayoutEdit: state.beginLayoutEdit,
     endLayoutEdit: state.endLayoutEdit,
-    adjustColumnFontSize: state.adjustColumnFontSize
+    adjustColumnFontSizeByField: state.adjustColumnFontSizeByField,
+    setZoom: state.setZoom
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [selectedBoxIds, setSelectedBoxIds] = useState<string[]>([]);
   const [editSession, setEditSession] = useState<EditSession | null>(null);
   const [editValue, setEditValue] = useState("");
   const editRef = useRef<HTMLTextAreaElement | null>(null);
@@ -113,15 +116,18 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     return selectCardById(selectedId, selectedSide, cardsA, cardsB);
   }, [selectedId, selectedSide, cardsA, cardsB]);
 
-  const pxPerMm = getPxPerMm(zoom);
-  const rulerSizePx = mmToPx(RULER_SIZE_MM, pxPerMm);
-  const widthPx = mmToPx(layout.widthMm, pxPerMm);
-  const heightPx = mmToPx(layout.heightMm, pxPerMm);
-  const rulerGapPx = mmToPx(RULER_GAP_MM, pxPerMm);
+  const zoomScale = zoom;
+  const basePxPerMm = getPxPerMm(1);
+  const rulerSizePx = mmToPx(RULER_SIZE_MM, basePxPerMm);
+  const widthPx = mmToPx(layout.widthMm, basePxPerMm);
+  const heightPx = mmToPx(layout.heightMm, basePxPerMm);
+  const rulerGapPx = mmToPx(RULER_GAP_MM, basePxPerMm);
   const cardOffsetPx =
     rulersEnabled && rulersPlacement === "outside" ? rulerSizePx + rulerGapPx : 0;
   const stageWidthPx = widthPx + cardOffsetPx;
   const stageHeightPx = heightPx + cardOffsetPx;
+  const viewportWidthPx = stageWidthPx * zoomScale;
+  const viewportHeightPx = stageHeightPx * zoomScale;
   const hasCardBoxes = Boolean(card?.boxes?.length);
   const generatedFallbackBoxes = useMemo(() => {
     if (!card || hasCardBoxes) return [];
@@ -150,6 +156,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (event.currentTarget instanceof HTMLElement) {
       event.currentTarget.focus();
     }
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedBoxIds((prev) =>
+        prev.includes(box.id) ? prev.filter((id) => id !== box.id) : [...prev, box.id]
+      );
+    } else {
+      setSelectedBoxIds([box.id]);
+    }
     selectBox(box.id);
     setDragState({
       boxId: box.id,
@@ -164,8 +177,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const handlePointerMove = (event: React.PointerEvent) => {
     if (cardRef.current) {
       const rect = cardRef.current.getBoundingClientRect();
-      const x = (event.clientX - rect.left) / pxPerMm;
-      const y = (event.clientY - rect.top) / pxPerMm;
+      const x = (event.clientX - rect.left)  / (basePxPerMm * zoomScale);
+      const y = (event.clientY - rect.top)  / (basePxPerMm * zoomScale);
       if (x >= 0 && y >= 0 && x <= layout.widthMm && y <= layout.heightMm) {
         setCursorMm({ x, y });
       } else {
@@ -175,8 +188,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!dragState) return;
     const deltaX = event.clientX - dragState.startX;
     const deltaY = event.clientY - dragState.startY;
-    const deltaXMm = pxToMm(deltaX, pxPerMm);
-    const deltaYMm = pxToMm(deltaY, pxPerMm);
+    const deltaXMm = pxToMm(deltaX, basePxPerMm * zoomScale);
+    const deltaYMm = pxToMm(deltaY, basePxPerMm * zoomScale);
 
     if (!dragState.hasApplied) {
       beginLayoutEdit();
@@ -358,7 +371,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
             key={`h-${mm}`}
             className="absolute bottom-0"
             style={{
-              left: mmToPx(mm, pxPerMm),
+              left: mmToPx(mm, basePxPerMm),
               width: 1,
               height,
               backgroundColor: "rgba(100,116,139,0.7)"
@@ -400,7 +413,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
             key={`v-${mm}`}
             className="absolute right-0"
             style={{
-              top: mmToPx(mm, pxPerMm),
+              top: mmToPx(mm, basePxPerMm),
               height: 1,
               width,
               backgroundColor: "rgba(100,116,139,0.7)"
@@ -457,7 +470,22 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           </span>
           </div>
         )}
-        <div className="relative" style={{ width: stageWidthPx, height: stageHeightPx }}>
+        <div className="relative" style={{ width: viewportWidthPx, height: viewportHeightPx }}
+          onWheel={(event) => {
+            if (editingBoxId) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            if (event.ctrlKey) {
+              event.preventDefault();
+              event.stopPropagation();
+              const next = zoomScale + (event.deltaY < 0 ? 0.05 : -0.05);
+              setZoom(Math.min(2, Math.max(0.25, next)));
+            }
+          }}
+        >
+          <div className="absolute left-0 top-0" style={{ width: stageWidthPx, height: stageHeightPx, transform: `scale(${zoomScale})`, transformOrigin: "top left" }}>
           {renderMode === "editor" && rulersEnabled && renderRulers()}
           <div
             ref={cardRef}
@@ -477,6 +505,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 return;
               }
               selectBox(null);
+              setSelectedBoxIds([]);
             }}
           >
             {renderMode === "editor" && gridEnabled && (
@@ -485,19 +514,19 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 style={{
                   backgroundImage: gridBackground,
                   backgroundSize: showOnlyCmLines
-                    ? `${mmToPx(10, pxPerMm)}px ${mmToPx(10, pxPerMm)}px`
-                    : `${mmToPx(1, pxPerMm)}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(
+                    ? `${mmToPx(10, basePxPerMm)}px ${mmToPx(10, basePxPerMm)}px`
+                    : `${mmToPx(1, basePxPerMm)}px ${mmToPx(1, basePxPerMm)}px, ${mmToPx(
                         1,
-                        pxPerMm
-                      )}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(
+                        basePxPerMm
+                      )}px ${mmToPx(1, basePxPerMm)}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(
                         5,
-                        pxPerMm
-                      )}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(5, pxPerMm)}px, ${mmToPx(
+                        basePxPerMm
+                      )}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(5, basePxPerMm)}px, ${mmToPx(
                         10,
-                        pxPerMm
-                      )}px ${mmToPx(10, pxPerMm)}px, ${mmToPx(10, pxPerMm)}px ${mmToPx(
+                        basePxPerMm
+                      )}px ${mmToPx(10, basePxPerMm)}px, ${mmToPx(10, basePxPerMm)}px ${mmToPx(
                         10,
-                        pxPerMm
+                        basePxPerMm
                       )}px`
                 }}
               />
@@ -512,7 +541,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                   ? staticValue.trim().length === 0
                   : fieldText.isPlaceholder && dynamicValue.trim().length === 0;
               const label = box.label || box.label_i18n || getFieldLabel(box.fieldId);
-              const isSelected = selectedBoxId === box.id;
+              const isSelected = selectedBoxIds.includes(box.id) || selectedBoxId === box.id;
               const isEditing = editingBoxId === box.id;
               return (
                 <div
@@ -520,15 +549,15 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                   className={`absolute group ${canEditLayoutGeometry ? "cursor-move" : "cursor-text"}`}
                   tabIndex={renderMode === "editor" ? 0 : -1}
                   style={{
-                    left: mmToPx(box.xMm, pxPerMm),
-                    top: mmToPx(box.yMm, pxPerMm),
-                    width: mmToPx(box.wMm, pxPerMm),
-                    height: mmToPx(box.hMm, pxPerMm),
-                    fontSize: box.style.fontSizePt * 1.333 * zoom,
+                    left: mmToPx(box.xMm, basePxPerMm),
+                    top: mmToPx(box.yMm, basePxPerMm),
+                    width: mmToPx(box.wMm, basePxPerMm),
+                    height: mmToPx(box.hMm, basePxPerMm),
+                    fontSize: box.style.fontSizePt * 1.333,
                     fontWeight: box.style.fontWeight,
                     textAlign: box.style.align,
                     lineHeight: box.style.lineHeight,
-                    padding: mmToPx(box.style.paddingMm, pxPerMm),
+                    padding: mmToPx(box.style.paddingMm, basePxPerMm),
                     color: isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
                     border:
                       renderMode === "editor"
@@ -550,8 +579,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     event.preventDefault();
                     event.stopPropagation();
                     if (renderMode !== "editor") return;
-                    const delta = event.deltaY < 0 ? 1 : -1;
-                    adjustColumnFontSize(selectedSide, delta);
+                    const step = event.shiftKey ? 2 : 1;
+                    const delta = event.deltaY < 0 ? step : -step;
+                    const targetIds = selectedBoxIds.length ? selectedBoxIds : [box.id];
+                    const targetFieldIds = activeBoxes
+                      .filter((item) => targetIds.includes(item.id))
+                      .map((item) => item.fieldId);
+                    adjustColumnFontSizeByField(selectedSide, targetFieldIds, delta);
                   }}
                   onDoubleClick={(event) => {
                     event.stopPropagation();
@@ -573,7 +607,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     <textarea
                       ref={editRef}
                       className="w-full h-full resize-none bg-white/80 text-sm text-slate-800 outline-none cursor-text dark:bg-slate-900/80 dark:text-slate-100"
-                      style={{ padding: mmToPx(2, pxPerMm) }}
+                      style={{ padding: mmToPx(2, basePxPerMm) }}
                       value={editValue}
                       onChange={(event) => setEditValue(event.target.value)}
                       onBlur={() => commitEdit(true)}
@@ -656,11 +690,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               <>
                 <div
                   className="absolute top-0 bottom-0 w-px bg-sky-200/60 pointer-events-none"
-                  style={{ left: mmToPx(cursorMm.x, pxPerMm) }}
+                  style={{ left: mmToPx(cursorMm.x, basePxPerMm) }}
                 />
                 <div
                   className="absolute left-0 right-0 h-px bg-sky-200/60 pointer-events-none"
-                  style={{ top: mmToPx(cursorMm.y, pxPerMm) }}
+                  style={{ top: mmToPx(cursorMm.y, basePxPerMm) }}
                 />
               </>
             )}
@@ -671,6 +705,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 : "Наведите на холст"}
               </div>
             )}
+          </div>
           </div>
         </div>
       </div>
