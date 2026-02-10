@@ -1,3 +1,27 @@
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+$logDir = Join-Path $PSScriptRoot "..\..\_reports"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$logFile = Join-Path $logDir ("repo_toolbox_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
+
+Start-Transcript -Path $logFile -Append | Out-Null
+try {
+    # --- SCRIPT BODY CONTINUES BELOW ---
+}
+catch {
+    Write-Host ""
+    Write-Host "[FATAL] $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Log saved: $logFile" -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+finally {
+    Stop-Transcript | Out-Null
+}
+
+
 #requires -Version 5.1
 param(
   [Parameter(Mandatory=$true)]
