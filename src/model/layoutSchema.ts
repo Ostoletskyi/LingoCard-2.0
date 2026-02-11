@@ -20,7 +20,13 @@ export const BoxSchema = z.object({
   z: z.number(),
   fieldId: z.string(),
   style: BoxStyleSchema,
-  locked: z.boolean().optional()
+  locked: z.boolean().optional(),
+  text: z.string().optional(),
+  staticText: z.string().optional(),
+  textMode: z.enum(["static", "dynamic"]).optional(),
+  label: z.string().optional(),
+  label_i18n: z.string().optional(),
+  type: z.string().optional()
 });
 
 export type Box = z.infer<typeof BoxSchema>;

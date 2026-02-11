@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { getPxPerMm, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
 import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
 import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
+import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -22,15 +23,23 @@ type DragState = {
   hasApplied: boolean;
 };
 
+type EditSession = {
+  boxId: string;
+  cardId: string;
+  side: "A" | "B";
+  fieldId: string;
+  originalValue: string;
+};
+
 const applySnap = (valueMm: number, enabled: boolean) =>
   enabled ? Math.round(valueMm / GRID_STEP_MM) * GRID_STEP_MM : valueMm;
 
 const RULER_SIZE_PX = 28;
 const RULER_GAP_MM = 1;
 
-const buildRange = (max: number) => Array.from({ length: Math.floor(max) + 1 }, (_, i) => i);
 
 type RenderMode = "editor" | "print";
+
 
 type EditorCanvasProps = {
   renderMode?: RenderMode;
@@ -52,9 +61,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     showOnlyCmLines,
     debugOverlays,
     selectBox,
-    updateBox,
-    beginLayoutEdit,
-    endLayoutEdit
+    updateCardSilent,
+    pushHistory,
+    adjustColumnFontSizeByField,
+    setZoom
   } = useAppStore((state) => ({
     layout: state.layout,
     zoom: state.zoom,
@@ -70,16 +80,18 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
     selectBox: state.selectBox,
-    updateBox: state.updateBox,
-    beginLayoutEdit: state.beginLayoutEdit,
-    endLayoutEdit: state.endLayoutEdit
+    updateCardSilent: state.updateCardSilent,
+    pushHistory: state.pushHistory,
+    adjustColumnFontSizeByField: state.adjustColumnFontSizeByField,
+    setZoom: state.setZoom
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
+  const [selectedBoxIds, setSelectedBoxIds] = useState<string[]>([]);
+  const [editSession, setEditSession] = useState<EditSession | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [originalValue, setOriginalValue] = useState("");
   const editRef = useRef<HTMLTextAreaElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
@@ -102,7 +114,16 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (event.currentTarget instanceof HTMLElement) {
       event.currentTarget.focus();
     }
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedBoxIds((prev) =>
+        prev.includes(box.id) ? prev.filter((id) => id !== box.id) : [...prev, box.id]
+      );
+    } else {
+      setSelectedBoxIds([box.id]);
+    }
     selectBox(box.id);
+    if (!canEditLayoutGeometry) return;
+    pushHistory();
     setDragState({
       boxId: box.id,
       startX: event.clientX,
@@ -116,8 +137,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const handlePointerMove = (event: React.PointerEvent) => {
     if (cardRef.current) {
       const rect = cardRef.current.getBoundingClientRect();
-      const x = (event.clientX - rect.left) / pxPerMm;
-      const y = (event.clientY - rect.top) / pxPerMm;
+      const x = (event.clientX - rect.left)  / (basePxPerMm * zoomScale);
+      const y = (event.clientY - rect.top)  / (basePxPerMm * zoomScale);
       if (x >= 0 && y >= 0 && x <= layout.widthMm && y <= layout.heightMm) {
         setCursorMm({ x, y });
       } else {
@@ -127,18 +148,19 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!dragState) return;
     const deltaX = event.clientX - dragState.startX;
     const deltaY = event.clientY - dragState.startY;
-    const deltaXMm = pxToMm(deltaX, pxPerMm);
-    const deltaYMm = pxToMm(deltaY, pxPerMm);
+    const deltaXMm = pxToMm(deltaX, basePxPerMm * zoomScale);
+    const deltaYMm = pxToMm(deltaY, basePxPerMm * zoomScale);
 
     if (!dragState.hasApplied) {
-      beginLayoutEdit();
       setDragState((prev) => (prev ? { ...prev, hasApplied: true } : prev));
     }
 
     if (dragState.mode.type === "move") {
-      const nextX = applySnap(dragState.startBox.xMm + deltaXMm, snapEnabled);
-      const nextY = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
-      updateBox(dragState.boxId, { xMm: nextX, yMm: nextY });
+      const nextXRaw = applySnap(dragState.startBox.xMm + deltaXMm, snapEnabled);
+      const nextYRaw = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
+      const nextX = Math.min(Math.max(0, nextXRaw), Math.max(0, layout.widthMm - dragState.startBox.wMm));
+      const nextY = Math.min(Math.max(0, nextYRaw), Math.max(0, layout.heightMm - dragState.startBox.hMm));
+      updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY });
       return;
     }
 
@@ -171,13 +193,17 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = applySnap(nextW, snapEnabled);
     nextH = applySnap(nextH, snapEnabled);
 
-    updateBox(dragState.boxId, { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
+    nextX = Math.max(0, nextX);
+    nextY = Math.max(0, nextY);
+    nextW = Math.min(nextW, layout.widthMm - nextX);
+    nextH = Math.min(nextH, layout.heightMm - nextY);
+    nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
+    nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
+
+    updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
   };
 
   const handlePointerUp = () => {
-    if (dragState?.hasApplied) {
-      endLayoutEdit();
-    }
     setDragState(null);
   };
 
@@ -185,62 +211,79 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!card) return;
     const fieldValue = getFieldEditValue(card, box.fieldId);
     setEditingBoxId(box.id);
-    setOriginalValue(fieldValue);
+    setEditSession({
+      boxId: box.id,
+      cardId: card.id,
+      side: selectedSide,
+      fieldId: box.fieldId,
+      originalValue: fieldValue
+    });
     setEditValue(fieldValue);
   };
 
-  type StringCardField = Exclude<keyof Card, "freq" | "tags" | "forms_aux">;
-  const isStringCardField = (fieldId: string): fieldId is StringCardField =>
-    fieldId !== "freq" && fieldId !== "tags" && fieldId in emptyCard;
-
-  const updateCardField = (current: Card, fieldId: string, value: string): Card => {
-    const next: Card = { ...current };
-    if (fieldId === "tags") {
-      next.tags = value
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-      return next;
-    }
-    if (fieldId === "freq") {
-      const parsed = Number.parseInt(value, 10);
-      if (!Number.isNaN(parsed)) {
-        next.freq = Math.min(5, Math.max(1, parsed)) as Card["freq"];
+  const commitEdit = useCallback((shouldSave: boolean) => {
+    const updateCardField = (current: Card, fieldId: string, value: string): Card => {
+      const next: Card = { ...current };
+      if (fieldId === "tags") {
+        next.tags = value
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean);
+        return next;
+      }
+      if (fieldId === "freq") {
+        const trimmed = value.trim();
+        if (!/^[1-5]$/.test(trimmed)) {
+          return next;
+        }
+        next.freq = Number.parseInt(trimmed, 10) as Card["freq"];
+        return next;
+      }
+      if (fieldId === "forms_aux") {
+        if (value === "haben" || value === "sein" || value === "") {
+          next.forms_aux = value;
+        }
+        return next;
+      }
+      if (isStringCardField(fieldId)) {
+        next[fieldId] = value;
       }
       return next;
-    }
-    if (fieldId === "forms_aux") {
-      if (value === "haben" || value === "sein" || value === "") {
-        next.forms_aux = value;
-      }
-      return next;
-    }
-    if (isStringCardField(fieldId)) {
-      next[fieldId] = value;
-    }
-    return next;
-  };
+    };
 
-  const commitEdit = (shouldSave: boolean) => {
-    if (!editingBoxId || !card) {
+    if (!editSession) {
       setEditingBoxId(null);
       return;
     }
-    if (shouldSave && editValue !== originalValue) {
-      const box = layout.boxes.find((item) => item.id === editingBoxId);
-      if (box) {
-        const updated = updateCardField(card, box.fieldId, editValue);
-        useAppStore.getState().updateCard(updated, selectedSide);
+    if (shouldSave && editValue !== editSession.originalValue) {
+      const store = useAppStore.getState();
+      const source = editSession.side === "A" ? store.cardsA : store.cardsB;
+      const currentCard = source.find((item) => item.id === editSession.cardId);
+      if (currentCard) {
+        const updated = updateCardField(currentCard, editSession.fieldId, editValue);
+        store.updateCard(updated, editSession.side);
       }
     }
     setEditingBoxId(null);
-  };
+    setEditSession(null);
+  }, [editSession, editValue]);
 
   useEffect(() => {
     if (!editingBoxId) return;
     const id = window.requestAnimationFrame(() => editRef.current?.focus());
     return () => window.cancelAnimationFrame(id);
   }, [editingBoxId]);
+
+  useEffect(() => {
+    setSelectedBoxIds([]);
+  }, [selectedId, selectedSide]);
+
+  useEffect(() => {
+    if (!editSession) return;
+    if (!selectedId || selectedId !== editSession.cardId || selectedSide !== editSession.side) {
+      commitEdit(true);
+    }
+  }, [selectedId, selectedSide, editSession, commitEdit]);
 
   const handlePointerLeave = () => {
     setCursorMm(null);
@@ -273,22 +316,22 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     <div
       className="absolute left-0"
       style={{
-        height: RULER_SIZE_PX,
+        height: rulerSizePx,
         width: widthPx,
         marginLeft: RULER_SIZE_PX,
         top: -rulerGapPx
       }}
     >
-      {buildRange(layout.widthMm).map((mm) => {
-        const isCm = mm % 10 === 0;
-        const isMid = mm % 5 === 0;
+      {buildRulerTicks(layout.widthMm).map((mm) => {
+        const isCm = Math.round(mm) % 10 === 0;
+        const isMid = Math.round(mm) % 5 === 0;
         const height = isCm ? 14 : isMid ? 10 : 6;
         return (
           <div
             key={`h-${mm}`}
             className="absolute bottom-0"
             style={{
-              left: mmToPx(mm, pxPerMm),
+              left: mmToPx(mm, basePxPerMm),
               width: 1,
               height,
               backgroundColor: "rgba(100,116,139,0.7)"
@@ -315,22 +358,22 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     <div
       className="absolute left-0"
       style={{
-        width: RULER_SIZE_PX,
+        width: rulerSizePx,
         height: heightPx,
         marginTop: RULER_SIZE_PX,
         top: -rulerGapPx
       }}
     >
-      {buildRange(layout.heightMm).map((mm) => {
-        const isCm = mm % 10 === 0;
-        const isMid = mm % 5 === 0;
+      {buildRulerTicks(layout.heightMm).map((mm) => {
+        const isCm = Math.round(mm) % 10 === 0;
+        const isMid = Math.round(mm) % 5 === 0;
         const width = isCm ? 14 : isMid ? 10 : 6;
         return (
           <div
             key={`v-${mm}`}
             className="absolute right-0"
             style={{
-              top: mmToPx(mm, pxPerMm),
+              top: mmToPx(mm, basePxPerMm),
               height: 1,
               width,
               backgroundColor: "rgba(100,116,139,0.7)"
@@ -355,12 +398,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       {(
         <div
           className="absolute left-0 top-0 bg-slate-100 border border-slate-200 dark:bg-slate-900 dark:border-slate-700"
-          style={{ width: RULER_SIZE_PX, height: RULER_SIZE_PX }}
+          style={{ width: rulerSizePx, height: rulerSizePx }}
         />
       )}
       {renderHorizontalRuler()}
       {renderVerticalRuler()}
-    </>
+    </div>
   );
 
   return (
@@ -382,11 +425,37 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           <span>{gridEnabled ? "Сетка включена" : "Сетка выключена"} · Двойной клик = редактирование</span>
           </div>
         )}
-        <div className="relative">
+        <div className="relative" style={{ width: viewportWidthPx, height: viewportHeightPx }}
+          onWheel={(event) => {
+            if (editingBoxId) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            if (event.ctrlKey) {
+              event.preventDefault();
+              event.stopPropagation();
+              const next = zoomScale + (event.deltaY < 0 ? 0.05 : -0.05);
+              setZoom(Math.min(2, Math.max(0.25, next)));
+              return;
+            }
+            if (selectedBoxIds.length > 0) {
+              event.preventDefault();
+              event.stopPropagation();
+              const step = event.shiftKey ? 2 : 1;
+              const delta = event.deltaY < 0 ? step : -step;
+              const targetFieldIds = activeBoxes
+                .filter((item) => selectedBoxIds.includes(item.id))
+                .map((item) => item.fieldId);
+              adjustColumnFontSizeByField(selectedSide, targetFieldIds, delta);
+            }
+          }}
+        >
+          <div className="absolute left-0 top-0" style={{ width: stageWidthPx, height: stageHeightPx, transform: `scale(${zoomScale})`, transformOrigin: "top left" }}>
           {renderMode === "editor" && rulersEnabled && renderRulers()}
           <div
             ref={cardRef}
-            className="relative bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
+            className="absolute z-10 bg-white border border-slate-200 rounded-2xl shadow-card dark:bg-slate-950 dark:border-slate-700"
             style={{
               width: widthPx,
               height: heightPx,
@@ -402,6 +471,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 return;
               }
               selectBox(null);
+              setSelectedBoxIds([]);
+            }}
+            onDoubleClick={() => {
+              if (editingBoxId) {
+                commitEdit(true);
+              }
+              selectBox(null);
+              setSelectedBoxIds([]);
             }}
           >
             {renderMode === "editor" && gridEnabled && (
@@ -410,54 +487,79 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 style={{
                   backgroundImage: gridBackground,
                   backgroundSize: showOnlyCmLines
-                    ? `${mmToPx(10, pxPerMm)}px ${mmToPx(10, pxPerMm)}px`
-                    : `${mmToPx(1, pxPerMm)}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(
+                    ? `${mmToPx(10, basePxPerMm)}px ${mmToPx(10, basePxPerMm)}px`
+                    : `${mmToPx(1, basePxPerMm)}px ${mmToPx(1, basePxPerMm)}px, ${mmToPx(
                         1,
-                        pxPerMm
-                      )}px ${mmToPx(1, pxPerMm)}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(
+                        basePxPerMm
+                      )}px ${mmToPx(1, basePxPerMm)}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(
                         5,
-                        pxPerMm
-                      )}px, ${mmToPx(5, pxPerMm)}px ${mmToPx(5, pxPerMm)}px, ${mmToPx(
+                        basePxPerMm
+                      )}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(5, basePxPerMm)}px, ${mmToPx(
                         10,
-                        pxPerMm
-                      )}px ${mmToPx(10, pxPerMm)}px, ${mmToPx(10, pxPerMm)}px ${mmToPx(
+                        basePxPerMm
+                      )}px ${mmToPx(10, basePxPerMm)}px, ${mmToPx(10, basePxPerMm)}px ${mmToPx(
                         10,
-                        pxPerMm
+                        basePxPerMm
                       )}px`
                 }}
               />
             )}
-            {layout.boxes.map((box) => {
+            {activeBoxes.map((box) => {
               const fieldText = getFieldText(card, box.fieldId);
-              const label = getFieldLabel(box.fieldId);
-              const isSelected = selectedBoxId === box.id;
+              const staticValue = box.staticText || box.text || "";
+              const dynamicValue = box.text || fieldText.text;
+              const resolvedText = box.textMode === "static" ? staticValue : dynamicValue;
+              const isPlaceholder =
+                box.textMode === "static"
+                  ? staticValue.trim().length === 0
+                  : fieldText.isPlaceholder && dynamicValue.trim().length === 0;
+              const label = box.label || box.label_i18n || getFieldLabel(box.fieldId);
+              const isSelected = selectedBoxIds.includes(box.id) || selectedBoxId === box.id;
               const isEditing = editingBoxId === box.id;
               return (
                 <div
                   key={box.id}
-                  className="absolute group cursor-move"
+                  className={`absolute group ${canEditLayoutGeometry ? "cursor-move" : "cursor-text"}`}
                   tabIndex={renderMode === "editor" ? 0 : -1}
                   style={{
-                    left: mmToPx(box.xMm, pxPerMm),
-                    top: mmToPx(box.yMm, pxPerMm),
-                    width: mmToPx(box.wMm, pxPerMm),
-                    height: mmToPx(box.hMm, pxPerMm),
-                    fontSize: box.style.fontSizePt * 1.333 * zoom,
+                    left: mmToPx(box.xMm, basePxPerMm),
+                    top: mmToPx(box.yMm, basePxPerMm),
+                    width: mmToPx(box.wMm, basePxPerMm),
+                    height: mmToPx(box.hMm, basePxPerMm),
+                    fontSize: box.style.fontSizePt * 1.333,
                     fontWeight: box.style.fontWeight,
                     textAlign: box.style.align,
                     lineHeight: box.style.lineHeight,
-                    padding: mmToPx(box.style.paddingMm, pxPerMm),
-                    color: fieldText.isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
+                    padding: mmToPx(box.style.paddingMm, basePxPerMm),
+                    color: isPlaceholder ? "rgba(100,116,139,0.8)" : undefined,
                     border:
                       renderMode === "editor"
-                        ? isSelected
-                          ? "1px solid #38bdf8"
-                          : "1px solid rgba(148,163,184,0.4)"
+                        ? isEditing
+                          ? "1px solid #22c55e"
+                          : isSelected
+                            ? "1px solid #38bdf8"
+                            : "1px solid rgba(148,163,184,0.4)"
                         : "none",
-                    outline: isSelected ? "2px solid rgba(14,165,233,0.25)" : "none",
+                    outline: isEditing
+                      ? "2px solid rgba(34,197,94,0.25)"
+                      : isSelected
+                        ? "2px solid rgba(14,165,233,0.25)"
+                        : "none",
                     display: box.style.visible === false ? "none" : "block"
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
+                  onWheel={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (renderMode !== "editor") return;
+                    const step = event.shiftKey ? 2 : 1;
+                    const delta = event.deltaY < 0 ? step : -step;
+                    const targetIds = selectedBoxIds.length ? selectedBoxIds : [box.id];
+                    const targetFieldIds = activeBoxes
+                      .filter((item) => targetIds.includes(item.id))
+                      .map((item) => item.fieldId);
+                    adjustColumnFontSizeByField(selectedSide, targetFieldIds, delta);
+                  }}
                   onDoubleClick={(event) => {
                     event.stopPropagation();
                     handleBeginEdit(box);
@@ -477,7 +579,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                   {isEditing ? (
                     <textarea
                       ref={editRef}
-                      className="w-full h-full resize-none bg-white/80 text-sm outline-none cursor-text"
+                      className="w-full h-full resize-none bg-white/80 text-sm text-slate-800 outline-none cursor-text dark:bg-slate-900/80 dark:text-slate-100"
+                      style={{ padding: mmToPx(2, basePxPerMm) }}
                       value={editValue}
                       onChange={(event) => setEditValue(event.target.value)}
                       onBlur={() => commitEdit(true)}
@@ -493,15 +596,15 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                         }
                         if (event.key === "Escape") {
                           event.preventDefault();
-                          setEditValue(originalValue);
+                          setEditValue(editSession?.originalValue ?? "");
                           commitEdit(false);
                         }
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : (
-                    <div className={fieldText.isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
-                      {fieldText.text}
+                    <div className={isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
+                      {resolvedText || fieldText.text}
                     </div>
                   )}
                   {renderMode === "editor" && debugOverlays && (
@@ -519,7 +622,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       {box.wMm.toFixed(1)}×{box.hMm.toFixed(1)} мм
                     </span>
                   )}
-                  {renderMode === "editor" && isSelected && (
+                  {renderMode === "editor" && canEditLayoutGeometry && isSelected && (
                     <>
                       {([
                         "nw",
@@ -560,11 +663,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               <>
                 <div
                   className="absolute top-0 bottom-0 w-px bg-sky-200/60 pointer-events-none"
-                  style={{ left: mmToPx(cursorMm.x, pxPerMm) }}
+                  style={{ left: mmToPx(cursorMm.x, basePxPerMm) }}
                 />
                 <div
                   className="absolute left-0 right-0 h-px bg-sky-200/60 pointer-events-none"
-                  style={{ top: mmToPx(cursorMm.y, pxPerMm) }}
+                  style={{ top: mmToPx(cursorMm.y, basePxPerMm) }}
                 />
               </>
             )}
@@ -575,6 +678,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 : "Наведите на холст"}
               </div>
             )}
+          </div>
           </div>
         </div>
       </div>

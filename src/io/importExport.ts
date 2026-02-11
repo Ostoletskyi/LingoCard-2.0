@@ -83,16 +83,10 @@ export const validateCardsImport = (
     const warnings: string[] = [];
     payloadCards.forEach((item, index) => {
       try {
-        if (item && typeof item === "object" && "id" in item && "boxes" in item) {
-          const legacy = item as { id: string; inf?: string };
-          const normalized = normalizeCard({ id: legacy.id, inf: legacy.inf ?? "" });
-          cards.push(normalized);
-        } else {
-          const candidate = item && typeof item === "object" ? (item as Partial<Card>) : {};
-          const normalized = normalizeCard(candidate);
-          CardSchema.parse(normalized);
-          cards.push(normalized);
-        }
+        const candidate = item && typeof item === "object" ? (item as Partial<Card>) : {};
+        const normalized = normalizeCard(candidate);
+        CardSchema.parse(normalized);
+        cards.push(normalized);
       } catch (error) {
         warnings.push(`Карточка #${index + 1} не прошла валидацию.`);
         if (warnings.length < 5 && error instanceof z.ZodError) {
