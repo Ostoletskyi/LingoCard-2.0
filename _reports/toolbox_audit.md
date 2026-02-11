@@ -58,3 +58,23 @@
   - Mitigation: keep parser checks and command guards in `toolbox_selftest.ps1`.
 - **External auth/network issues for git push/pull remain environment-dependent.**
   - Mitigation: explicit next-step guidance + logs in every failure path.
+
+
+## Additional failure reproduced from user logs
+
+5. **`spawn EINVAL` in `_tools/smoke.js` on Windows**
+   - Reproduced from user report at `spawn` call for dev server smoke boot.
+   - Cause: `.cmd` command execution path on Windows was not robust in all environments.
+
+## Additional fixes in this PR
+
+5. **Cross-platform process launch hardened**
+   - Implemented `spawnCommand(...)` in `_tools/utils.js`:
+     - Windows: launches via `cmd.exe /d /s /c ...` with safe quoting.
+     - Non-Windows: regular `spawn`.
+   - Updated `_tools/smoke.js` to use `spawnCommand` for `npm run dev` smoke boot and kept existing checks.
+
+6. **Why utilities now execute expected roles**
+   - Backup restore: no invalid log pipe path; has safe pre-restore backup and controlled replacement.
+   - Git pull/push: log path fixed + dirty tree/auth decision flows added.
+   - Smoke: Windows command spawning stabilized to prevent `EINVAL`.
