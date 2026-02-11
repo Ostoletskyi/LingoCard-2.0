@@ -226,134 +226,103 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
     })
   );
 
-  const metaLine = joinPresent([card.freq ? `Freq ${card.freq}` : "", card.tags.join(", ")]);
+  const trLines = collectTrLines(card).map((line) => line.text);
+  const exLines = collectPairLines(card, "ex", 5).map((line) => line.text);
+  const formsLines = collectFormLines(card).map((line) => line.text);
+  const synLines = collectPairLines(card, "syn", 3).map((line) => line.text);
+  const rekLines = collectPairLines(card, "rek", 5).map((line) => line.text);
+
+  const trText = trLines.length ? trLines.join("\n") : "—";
+  const exText = exLines.length ? exLines.join("\n") : "—";
+  const formsText = formsLines.length ? formsLines.join("\n") : "—";
+  const synText = synLines.length ? synLines.join("\n") : "—";
+  const rekText = rekLines.length ? rekLines.join("\n") : "—";
+
+  const leftTopH = zones.left.hMm * 0.34;
   boxes.push(
     makeBox({
-      id: "meta",
-      fieldId: "freq",
-      text: metaLine || "—",
-      zone: zones.meta,
-      baseFontPt: 8.5,
-      minFontPt: 6,
-      maxFontPt: 10,
-      lineHeight: 1.1,
-      label: "Meta",
+      id: "translations",
+      fieldId: "tr_1_ru",
+      text: trText,
+      zone: { xMm: zones.left.xMm, yMm: zones.left.yMm, wMm: zones.left.wMm, hMm: leftTopH },
+      baseFontPt: clamp(widthMm * 0.058, 8.5, 12),
+      minFontPt: 7,
+      maxFontPt: 14,
+      lineHeight: 1.2,
+      label: "Переводы",
       textMode: "static"
     })
   );
 
-  const placeSection = (
-    sectionId: string,
-    title: string,
-    lines: Array<{ fieldId: string; text: string }>,
-    zone: Zone,
-    baseFontPt: number,
-    titleFontPt: number
-  ) => {
-    if (!lines.length) return;
-    const headerH = 4.2;
-    const gap = 0.7;
-    let cursorY = zone.yMm;
-
-    boxes.push(
-      makeBox({
-        id: `${sectionId}_title`,
-        fieldId: lines[0]!.fieldId,
-        text: title,
-        zone: { xMm: zone.xMm, yMm: cursorY, wMm: zone.wMm, hMm: headerH },
-        baseFontPt: titleFontPt,
-        minFontPt: 6,
-        maxFontPt: 10,
-        weight: "bold",
-        lineHeight: 1.1,
-        label: title,
-        textMode: "static"
-      })
-    );
-    cursorY += headerH + gap;
-
-    const remainingH = Math.max(4, zone.yMm + zone.hMm - cursorY);
-    const rowH = Math.max(4.5, (remainingH - gap * Math.max(0, lines.length - 1)) / lines.length);
-
-    lines.forEach((line, idx) => {
-      if (cursorY + rowH > zone.yMm + zone.hMm + 0.001) return;
-      boxes.push(
-        makeBox({
-          id: `${sectionId}_${idx + 1}`,
-          fieldId: line.fieldId,
-          text: line.text,
-          zone: { xMm: zone.xMm, yMm: cursorY, wMm: zone.wMm, hMm: rowH },
-          baseFontPt,
-          minFontPt: 5,
-          maxFontPt: 18,
-          lineHeight: 1.18,
-          label: line.fieldId,
-          textMode: "static"
-        })
-      );
-      cursorY += rowH + gap;
-    });
-  };
-
-  const trLines = collectTrLines(card);
-  const exLines = collectPairLines(card, "ex", 5);
-  const formsLines = collectFormLines(card);
-  const synLines = collectPairLines(card, "syn", 3);
-  const rekLines = collectPairLines(card, "rek", 5);
-
-  const leftTopH = zones.left.hMm * 0.42;
-  placeSection(
-    "tr",
-    "Переводы",
-    trLines,
-    { xMm: zones.left.xMm, yMm: zones.left.yMm, wMm: zones.left.wMm, hMm: leftTopH },
-    clamp(widthMm * 0.062, 9, 12),
-    9.5
-  );
-  placeSection(
-    "ex",
-    "Примеры",
-    exLines,
-    {
-      xMm: zones.left.xMm,
-      yMm: zones.left.yMm + leftTopH + 1,
-      wMm: zones.left.wMm,
-      hMm: zones.left.hMm - leftTopH - 1
-    },
-    clamp(widthMm * 0.05, 7, 9),
-    8.5
+  boxes.push(
+    makeBox({
+      id: "examples",
+      fieldId: "ex_1_de",
+      text: exText,
+      zone: {
+        xMm: zones.left.xMm,
+        yMm: zones.left.yMm + leftTopH + 1,
+        wMm: zones.left.wMm,
+        hMm: zones.left.hMm - leftTopH - 1
+      },
+      baseFontPt: clamp(widthMm * 0.05, 7, 9.5),
+      minFontPt: 6,
+      maxFontPt: 11,
+      lineHeight: 1.18,
+      label: "Примеры",
+      textMode: "static"
+    })
   );
 
-  const rightTopHalf = zones.rightTop.hMm * 0.52;
-  placeSection(
-    "forms",
-    "Формы",
-    formsLines,
-    { xMm: zones.rightTop.xMm, yMm: zones.rightTop.yMm, wMm: zones.rightTop.wMm, hMm: rightTopHalf },
-    clamp(widthMm * 0.052, 7.5, 10),
-    8.5
-  );
-  placeSection(
-    "syn",
-    "Синонимы",
-    synLines,
-    {
-      xMm: zones.rightTop.xMm,
-      yMm: zones.rightTop.yMm + rightTopHalf + 1,
-      wMm: zones.rightTop.wMm,
-      hMm: zones.rightTop.hMm - rightTopHalf - 1
-    },
-    clamp(widthMm * 0.052, 7.5, 10),
-    8.5
+  const rightTopHalf = zones.rightTop.hMm * 0.5;
+  boxes.push(
+    makeBox({
+      id: "forms",
+      fieldId: "forms_p3",
+      text: formsText,
+      zone: { xMm: zones.rightTop.xMm, yMm: zones.rightTop.yMm, wMm: zones.rightTop.wMm, hMm: rightTopHalf },
+      baseFontPt: clamp(widthMm * 0.052, 7.5, 10),
+      minFontPt: 6,
+      maxFontPt: 11,
+      lineHeight: 1.16,
+      label: "Формы",
+      textMode: "static"
+    })
   );
 
-  placeSection(
-    "rek",
-    "Рекомендации",
-    rekLines,
-    zones.rightBottom,
-    clamp(widthMm * 0.05, 7, 9),
-    8.5
+  boxes.push(
+    makeBox({
+      id: "synonyms",
+      fieldId: "syn_1_de",
+      text: synText,
+      zone: {
+        xMm: zones.rightTop.xMm,
+        yMm: zones.rightTop.yMm + rightTopHalf + 1,
+        wMm: zones.rightTop.wMm,
+        hMm: zones.rightTop.hMm - rightTopHalf - 1
+      },
+      baseFontPt: clamp(widthMm * 0.052, 7.5, 10),
+      minFontPt: 6,
+      maxFontPt: 11,
+      lineHeight: 1.16,
+      label: "Синонимы",
+      textMode: "static"
+    })
+  );
+
+  boxes.push(
+    makeBox({
+      id: "recommendations",
+      fieldId: "rek_1_de",
+      text: rekText,
+      zone: zones.rightBottom,
+      baseFontPt: clamp(widthMm * 0.05, 7, 9.5),
+      minFontPt: 6,
+      maxFontPt: 11,
+      lineHeight: 1.18,
+      label: "Рекомендации",
+      textMode: "static"
+    })
   );
 
   return boxes.map((box, index) => ({ ...box, z: index + 1 }));
