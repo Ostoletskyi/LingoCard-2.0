@@ -135,6 +135,11 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
             <div
               ref={viewPanelRef}
               className="grid gap-2"
+              onWheelCapture={(event) => {
+                if (!viewWheelTarget) return;
+                event.preventDefault();
+                event.stopPropagation();
+              }}
               onWheel={(event) => {
                 if (!viewWheelTarget) return;
                 event.preventDefault();
@@ -152,9 +157,6 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 }}
                 onPointerEnter={() => {
                   setViewWheelTarget("zoom");
-                }}
-                onPointerLeave={() => {
-                  setViewWheelTarget(null);
                 }}
               >Масштаб: {Math.round(zoom * 100)}%</button>
               <input
@@ -199,7 +201,6 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     onFocus={() => { setViewWheelTarget("width"); }}
                     onBlur={() => { setViewWheelTarget(null); }}
                     onPointerEnter={() => { setViewWheelTarget("width"); }}
-                    onPointerLeave={() => { setViewWheelTarget(null); }}
                     onChange={(event) => setCardSizeMm(clampMm(Number(event.target.value)), layout.heightMm)}
                     onWheel={(event) => {
                       event.preventDefault();
@@ -232,7 +233,6 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     onFocus={() => { setViewWheelTarget("height"); }}
                     onBlur={() => { setViewWheelTarget(null); }}
                     onPointerEnter={() => { setViewWheelTarget("height"); }}
-                    onPointerLeave={() => { setViewWheelTarget(null); }}
                     onChange={(event) => setCardSizeMm(layout.widthMm, clampMm(Number(event.target.value)))}
                     onWheel={(event) => {
                       event.preventDefault();

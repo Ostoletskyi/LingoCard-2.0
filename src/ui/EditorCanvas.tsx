@@ -162,6 +162,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     }
     selectBox(box.id);
     if (!canEditLayoutGeometry) return;
+    pushHistory();
     setDragState({
       boxId: box.id,
       startX: event.clientX,
@@ -190,7 +191,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const deltaYMm = pxToMm(deltaY, basePxPerMm * zoomScale);
 
     if (!dragState.hasApplied) {
-      pushHistory();
       setDragState((prev) => (prev ? { ...prev, hasApplied: true } : prev));
     }
 
