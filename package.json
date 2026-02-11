@@ -9,10 +9,7 @@
     "preview": "vite preview",
     "tsc": "tsc --noEmit",
     "lint": "eslint .",
-    "tools:backup": "node _tools/backup.js",
-    "tools:restore": "node _tools/restore.js",
-    "tools:smoke": "node _tools/smoke.js",
-    "tools:dev": "node _tools/dev.js"
+    "tools:smoke": "node _tools/smoke.js"
   },
   "dependencies": {
     "immer": "^10.1.1",

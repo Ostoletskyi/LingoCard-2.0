@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [string]$LogPath
 )
@@ -16,12 +16,12 @@ try {
     Push-Location $root
     try {
         if (Test-Path (Join-Path $root 'package-lock.json')) {
-            npm ci 2>&1 | Tee-Object -FilePath $log -Append
+            npm ci 2>&1 | Tee-Object -FilePath $log.Md -Append
         } else {
-            npm install 2>&1 | Tee-Object -FilePath $log -Append
+            npm install 2>&1 | Tee-Object -FilePath $log.Md -Append
         }
 
-        npm run tools:smoke 2>&1 | Tee-Object -FilePath $log -Append
+        npm run tools:smoke 2>&1 | Tee-Object -FilePath $log.Md -Append
         if ($LASTEXITCODE -ne 0) { throw 'tools:smoke returned non-zero exit code.' }
 
         $report = Join-Path $root '_tools\logs\smoke_report.md'

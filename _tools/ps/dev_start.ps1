@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [string]$LogPath,
     [switch]$OpenBrowser,
@@ -19,7 +19,7 @@ try {
     try {
         if ($CleanInstall) {
             if (Test-Path (Join-Path $root 'node_modules')) { Remove-Item -Path (Join-Path $root 'node_modules') -Recurse -Force }
-            npm ci 2>&1 | Tee-Object -FilePath $log -Append
+            npm ci 2>&1 | Tee-Object -FilePath $log.Md -Append
             Write-Host 'Clean install completed.'
             Write-ToolLog -LogPaths $log -Action $action -Command 'clean install' -Result 'success' -ExitCode 0
             Show-LogHint -LogPaths $log
@@ -28,14 +28,14 @@ try {
 
         if (-not (Test-Path (Join-Path $root 'node_modules'))) {
             $install = Read-Host 'node_modules is missing. Run npm install? (Y/N)'
-            if ($install -match '^(Y|y)$') { npm install 2>&1 | Tee-Object -FilePath $log -Append }
+            if ($install -match '^(Y|y)$') { npm install 2>&1 | Tee-Object -FilePath $log.Md -Append }
             else { Write-ToolLog -LogPaths $log -Action $action -Command 'npm install prompt' -Result 'cancelled' -ExitCode 2; Show-LogHint -LogPaths $log; exit 2 }
         }
 
         if ($OpenBrowser) { Start-Process 'http://localhost:5173' | Out-Null }
 
         Write-Host 'Starting dev server. Press CTRL+C to stop.'
-        npm run dev 2>&1 | Tee-Object -FilePath $log -Append
+        npm run dev 2>&1 | Tee-Object -FilePath $log.Md -Append
         $exitCode = $LASTEXITCODE
         Write-ToolLog -LogPaths $log -Action $action -Command 'npm run dev' -Result 'finished' -ExitCode $exitCode
         Show-LogHint -LogPaths $log

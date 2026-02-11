@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [string]$LogPath
 )
@@ -15,29 +15,43 @@ try {
 
     Push-Location $root
     try {
-        git status -sb | Tee-Object -FilePath $log -Append
+        git status -sb 2>&1 | Tee-Object -FilePath $log.Md -Append
         $dirty = git status --porcelain
         if ($dirty) {
-            Write-Host 'There are local changes:'
+            Write-Host 'Local changes detected:'
             Write-Host '[1] Abort'
-            Write-Host '[2] Commit with message'
+            Write-Host '[2] Commit and push'
             Write-Host '[3] Stash and push'
             $mode = Read-Host 'Select option'
-            if ($mode -eq '1') { Write-ToolLog -LogPaths $log -Action $action -Command 'push mode select' -Result 'cancelled' -ExitCode 2; Show-LogHint -LogPaths $log; exit 2 }
+            if ($mode -eq '1') {
+                Write-ToolLog -LogPaths $log -Action $action -Command 'push mode select' -Result 'cancelled' -ExitCode 2
+                Show-LogHint -LogPaths $log
+                exit 2
+            }
             elseif ($mode -eq '2') {
-                git add -A
+                git add -A 2>&1 | Tee-Object -FilePath $log.Md -Append
                 $msg = Read-Host 'Enter commit message'
                 if ([string]::IsNullOrWhiteSpace($msg)) { throw 'Commit message is required.' }
-                git commit -m $msg 2>&1 | Tee-Object -FilePath $log -Append
+                git commit -m "$msg" 2>&1 | Tee-Object -FilePath $log.Md -Append
             }
             elseif ($mode -eq '3') {
-                git stash push -u -m ("toolbox_stash_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss')) | Tee-Object -FilePath $log -Append
+                git stash push -u -m ("toolbox_stash_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss')) 2>&1 | Tee-Object -FilePath $log.Md -Append
             }
-            else { Write-ToolLog -LogPaths $log -Action $action -Command 'push mode select' -Result 'invalid_input' -ExitCode 2; Show-LogHint -LogPaths $log; exit 2 }
+            else {
+                Write-ToolLog -LogPaths $log -Action $action -Command 'push mode select' -Result 'invalid_input' -ExitCode 2
+                Show-LogHint -LogPaths $log
+                exit 2
+            }
         }
 
-        git push 2>&1 | Tee-Object -FilePath $log -Append
-        if ($LASTEXITCODE -ne 0) { throw 'git push failed.' }
+        $pushOutput = git push 2>&1
+        $pushOutput | Tee-Object -FilePath $log.Md -Append
+        if ($LASTEXITCODE -ne 0) {
+            if ($pushOutput -match 'Authentication failed|Permission denied|could not read Username') {
+                Write-Host 'Authentication issue detected. Use menu: Fix GitHub access.' -ForegroundColor Yellow
+            }
+            throw 'git push failed.'
+        }
 
         Write-Host 'Push completed.'
         Write-ToolLog -LogPaths $log -Action $action -Command 'git push' -Result 'success' -ExitCode 0

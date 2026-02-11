@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [string]$LogPath,
     [switch]$VersionsOnly
@@ -18,12 +18,25 @@ function Test-Bom {
 
 try {
     $errors = 0
-    $psFiles = Get-ChildItem -Path (Join-Path $root '_tools\ps') -Filter '*.ps1' -File
+    $psDir = Join-Path $root '_tools\ps'
+    $requiredScripts = @(
+        'backup_create.ps1','backup_restore.ps1','git_pull_rebase.ps1','git_push.ps1',
+        'git_fix_remote_access.ps1','git_init_local.ps1','smoke_run.ps1','dev_start.ps1','toolbox_selftest.ps1'
+    )
+
+    Write-Host '--- Required files check ---'
+    foreach ($script in $requiredScripts) {
+        $full = Join-Path $psDir $script
+        if (Test-Path $full) { Write-Host "OK: $script" }
+        else { Write-Host "MISSING: $script" -ForegroundColor Red; $errors += 1 }
+    }
+
+    $psFiles = Get-ChildItem -Path $psDir -Filter '*.ps1' -File
 
     Write-Host '--- Encoding check (UTF-8 BOM) ---'
     foreach ($file in $psFiles) {
         if (Test-Bom -Path $file.FullName) { Write-Host "OK: $($file.Name)" }
-        else { Write-Host "WARN: $($file.Name) may break on PS 5.1" -ForegroundColor Yellow }
+        else { Write-Host "WARN: $($file.Name) has no BOM" -ForegroundColor Yellow; $errors += 1 }
     }
 
     Write-Host '--- PowerShell parser check ---'
@@ -33,34 +46,40 @@ try {
             Write-Host "OK: $($file.Name)"
         }
         catch {
-            $errors += 1
             Write-Host "FAIL: $($file.Name)" -ForegroundColor Red
             Write-Host $_.Exception.Message -ForegroundColor Red
+            $errors += 1
         }
     }
 
-    Write-Host '--- Dependencies ---'
+    Write-Host '--- Dependency check ---'
     foreach ($cmd in @('git','node','npm')) {
-        if (Get-Command $cmd -ErrorAction SilentlyContinue) { Write-Host "OK: $cmd" }
-        else { Write-Host "MISSING: $cmd" -ForegroundColor Yellow }
+        if (Get-Command $cmd -ErrorAction SilentlyContinue) {
+            Write-Host "OK: $cmd"
+        } else {
+            Write-Host "MISSING: $cmd" -ForegroundColor Yellow
+            $errors += 1
+        }
     }
 
     if ($VersionsOnly) {
-        git --version 2>$null
-        node -v 2>$null
-        npm -v 2>$null
+        if (Get-Command git -ErrorAction SilentlyContinue) { git --version }
+        if (Get-Command node -ErrorAction SilentlyContinue) { node -v }
+        if (Get-Command npm -ErrorAction SilentlyContinue) { npm -v }
         Write-ToolLog -LogPaths $log -Action $action -Command 'versions only' -Result 'success' -ExitCode 0
         Show-LogHint -LogPaths $log
         exit 0
     }
 
-    Write-Host '--- tools:smoke ---'
-    Push-Location $root
-    try {
-        npm run tools:smoke 2>&1 | Tee-Object -FilePath $log -Append
-        if ($LASTEXITCODE -ne 0) { $errors += 1 }
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+        Write-Host '--- tools:smoke ---'
+        Push-Location $root
+        try {
+            npm run tools:smoke 2>&1 | Tee-Object -FilePath $log.Md -Append
+            if ($LASTEXITCODE -ne 0) { $errors += 1 }
+        }
+        finally { Pop-Location }
     }
-    finally { Pop-Location }
 
     if ($errors -eq 0) {
         Write-Host 'SELF-TEST RESULT: PASS' -ForegroundColor Green

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [string]$LogPath
 )
@@ -20,9 +20,9 @@ try {
 
     Push-Location $root
     try {
-        git init | Tee-Object -FilePath $log -Append
-        git add -A | Tee-Object -FilePath $log -Append
-        git commit -m 'Initial commit' 2>&1 | Tee-Object -FilePath $log -Append
+        git init | Tee-Object -FilePath $log.Md -Append
+        git add -A | Tee-Object -FilePath $log.Md -Append
+        git commit -m 'Initial commit' 2>&1 | Tee-Object -FilePath $log.Md -Append
 
         Write-Host 'Local repository initialized.'
         Write-Host 'Tip: add remote with: git remote add origin https://github.com/your-user/your-repo.git'
