@@ -1,0 +1,141 @@
+import { useEffect, useMemo, useState } from "react";
+import { useAppStore } from "../state/store";
+import { CardListPanel } from "./CardListPanel";
+import { EditorCanvas } from "./EditorCanvas";
+import { Toolbar } from "./Toolbar";
+import { AiControlPanel } from "./AiControlPanel";
+import { selectCardById } from "../utils/selectCard";
+
+export const App = () => {
+  const { selectedId, selectedSide, cardsA, cardsB } = useAppStore();
+  const resetState = useAppStore((state) => state.resetState);
+  const isExporting = useAppStore((state) => state.isExporting);
+  const exportStartedAt = useAppStore((state) => state.exportStartedAt);
+  const exportLabel = useAppStore((state) => state.exportLabel);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [elapsed, setElapsed] = useState(0);
+
+  const selectedCard = useMemo(() => {
+    if (!selectedId) return null;
+    return selectCardById(selectedId, selectedSide, cardsA, cardsB);
+  }, [selectedId, selectedSide, cardsA, cardsB]);
+
+  const headline = useMemo(() => {
+    if (!selectedId) {
+      return "Выберите карточку для редактирования";
+    }
+    if (selectedCard) {
+      return `Активная карточка: ${selectedCard.inf || "Без названия"} (Коллекция ${selectedSide})`;
+    }
+    return `Активная карточка: ${selectedId} (${selectedSide})`;
+  }, [selectedId, selectedSide, selectedCard]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("lc_theme");
+    if (stored === "light" || stored === "dark") {
+      setTheme(stored);
+      return;
+    }
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setTheme(prefersDark ? "dark" : "light");
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("lc_theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!isExporting || !exportStartedAt) {
+      setElapsed(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setElapsed(Math.floor((Date.now() - exportStartedAt) / 1000));
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [isExporting, exportStartedAt]);
+
+  const formatElapsed = (seconds: number) =>
+    `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+
+  return (
+    <div className="min-h-screen bg-slate-50 px-6 py-5 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <header className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold">LingoCard 2.0</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Дневной редактор карточек немецких глаголов
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (window.confirm("Сбросить состояние? Это удалит временные данные.")) {
+                resetState();
+              }
+            }}
+            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:text-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:text-white"
+          >
+            Сбросить состояние
+          </button>
+          <div
+            className="rounded-full bg-white px-4 py-2 text-xs text-slate-500 shadow-soft dark:bg-slate-900 dark:text-slate-300"
+            title={selectedCard?.id ?? ""}
+          >
+            {headline}
+          </div>
+        </div>
+      </header>
+      <div className="grid grid-cols-[300px_1fr_300px] gap-6">
+        <CardListPanel side="A" />
+        <div className="flex flex-col gap-6">
+          <Toolbar theme={theme} onToggleTheme={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))} />
+          <div className="rounded-2xl bg-white p-6 shadow-soft dark:bg-slate-900/80">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Рабочая область</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Настройте расположение элементов карточки
+                </p>
+              </div>
+            </div>
+            <div className="mb-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
+              {selectedCard ? (
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-slate-700 dark:text-slate-100">
+                    {selectedCard.inf || selectedCard.id} (Коллекция {selectedSide})
+                  </div>
+                  <span className="text-xs text-slate-400">Готово к редактированию</span>
+                </div>
+              ) : (
+                "Выберите карточку слева или создайте новую, чтобы начать работу."
+              )}
+            </div>
+            <EditorCanvas />
+          </div>
+          <AiControlPanel />
+        </div>
+        <CardListPanel side="B" />
+      </div>
+      {isExporting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="rounded-2xl bg-white px-8 py-6 text-center shadow-lg dark:bg-slate-900">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full border-2 border-slate-200 relative">
+              <div
+                className="absolute left-1/2 top-1/2 h-6 w-px bg-slate-400 origin-bottom"
+                style={{ transform: `translate(-50%, -100%) rotate(${elapsed * 6}deg)` }}
+              />
+            </div>
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              {exportLabel ?? "Экспорт..."}
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {formatElapsed(elapsed)}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
