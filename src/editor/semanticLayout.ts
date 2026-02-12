@@ -184,7 +184,7 @@ const collectFormLines = (card: Card) =>
 const buildTemplateZones = (widthMm: number, heightMm: number) => {
   const margin = 4;
   const innerW = widthMm - margin * 2;
-  const contentTop = margin + 15;
+  const contentTop = margin + 22;
   const contentBottom = heightMm - margin;
   const contentH = Math.max(20, contentBottom - contentTop);
   const gap = 2;
@@ -193,7 +193,10 @@ const buildTemplateZones = (widthMm: number, heightMm: number) => {
   const rightW = innerW - leftW - gap;
 
   return {
-    hero: { xMm: margin, yMm: margin, wMm: innerW, hMm: 9.5 },
+    heroInf: { xMm: margin, yMm: margin, wMm: innerW * 0.62, hMm: 10 },
+    heroFreq: { xMm: margin + innerW * 0.62 + gap, yMm: margin, wMm: innerW * 0.38 - gap, hMm: 4.8 },
+    heroMeta: { xMm: margin + innerW * 0.62 + gap, yMm: margin + 5.4, wMm: innerW * 0.38 - gap, hMm: 4.6 },
+    heroTranslations: { xMm: margin, yMm: margin + 11, wMm: innerW, hMm: 9.5 },
     left: { xMm: margin, yMm: contentTop, wMm: leftW, hMm: contentH },
     rightTop: { xMm: margin + leftW + gap, yMm: contentTop, wMm: rightW, hMm: contentH * 0.44 },
     rightBottom: {
@@ -214,10 +217,10 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       id: "hero_inf",
       fieldId: "inf",
       text: card.inf || "—",
-      zone: zones.hero,
-      baseFontPt: clamp(widthMm * 0.11, 16, 24),
-      minFontPt: 12,
-      maxFontPt: 28,
+      zone: zones.heroInf,
+      baseFontPt: 20,
+      minFontPt: 16,
+      maxFontPt: 24,
       lineHeight: 1.05,
       weight: "bold",
       label: "Infinitiv",
@@ -231,44 +234,99 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   const synLines = collectPairLines(card, "syn", 3).map((line) => line.text);
   const rekLines = collectPairLines(card, "rek", 5).map((line) => line.text);
 
-  const trText = trLines.length ? trLines.join("\n") : "—";
-  const exText = exLines.length ? exLines.join("\n") : "—";
-  const formsText = formsLines.length ? formsLines.join("\n") : "—";
-  const synText = synLines.length ? synLines.join("\n") : "—";
-  const rekText = rekLines.length ? rekLines.join("\n") : "—";
+  const trText = trLines.length
+    ? trLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
+    : "—";
+  const exText = exLines.length
+    ? exLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
+    : "—";
+  const formsText = formsLines.length
+    ? formsLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
+    : "—";
+  const synText = synLines.length
+    ? synLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
+    : "—";
+  const rekText = rekLines.length
+    ? rekLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
+    : "—";
 
-  const leftTopH = zones.left.hMm * 0.34;
   boxes.push(
     makeBox({
-      id: "translations",
+      id: "freq",
+      fieldId: "freq",
+      text: "",
+      zone: zones.heroFreq,
+      baseFontPt: 12,
+      minFontPt: 10,
+      maxFontPt: 16,
+      lineHeight: 1,
+      label: "Частотность",
+      textMode: "dynamic"
+    })
+  );
+
+  boxes.push(
+    makeBox({
+      id: "meta",
+      fieldId: "tags",
+      text: card.tags.length ? card.tags.join(" · ") : "",
+      zone: zones.heroMeta,
+      baseFontPt: 8,
+      minFontPt: 7,
+      maxFontPt: 10,
+      lineHeight: 1.1,
+      label: "Meta",
+      textMode: "dynamic"
+    })
+  );
+
+  boxes.push(
+    makeBox({
+      id: "hero_translations",
       fieldId: "tr_1_ru",
       text: trText,
-      zone: { xMm: zones.left.xMm, yMm: zones.left.yMm, wMm: zones.left.wMm, hMm: leftTopH },
-      baseFontPt: clamp(widthMm * 0.058, 8.5, 12),
-      minFontPt: 7,
-      maxFontPt: 14,
+      zone: zones.heroTranslations,
+      baseFontPt: 10,
+      minFontPt: 8,
+      maxFontPt: 12,
       lineHeight: 1.2,
       label: "Переводы",
       textMode: "static"
     })
   );
 
+  const leftTopH = zones.left.hMm * 0.33;
   boxes.push(
     makeBox({
       id: "examples",
       fieldId: "ex_1_de",
       text: exText,
+      zone: { xMm: zones.left.xMm, yMm: zones.left.yMm, wMm: zones.left.wMm, hMm: leftTopH },
+      baseFontPt: 12,
+      minFontPt: 8,
+      maxFontPt: 14,
+      lineHeight: 1.25,
+      label: "Примеры",
+      textMode: "static"
+    })
+  );
+
+  boxes.push(
+    makeBox({
+      id: "recommendations",
+      fieldId: "rek_1_de",
+      text: rekText,
       zone: {
         xMm: zones.left.xMm,
         yMm: zones.left.yMm + leftTopH + 1,
         wMm: zones.left.wMm,
         hMm: zones.left.hMm - leftTopH - 1
       },
-      baseFontPt: clamp(widthMm * 0.05, 7, 9.5),
-      minFontPt: 6,
-      maxFontPt: 11,
+      baseFontPt: 11,
+      minFontPt: 8,
+      maxFontPt: 13,
       lineHeight: 1.18,
-      label: "Примеры",
+      label: "Рекомендации",
       textMode: "static"
     })
   );
@@ -280,11 +338,11 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       fieldId: "forms_p3",
       text: formsText,
       zone: { xMm: zones.rightTop.xMm, yMm: zones.rightTop.yMm, wMm: zones.rightTop.wMm, hMm: rightTopHalf },
-      baseFontPt: clamp(widthMm * 0.052, 7.5, 10),
-      minFontPt: 6,
-      maxFontPt: 11,
+      baseFontPt: 12,
+      minFontPt: 9,
+      maxFontPt: 14,
       lineHeight: 1.16,
-      label: "Формы",
+      label: "Формы и рекция",
       textMode: "static"
     })
   );
@@ -300,9 +358,9 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
         wMm: zones.rightTop.wMm,
         hMm: zones.rightTop.hMm - rightTopHalf - 1
       },
-      baseFontPt: clamp(widthMm * 0.052, 7.5, 10),
-      minFontPt: 6,
-      maxFontPt: 11,
+      baseFontPt: 12,
+      minFontPt: 9,
+      maxFontPt: 14,
       lineHeight: 1.16,
       label: "Синонимы",
       textMode: "static"
@@ -311,15 +369,15 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
 
   boxes.push(
     makeBox({
-      id: "recommendations",
-      fieldId: "rek_1_de",
-      text: rekText,
+      id: "examples_hint",
+      fieldId: "ex_1_tag",
+      text: "1) Präsens · 2) Perfekt · 3) Modalverb · 4) Präteritum · 5) Unpersönlich",
       zone: zones.rightBottom,
-      baseFontPt: clamp(widthMm * 0.05, 7, 9.5),
-      minFontPt: 6,
-      maxFontPt: 11,
-      lineHeight: 1.18,
-      label: "Рекомендации",
+      baseFontPt: 8.5,
+      minFontPt: 7,
+      maxFontPt: 10,
+      lineHeight: 1.15,
+      label: "Шаблон примеров",
       textMode: "static"
     })
   );

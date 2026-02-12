@@ -70,7 +70,7 @@ export type AppState = AppStateSnapshot &
     removeCard: (id: string, side: ListSide) => void;
     moveCard: (id: string, from: ListSide) => void;
     setLayout: (layout: Layout) => void;
-    setCardSizeMm: (size: { widthMm: number; heightMm: number }) => void;
+    setCardSizeMm: (widthMm: number, heightMm: number) => void;
     updateBox: (boxId: string, update: Partial<Layout["boxes"][number]>) => void;
     beginLayoutEdit: () => void;
     endLayoutEdit: () => void;
@@ -100,10 +100,61 @@ const STORAGE_KEY = "lc_state_v1";
 
 const cloneCards = (cards: Card[]) => cards.map((card) => structuredClone(card));
 
+const makeDemoCard = (id: string): Card =>
+  normalizeCard({
+    id,
+    inf: "machen",
+    freq: 3,
+    tags: ["B2", "grundverb", "praesens"],
+    tr_1_ru: "делать",
+    tr_1_ctx: "основное значение",
+    tr_2_ru: "выполнять",
+    tr_2_ctx: "работа и задачи",
+    tr_3_ru: "заставлять",
+    tr_3_ctx: "разговорная речь",
+    tr_4_ru: "устраивать",
+    tr_4_ctx: "организация событий",
+    forms_p3: "macht",
+    forms_prat: "machte",
+    forms_p2: "gemacht",
+    forms_aux: "haben",
+    syn_1_de: "tun",
+    syn_1_ru: "делать",
+    syn_2_de: "erledigen",
+    syn_2_ru: "выполнять",
+    syn_3_de: "verursachen",
+    syn_3_ru: "вызывать",
+    ex_1_de: "Ich mache den Plan für unser neues Projekt.",
+    ex_1_ru: "Я составляю план для нашего нового проекта.",
+    ex_1_tag: "Präsens",
+    ex_2_de: "Gestern habe ich die Präsentation für das Team gemacht.",
+    ex_2_ru: "Вчера я сделал презентацию для команды.",
+    ex_2_tag: "Perfekt",
+    ex_3_de: "Wir müssen das heute noch besser machen.",
+    ex_3_ru: "Мы должны сегодня сделать это еще лучше.",
+    ex_3_tag: "Modalverb",
+    ex_4_de: "Früher machte er alle Berichte allein.",
+    ex_4_ru: "Раньше он делал все отчёты один.",
+    ex_4_tag: "Präteritum",
+    ex_5_de: "So macht man das in unserer Abteilung.",
+    ex_5_ru: "Так это делают в нашем отделе.",
+    ex_5_tag: "Unpersönlich",
+    rek_1_de: "Mach dir zuerst eine klare Struktur.",
+    rek_1_ru: "Сначала выстрой четкую структуру.",
+    rek_2_de: "Das macht im Kontext mehr Sinn.",
+    rek_2_ru: "В контексте это имеет больше смысла.",
+    rek_3_de: "Was machst du als nächsten Schritt?",
+    rek_3_ru: "Что ты делаешь следующим шагом?",
+    rek_4_de: "Mach weiter, bis die Aussage präzise ist.",
+    rek_4_ru: "Продолжай, пока формулировка не станет точной.",
+    rek_5_de: "Damit macht der ganze Dialog mehr Sinn.",
+    rek_5_ru: "Так весь диалог звучит логичнее."
+  });
+
 const createBaseState = () => ({
-  cardsA: [] as Card[],
-  cardsB: [] as Card[],
-  selectedId: null as string | null,
+  cardsA: [applySemanticLayoutToCard(makeDemoCard("demo-a-machen"), defaultLayout.widthMm, defaultLayout.heightMm)] as Card[],
+  cardsB: [applySemanticLayoutToCard(makeDemoCard("demo-b-machen"), defaultLayout.widthMm, defaultLayout.heightMm)] as Card[],
+  selectedId: "demo-a-machen" as string | null,
   selectedSide: "A" as ListSide,
   layout: structuredClone(defaultLayout),
   selectedBoxId: null as string | null,
@@ -282,10 +333,10 @@ export const useAppStore = create<AppState>()(
       recordHistory(state, get());
       state.layout = layout;
     }),
-    setCardSizeMm: (size) => set((state) => {
+    setCardSizeMm: (widthMm, heightMm) => set((state) => {
       recordHistory(state, get());
-      state.layout.widthMm = Math.max(10, size.widthMm);
-      state.layout.heightMm = Math.max(10, size.heightMm);
+      state.layout.widthMm = Math.min(400, Math.max(50, widthMm));
+      state.layout.heightMm = Math.min(400, Math.max(50, heightMm));
     }),
     updateBox: (boxId, update) => set((state) => {
       if (!state.isEditingLayout) {
