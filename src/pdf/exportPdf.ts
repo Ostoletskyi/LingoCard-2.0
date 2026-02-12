@@ -2,6 +2,9 @@ import { jsPDF } from "jspdf";
 import type { Card } from "../model/cardSchema";
 import type { Layout } from "../model/layoutSchema";
 import { getFieldText } from "../utils/cardFields";
+import { logger } from "../utils/logger";
+import { MM_PER_INCH, mmToPdf } from "../utils/mmPx";
+import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 
 export type PdfExportOptions = {
   cardsPerRow?: number;
@@ -56,37 +59,72 @@ const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: s
 export const exportCardsToPdf = (
   cards: Card[],
   layout: Layout,
-  _options: PdfExportOptions,
+  options: PdfExportOptions,
   fileName: string = "cards.pdf"
 ) => {
-  const cardWidth = layout.widthMm;
-  const cardHeight = layout.heightMm;
+  const { cardsPerRow = 1, cardsPerColumn = 1, marginMm = 0 } = options;
+  logger.info("PDF export start", `cards=${cards.length}, size=${layout.widthMm}x${layout.heightMm}mm, mode=${cardsPerRow}x${cardsPerColumn}, margin=${marginMm}mm, font=DejaVu Sans/Noto Sans fallback`);
+  const pdfDebug =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("pdfDebug") === "1";
 
   const doc = new jsPDF({
-    orientation: cardWidth >= cardHeight ? "landscape" : "portrait",
+    orientation: layout.widthMm >= layout.heightMm ? "landscape" : "portrait",
     unit: "mm",
-    format: [cardWidth, cardHeight]
+    format: [mmToPdf(layout.widthMm), mmToPdf(layout.heightMm)]
   });
 
+  const cardWidth = layout.widthMm;
+  const cardHeight = layout.heightMm;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, mmToCanvasPx(cardWidth));
+  canvas.height = Math.max(1, mmToCanvasPx(cardHeight));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    logger.error("PDF export failed", "Canvas 2D context is unavailable");
+    return;
+  }
+
   cards.forEach((card, index) => {
-    if (index > 0) {
-      doc.addPage([cardWidth, cardHeight], cardWidth >= cardHeight ? "landscape" : "portrait");
+    const localIndex = index % (cardsPerRow * cardsPerColumn);
+    if (index > 0 && localIndex === 0) {
+      doc.addPage();
+    }
+    const row = Math.floor(localIndex / cardsPerRow);
+    const col = localIndex % cardsPerRow;
+    const x = marginMm + col * cardWidth;
+    const y = marginMm + row * cardHeight;
+
+    if (marginMm > 0) {
+      logger.warn("PDF export uses margin", `${marginMm}mm margin applied`);
     }
 
-    layout.boxes.forEach((box) => {
-      if (box.style.visible === false) return;
-      const value = getFieldText(card, box.fieldId).text;
-      const textX = box.xMm + box.style.paddingMm;
-      const textY = box.yMm + box.style.paddingMm + box.style.fontSizePt * 0.3527;
-      const maxWidth = Math.max(1, box.wMm - box.style.paddingMm * 2);
-      const wrapped = doc.splitTextToSize(value, maxWidth);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      doc.setFontSize(box.style.fontSizePt);
-      doc.setLineHeightFactor(box.style.lineHeight);
-      if (box.style.fontWeight === "bold") {
-        doc.setFont("helvetica", "bold");
-      } else {
-        doc.setFont("helvetica", "normal");
+    const activeBoxes = card.boxes?.length
+      ? card.boxes
+      : buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm);
+    activeBoxes.forEach((box) => {
+      if (box.style.visible === false) return;
+      const fontPx = (box.style.fontSizePt / 72) * CANVAS_DPI;
+      const paddingPx = mmToCanvasPx(box.style.paddingMm);
+      const boxX = mmToCanvasPx(box.xMm);
+      const boxY = mmToCanvasPx(box.yMm);
+      const boxW = Math.max(1, mmToCanvasPx(box.wMm));
+      const boxH = Math.max(1, mmToCanvasPx(box.hMm));
+      const maxWidth = Math.max(1, boxW - paddingPx * 2);
+      const text = resolveBoxText(card, box.fieldId, box.textMode, box.text, box.staticText);
+
+      ctx.font = `${box.style.fontWeight === "bold" ? "700" : "400"} ${fontPx}px "DejaVu Sans", "Noto Sans", "Arial", sans-serif`;
+      ctx.fillStyle = "#111827";
+      ctx.textBaseline = "top";
+
+      if (pdfDebug) {
+        ctx.strokeStyle = "rgba(75,85,99,0.75)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
       }
 
       const lines = wrapText(ctx, text, maxWidth);
