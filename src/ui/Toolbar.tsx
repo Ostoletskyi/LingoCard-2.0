@@ -211,6 +211,34 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
             title="Height mm (wheel: 1mm, Shift+wheel: 10mm)"
           />
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">Card (mm)</span>
+          <input
+            type="number"
+            min={10}
+            step={1}
+            value={layout.widthMm}
+            onChange={(event) =>
+              setCardSizeMm({ widthMm: Number(event.target.value), heightMm: layout.heightMm })
+            }
+            onWheel={(event) => handleCardSizeWheel(event, "width")}
+            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+            title="Width mm (wheel: 1mm, Shift+wheel: 10mm)"
+          />
+          <span className="text-xs text-slate-400">×</span>
+          <input
+            type="number"
+            min={10}
+            step={1}
+            value={layout.heightMm}
+            onChange={(event) =>
+              setCardSizeMm({ widthMm: layout.widthMm, heightMm: Number(event.target.value) })
+            }
+            onWheel={(event) => handleCardSizeWheel(event, "height")}
+            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+            title="Height mm (wheel: 1mm, Shift+wheel: 10mm)"
+          />
+        </div>
         <label className="flex items-center gap-1 text-xs text-slate-600">
           <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
           Сетка
