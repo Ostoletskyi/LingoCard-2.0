@@ -205,7 +205,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 >
                   {historyBookmarks.map((bookmark, index) => (
                     <option key={bookmark.id} value={bookmark.id}>
-                      #{index + 1} · {new Date(bookmark.createdAt).toLocaleString()}
+                      #{index + 1} · {new Date(bookmark.createdAt).toLocaleString()} · {bookmark.action}
                     </option>
                   ))}
                 </select>

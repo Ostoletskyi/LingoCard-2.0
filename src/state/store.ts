@@ -26,6 +26,7 @@ export type HistoryState = {
 export type HistoryBookmark = {
   id: string;
   createdAt: string;
+  action: string;
   snapshot: AppStateSnapshot;
 };
 
@@ -113,9 +114,9 @@ export type AppState = AppStateSnapshot &
     redo: () => void;
   };
 
-const HISTORY_LIMIT = 100;
-const BOOKMARK_LIMIT = 200;
-const CHANGE_LOG_LIMIT = 500;
+const HISTORY_LIMIT = 50;
+const BOOKMARK_LIMIT = 50;
+const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
 
 const cloneCards = (cards: Card[]) => cards.map((card) => structuredClone(card));
@@ -229,7 +230,12 @@ const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["s
     debugOverlays: typeof raw.debugOverlays === "boolean" ? raw.debugOverlays : base.debugOverlays,
     rulersPlacement: raw.rulersPlacement === "inside" ? "inside" : "outside",
     historyBookmarks: Array.isArray(raw.historyBookmarks)
-      ? raw.historyBookmarks.filter((item) => Boolean(item?.id && item?.snapshot && item?.createdAt))
+      ? raw.historyBookmarks
+          .filter((item) => Boolean(item?.id && item?.snapshot && item?.createdAt))
+          .map((item) => ({
+            ...item,
+            action: typeof item.action === "string" && item.action.trim().length > 0 ? item.action : "snapshot"
+          }))
       : [],
     changeLog: Array.isArray(raw.changeLog)
       ? raw.changeLog.filter((item) => Boolean(item?.id && item?.at && item?.action))
@@ -269,6 +275,19 @@ const recordHistory = (state: AppState, current: AppState) => {
   state.future = [];
 };
 
+const appendHistoryBookmark = (state: AppState, current: AppState, action: string) => {
+  const createdAt = new Date().toISOString();
+  state.historyBookmarks.push({
+    id: createdAt,
+    createdAt,
+    action,
+    snapshot: snapshotState(current)
+  });
+  if (state.historyBookmarks.length > BOOKMARK_LIMIT) {
+    state.historyBookmarks.shift();
+  }
+};
+
 const appendChange = (state: AppState, action: string) => {
   state.changeLog.push({
     id: crypto.randomUUID(),
@@ -278,6 +297,12 @@ const appendChange = (state: AppState, action: string) => {
   if (state.changeLog.length > CHANGE_LOG_LIMIT) {
     state.changeLog.shift();
   }
+};
+
+const trackStateEvent = (state: AppState, current: AppState, action: string) => {
+  recordHistory(state, current);
+  appendChange(state, action);
+  appendHistoryBookmark(state, current, action);
 };
 
 const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
@@ -351,18 +376,20 @@ export const useAppStore = create<AppState>()(
     selectedBoxId: initialState.selectedBoxId,
     isEditingLayout: false,
     setZoom: (value) => set((state) => {
+      trackStateEvent(state, get(), "setZoom");
       state.zoom = Math.min(2, Math.max(0.25, value));
     }),
     selectCard: (id, side) => set((state) => {
+      trackStateEvent(state, get(), `selectCard:${side}:${id ?? "none"}`);
       state.selectedId = id;
       state.selectedSide = side;
     }),
     selectBox: (id) => set((state) => {
+      trackStateEvent(state, get(), `selectBox:${id ?? "none"}`);
       state.selectedBoxId = id;
     }),
     addCard: (card, side) => set((state) => {
-      recordHistory(state, get());
-      appendChange(state, `addCard:${side}`);
+      trackStateEvent(state, get(), `addCard:${side}`);
       const normalized = normalizeCard(card);
       if (side === "A") {
         state.cardsA.push(normalized);
@@ -373,8 +400,7 @@ export const useAppStore = create<AppState>()(
       state.selectedSide = side;
     }),
     updateCard: (card, side, reason) => set((state) => {
-      recordHistory(state, get());
-      appendChange(state, reason ?? `updateCard:${side}:${card.id}`);
+      trackStateEvent(state, get(), reason ?? `updateCard:${side}:${card.id}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
@@ -382,16 +408,15 @@ export const useAppStore = create<AppState>()(
       }
     }),
     updateCardSilent: (card, side, reason) => set((state) => {
+      trackStateEvent(state, get(), reason ?? `updateCardSilent:${side}:${card.id}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
         list[index] = card;
-        appendChange(state, reason ?? `updateCardSilent:${side}:${card.id}`);
       }
     }),
     removeCard: (id, side) => set((state) => {
-      recordHistory(state, get());
-      appendChange(state, `removeCard:${side}`);
+      trackStateEvent(state, get(), `removeCard:${side}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === id);
       if (index >= 0) {
@@ -402,8 +427,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     moveCard: (id, from) => set((state) => {
-      recordHistory(state, get());
-      appendChange(state, `moveCard:${from}`);
+      trackStateEvent(state, get(), `moveCard:${from}`);
       const fromList = from === "A" ? state.cardsA : state.cardsB;
       const toList = from === "A" ? state.cardsB : state.cardsA;
       const index = fromList.findIndex((item) => item.id === id);
@@ -417,68 +441,72 @@ export const useAppStore = create<AppState>()(
       }
     }),
     setLayout: (layout) => set((state) => {
-      recordHistory(state, get());
-      appendChange(state, "setLayout");
+      trackStateEvent(state, get(), "setLayout");
       state.layout = layout;
     }),
     setCardSizeMm: (widthMm, heightMm) => set((state) => {
-      recordHistory(state, get());
-      appendChange(state, "setCardSizeMm");
+      trackStateEvent(state, get(), "setCardSizeMm");
       state.layout.widthMm = Math.min(400, Math.max(50, widthMm));
       state.layout.heightMm = Math.min(400, Math.max(50, heightMm));
     }),
     updateBox: (boxId, update) => set((state) => {
-      if (!state.isEditingLayout) {
-        recordHistory(state, get());
-        state.isEditingLayout = true;
-      }
+      trackStateEvent(state, get(), `updateBox:${boxId}`);
+      state.isEditingLayout = true;
       const box = state.layout.boxes.find((item) => item.id === boxId);
       if (box) {
         Object.assign(box, update);
-        appendChange(state, `updateBox:${boxId}`);
       }
     }),
     beginLayoutEdit: () => set((state) => {
-      if (!state.isEditingLayout) {
-        recordHistory(state, get());
-        state.isEditingLayout = true;
-      }
+      trackStateEvent(state, get(), "beginLayoutEdit");
+      state.isEditingLayout = true;
     }),
     endLayoutEdit: () => set((state) => {
+      trackStateEvent(state, get(), "endLayoutEdit");
       state.isEditingLayout = false;
     }),
     toggleGrid: () => set((state) => {
+      trackStateEvent(state, get(), "toggleGrid");
       state.gridEnabled = !state.gridEnabled;
     }),
     toggleRulers: () => set((state) => {
+      trackStateEvent(state, get(), "toggleRulers");
       state.rulersEnabled = !state.rulersEnabled;
     }),
     toggleSnap: () => set((state) => {
+      trackStateEvent(state, get(), "toggleSnap");
       state.snapEnabled = !state.snapEnabled;
     }),
     setGridIntensity: (value) => set((state) => {
+      trackStateEvent(state, get(), `setGridIntensity:${value}`);
       state.gridIntensity = value;
     }),
     toggleOnlyCmLines: () => set((state) => {
+      trackStateEvent(state, get(), "toggleOnlyCmLines");
       state.showOnlyCmLines = !state.showOnlyCmLines;
     }),
     toggleDebugOverlays: () => set((state) => {
+      trackStateEvent(state, get(), "toggleDebugOverlays");
       state.debugOverlays = !state.debugOverlays;
     }),
     setRulersPlacement: (value) => set((state) => {
+      trackStateEvent(state, get(), `setRulersPlacement:${value}`);
       state.rulersPlacement = value;
     }),
     startExport: (label) => set((state) => {
+      trackStateEvent(state, get(), `startExport:${label}`);
       state.isExporting = true;
       state.exportStartedAt = Date.now();
       state.exportLabel = label;
     }),
     finishExport: () => set((state) => {
+      trackStateEvent(state, get(), "finishExport");
       state.isExporting = false;
       state.exportStartedAt = null;
       state.exportLabel = null;
     }),
     toggleCardSelection: (id, side) => set((state) => {
+      trackStateEvent(state, get(), `toggleCardSelection:${side}:${id}`);
       const list = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
       const next = new Set(list);
       if (next.has(id)) {
@@ -493,6 +521,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     selectAllCards: (side) => set((state) => {
+      trackStateEvent(state, get(), `selectAllCards:${side}`);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const next = source.map((card) => card.id);
       if (side === "A") {
@@ -502,6 +531,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     clearCardSelection: (side) => set((state) => {
+      trackStateEvent(state, get(), `clearCardSelection:${side}`);
       if (side === "A") {
         state.selectedCardIdsA = [];
       } else {
@@ -509,8 +539,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     autoLayoutAllCards: (side) => set((state) => {
-      recordHistory(state, get());
-      appendChange(state, `autoLayoutAllCards:${side}`);
+      trackStateEvent(state, get(), `autoLayoutAllCards:${side}`);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm));
       if (side === "A") {
@@ -534,8 +563,7 @@ export const useAppStore = create<AppState>()(
       if (!hasAnyTarget) {
         return;
       }
-      recordHistory(state, get());
-      appendChange(state, `adjustColumnFontSizeByField:${side}`);
+      trackStateEvent(state, get(), `adjustColumnFontSizeByField:${side}`);
       const next = source.map((card) => {
         const baseCard = card.boxes?.length
           ? card
@@ -593,33 +621,31 @@ export const useAppStore = create<AppState>()(
       state.isEditingLayout = false;
     }),
     pushHistory: () => set((state) => {
-      recordHistory(state, get());
+      trackStateEvent(state, get(), "pushHistorySnapshot");
       const createdAt = new Date().toISOString();
       state.historyBookmarks.push({
         id: createdAt,
         createdAt,
+        action: "manualSnapshot",
         snapshot: snapshotState(get())
       });
       if (state.historyBookmarks.length > BOOKMARK_LIMIT) {
         state.historyBookmarks.shift();
       }
-      appendChange(state, "pushHistorySnapshot");
     }),
     jumpToHistoryBookmark: (id) => set((state) => {
       const target = state.historyBookmarks.find((bookmark) => bookmark.id === id);
       if (!target) {
         return;
       }
-      recordHistory(state, get());
+      trackStateEvent(state, get(), `jumpToHistoryBookmark:${id}`);
       applySnapshot(state, target.snapshot);
-      appendChange(state, `jumpToHistoryBookmark:${id}`);
     }),
     deleteHistoryBookmark: (id) => set((state) => {
+      trackStateEvent(state, get(), `deleteHistoryBookmark:${id}`);
       const before = state.historyBookmarks.length;
       state.historyBookmarks = state.historyBookmarks.filter((bookmark) => bookmark.id !== id);
-      if (state.historyBookmarks.length !== before) {
-        appendChange(state, `deleteHistoryBookmark:${id}`);
-      }
+      if (state.historyBookmarks.length === before) return;
     }),
     undo: () => set((state) => {
       const previous = state.past.pop();
