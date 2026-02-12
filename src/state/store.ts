@@ -70,7 +70,7 @@ export type AppState = AppStateSnapshot &
     removeCard: (id: string, side: ListSide) => void;
     moveCard: (id: string, from: ListSide) => void;
     setLayout: (layout: Layout) => void;
-    setCardSizeMm: (widthMm: number, heightMm: number) => void;
+    setCardSizeMm: (size: { widthMm: number; heightMm: number }) => void;
     updateBox: (boxId: string, update: Partial<Layout["boxes"][number]>) => void;
     beginLayoutEdit: () => void;
     endLayoutEdit: () => void;
@@ -333,10 +333,10 @@ export const useAppStore = create<AppState>()(
       recordHistory(state, get());
       state.layout = layout;
     }),
-    setCardSizeMm: (widthMm, heightMm) => set((state) => {
+    setCardSizeMm: (size) => set((state) => {
       recordHistory(state, get());
-      state.layout.widthMm = Math.min(400, Math.max(50, widthMm));
-      state.layout.heightMm = Math.min(400, Math.max(50, heightMm));
+      state.layout.widthMm = Math.max(10, size.widthMm);
+      state.layout.heightMm = Math.max(10, size.heightMm);
     }),
     updateBox: (boxId, update) => set((state) => {
       if (!state.isEditingLayout) {
