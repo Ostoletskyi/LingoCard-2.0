@@ -390,8 +390,16 @@ const appendChange = (state: AppState, action: string) => {
   }
 };
 
-const trackStateEvent = (state: AppState, current: AppState, action: string) => {
-  recordHistory(state, current);
+const trackStateEvent = (
+  state: AppState,
+  current: AppState,
+  action: string,
+  options?: { undoable?: boolean }
+) => {
+  const undoable = options?.undoable ?? true;
+  if (undoable) {
+    recordHistory(state, current);
+  }
   appendChange(state, action);
   appendHistoryBookmark(state, current, action);
 };
@@ -471,12 +479,12 @@ export const useAppStore = create<AppState>()(
       state.zoom = Math.min(2, Math.max(0.25, value));
     }),
     selectCard: (id, side) => set((state) => {
-      trackStateEvent(state, get(), `selectCard:${side}:${id ?? "none"}`);
+      trackStateEvent(state, get(), `selectCard:${side}:${id ?? "none"}`, { undoable: false });
       state.selectedId = id;
       state.selectedSide = side;
     }),
     selectBox: (id) => set((state) => {
-      trackStateEvent(state, get(), `selectBox:${id ?? "none"}`);
+      trackStateEvent(state, get(), `selectBox:${id ?? "none"}`, { undoable: false });
       state.selectedBoxId = id;
     }),
     addCard: (card, side) => set((state) => {
@@ -585,13 +593,13 @@ export const useAppStore = create<AppState>()(
       state.rulersPlacement = value;
     }),
     startExport: (label) => set((state) => {
-      trackStateEvent(state, get(), `startExport:${label}`);
+      trackStateEvent(state, get(), `startExport:${label}`, { undoable: false });
       state.isExporting = true;
       state.exportStartedAt = Date.now();
       state.exportLabel = label;
     }),
     finishExport: () => set((state) => {
-      trackStateEvent(state, get(), "finishExport");
+      trackStateEvent(state, get(), "finishExport", { undoable: false });
       state.isExporting = false;
       state.exportStartedAt = null;
       state.exportLabel = null;
