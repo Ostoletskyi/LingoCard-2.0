@@ -104,11 +104,17 @@ export type AppState = AppStateSnapshot &
     toggleCardSelection: (id: string, side: ListSide) => void;
     selectAllCards: (side: ListSide) => void;
     clearCardSelection: (side: ListSide) => void;
-    updateCardSilent: (card: Card, side: ListSide, reason?: string) => void;
+    updateCardSilent: (
+      card: Card,
+      side: ListSide,
+      reason?: string,
+      options?: { track?: boolean }
+    ) => void;
     autoLayoutAllCards: (side: ListSide) => void;
     adjustColumnFontSizeByField: (side: ListSide, fieldIds: string[], deltaPt: number) => void;
     addBlockToCard: (side: ListSide, cardId: string, kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple") => void;
     removeSelectedBoxFromCard: (side: ListSide, cardId: string) => void;
+    recordEvent: (action: string) => void;
     resetState: () => void;
     pushHistory: () => void;
     jumpToHistoryBookmark: (id: string) => void;
@@ -392,16 +398,19 @@ const appendChange = (state: AppState, action: string) => {
 
 const trackStateEvent = (
   state: AppState,
-  current: AppState,
+  _current: AppState,
   action: string,
   options?: { undoable?: boolean }
 ) => {
+  // Use the immer draft `state` as the canonical pre-mutation source inside set(...)
+  // to avoid capturing post-change snapshots from external getters.
+  const baseline = state;
   const undoable = options?.undoable ?? true;
   if (undoable) {
-    recordHistory(state, current);
+    recordHistory(state, baseline);
   }
   appendChange(state, action);
-  appendHistoryBookmark(state, current, action);
+  appendHistoryBookmark(state, baseline, action);
 };
 
 const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
@@ -506,8 +515,11 @@ export const useAppStore = create<AppState>()(
         list[index] = card;
       }
     }),
-    updateCardSilent: (card, side, reason) => set((state) => {
-      trackStateEvent(state, get(), reason ?? `updateCardSilent:${side}:${card.id}`);
+    updateCardSilent: (card, side, reason, options) => set((state) => {
+      const track = options?.track ?? true;
+      if (track) {
+        trackStateEvent(state, get(), reason ?? `updateCardSilent:${side}:${card.id}`);
+      }
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
@@ -719,6 +731,9 @@ export const useAppStore = create<AppState>()(
       if (nextBoxes.length === current.boxes.length) return;
       list[index] = { ...current, boxes: nextBoxes };
       state.selectedBoxId = null;
+    }),
+    recordEvent: (action) => set((state) => {
+      trackStateEvent(state, get(), action, { undoable: false });
     }),
     resetState: () => set((state) => {
       if (typeof window !== "undefined") {

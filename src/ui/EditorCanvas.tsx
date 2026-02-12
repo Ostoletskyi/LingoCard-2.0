@@ -79,7 +79,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     pushHistory,
     adjustColumnFontSizeByField,
     setZoom,
-    removeSelectedBoxFromCard
+    removeSelectedBoxFromCard,
+    recordEvent
   } = useAppStore((state) => ({
     layout: state.layout,
     zoom: state.zoom,
@@ -100,7 +101,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     pushHistory: state.pushHistory,
     adjustColumnFontSizeByField: state.adjustColumnFontSizeByField,
     setZoom: state.setZoom,
-    removeSelectedBoxFromCard: state.removeSelectedBoxFromCard
+    removeSelectedBoxFromCard: state.removeSelectedBoxFromCard,
+    recordEvent: state.recordEvent
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -113,6 +115,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const editRef = useRef<HTMLTextAreaElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const dragActionRef = useRef<string | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
 
   const card = useMemo(() => {
@@ -148,7 +151,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const nextBoxes = card.boxes.map((box) =>
       box.id === boxId ? { ...box, ...update } : box
     );
-    updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason);
+    updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason, { track: false });
   };
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
@@ -169,6 +172,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     selectBox(box.id);
     if (!canEditLayoutGeometry) return;
     pushHistory();
+    dragActionRef.current = mode.type === "move" ? `boxMove:${box.id}` : `boxResize:${box.id}`;
     setDragState({
       boxId: box.id,
       startX: event.clientX,
@@ -253,6 +257,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   };
 
   const handlePointerUp = () => {
+    if (dragState?.hasApplied && dragActionRef.current) {
+      recordEvent(dragActionRef.current);
+    }
+    dragActionRef.current = null;
     setDragState(null);
   };
 
