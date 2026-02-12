@@ -82,7 +82,7 @@ export type AppState = AppStateSnapshot &
     selectCard: (id: string | null, side: ListSide) => void;
     selectBox: (id: string | null) => void;
     addCard: (card: Partial<Card>, side: ListSide) => void;
-    updateCard: (card: Card, side: ListSide) => void;
+    updateCard: (card: Card, side: ListSide, reason?: string) => void;
     removeCard: (id: string, side: ListSide) => void;
     moveCard: (id: string, from: ListSide) => void;
     setLayout: (layout: Layout) => void;
@@ -102,7 +102,7 @@ export type AppState = AppStateSnapshot &
     toggleCardSelection: (id: string, side: ListSide) => void;
     selectAllCards: (side: ListSide) => void;
     clearCardSelection: (side: ListSide) => void;
-    updateCardSilent: (card: Card, side: ListSide) => void;
+    updateCardSilent: (card: Card, side: ListSide, reason?: string) => void;
     autoLayoutAllCards: (side: ListSide) => void;
     adjustColumnFontSizeByField: (side: ListSide, fieldIds: string[], deltaPt: number) => void;
     resetState: () => void;
@@ -372,21 +372,21 @@ export const useAppStore = create<AppState>()(
       state.selectedId = normalized.id;
       state.selectedSide = side;
     }),
-    updateCard: (card, side) => set((state) => {
+    updateCard: (card, side, reason) => set((state) => {
       recordHistory(state, get());
-      appendChange(state, `updateCard:${side}`);
+      appendChange(state, reason ?? `updateCard:${side}:${card.id}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
         list[index] = card;
       }
     }),
-    updateCardSilent: (card, side) => set((state) => {
+    updateCardSilent: (card, side, reason) => set((state) => {
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
         list[index] = card;
-        appendChange(state, `updateCardSilent:${side}`);
+        appendChange(state, reason ?? `updateCardSilent:${side}:${card.id}`);
       }
     }),
     removeCard: (id, side) => set((state) => {

@@ -161,41 +161,47 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
         <div className="overflow-hidden rounded-lg border border-slate-100 bg-white/70 p-3 dark:border-slate-800 dark:bg-slate-900/60">
           {openSection === "history" && (
             <div className="grid gap-2">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="flex items-center gap-2">
                 <button
-                  className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
                   onClick={undo}
                   disabled={pastCount === 0}
                   title="Отменить"
+                  aria-label="Отменить"
                 >
                   ↶
                 </button>
                 <button
-                  className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
                   onClick={redo}
                   disabled={futureCount === 0}
                   title="Повторить"
+                  aria-label="Повторить"
                 >
                   ↷
                 </button>
                 <button
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200"
                   onClick={pushHistory}
                   title="Снимок истории"
+                  aria-label="Снимок истории"
                 >
                   📸
                 </button>
+                <div className="ml-1 text-[11px] text-slate-500 dark:text-slate-300">
+                  События: {historyBookmarks.length}
+                </div>
               </div>
 
               <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
                 <div className="mb-1 text-[11px] text-slate-500 dark:text-slate-300">
-                  Снимки: {historyBookmarks.length}
+                  ID снимка (по времени):
                 </div>
                 <select
-                  size={Math.min(6, Math.max(2, historyBookmarks.length || 2))}
+                  size={Math.min(5, Math.max(2, historyBookmarks.length || 2))}
                   value={selectedBookmarkId}
                   onChange={(event) => setSelectedBookmarkId(event.target.value)}
-                  className="h-28 w-full rounded border border-slate-200 bg-white p-1 text-[11px] dark:border-slate-700 dark:bg-slate-900"
+                  className="h-24 w-full rounded border border-slate-200 bg-white p-1 text-[11px] dark:border-slate-700 dark:bg-slate-900"
                 >
                   {historyBookmarks.map((bookmark, index) => (
                     <option key={bookmark.id} value={bookmark.id}>
@@ -205,8 +211,9 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 </select>
                 <div className="mt-2 flex gap-2">
                   <button
-                    className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
                     title="Перейти к состоянию проекта"
+                    aria-label="Перейти к состоянию проекта"
                     disabled={!selectedBookmarkId}
                     onClick={() => {
                       if (selectedBookmarkId) {
@@ -217,8 +224,9 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     ⏪
                   </button>
                   <button
-                    className="flex-1 rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-600 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 text-xs text-rose-600 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
                     title="Удалить снимок"
+                    aria-label="Удалить снимок"
                     disabled={!selectedBookmarkId}
                     onClick={() => {
                       if (selectedBookmarkId) {
@@ -228,6 +236,9 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                   >
                     🗑
                   </button>
+                  <span className="self-center text-[11px] text-slate-400 dark:text-slate-500">
+                    Выберите ID и примените действие
+                  </span>
                 </div>
               </div>
             </div>

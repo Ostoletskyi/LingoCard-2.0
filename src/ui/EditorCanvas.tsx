@@ -139,14 +139,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const visibleBoxes = useMemo(() => activeBoxes.filter((box) => box.style.visible !== false), [activeBoxes]);
   const canEditLayoutGeometry = hasCardBoxes;
 
-  const updateActiveBox = (boxId: string, update: Partial<Box>) => {
+  const updateActiveBox = (boxId: string, update: Partial<Box>, reason: string) => {
     if (!canEditLayoutGeometry || !card || !card.boxes || card.boxes.length === 0) {
       return;
     }
     const nextBoxes = card.boxes.map((box) =>
       box.id === boxId ? { ...box, ...update } : box
     );
-    updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide);
+    updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason);
   };
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
@@ -203,7 +203,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const nextYRaw = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
       const nextX = Math.min(Math.max(0, nextXRaw), Math.max(0, layout.widthMm - dragState.startBox.wMm));
       const nextY = Math.min(Math.max(0, nextYRaw), Math.max(0, layout.heightMm - dragState.startBox.hMm));
-      updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY });
+      updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY }, `boxMove:${dragState.boxId}`);
       return;
     }
 
@@ -243,7 +243,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
     nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
 
-    updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
+    updateActiveBox(
+      dragState.boxId,
+      { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH },
+      `boxResize:${dragState.boxId}`
+    );
   };
 
   const handlePointerUp = () => {
@@ -314,7 +318,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const currentCard = source.find((item) => item.id === editSession.cardId);
       if (currentCard) {
         const updated = updateCardField(currentCard, editSession.fieldId, editValue);
-        store.updateCard(updated, editSession.side);
+        store.updateCard(updated, editSession.side, `textEdit:${editSession.fieldId}:${editSession.cardId}`);
       }
     }
     setEditingBoxId(null);
