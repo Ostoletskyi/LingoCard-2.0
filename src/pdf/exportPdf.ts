@@ -4,10 +4,53 @@ import type { Layout } from "../model/layoutSchema";
 import { getFieldText } from "../utils/cardFields";
 
 export type PdfExportOptions = {
-  pageFormat?: "a4" | "a5";
-  cardsPerRow: number;
-  cardsPerColumn: number;
-  marginMm: number;
+  cardsPerRow?: number;
+  cardsPerColumn?: number;
+  marginMm?: number;
+};
+
+const CANVAS_DPI = 300;
+
+const mmToCanvasPx = (mm: number) => Math.round((mm / MM_PER_INCH) * CANVAS_DPI);
+
+const wrapText = (
+  ctx: CanvasRenderingContext2D,
+  value: string,
+  maxWidthPx: number
+): string[] => {
+  const source = value.replace(/\r\n/g, "\n").split("\n");
+  const lines: string[] = [];
+  source.forEach((row) => {
+    if (!row) {
+      lines.push("");
+      return;
+    }
+    const words = row.split(/\s+/);
+    let current = "";
+    words.forEach((word) => {
+      const candidate = current ? `${current} ${word}` : word;
+      if (ctx.measureText(candidate).width <= maxWidthPx) {
+        current = candidate;
+        return;
+      }
+      if (current) {
+        lines.push(current);
+      }
+      current = word;
+    });
+    if (current) lines.push(current);
+  });
+  return lines;
+};
+
+const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: string, staticText?: string) => {
+  if (textMode === "static") {
+    return staticText || text || "";
+  }
+  if (text && text.trim().length > 0) {
+    return text;
+  }
+  return getFieldText(card, fieldId).text;
 };
 
 export const exportCardsToPdf = (
@@ -45,12 +88,35 @@ export const exportCardsToPdf = (
       } else {
         doc.setFont("helvetica", "normal");
       }
-      doc.text(wrapped, textX, textY, {
-        maxWidth,
-        align: box.style.align
+
+      const lines = wrapText(ctx, text, maxWidth);
+      const lineHeightPx = fontPx * box.style.lineHeight;
+      lines.forEach((line, lineIndex) => {
+        const textY = boxY + paddingPx + lineIndex * lineHeightPx;
+        if (textY > boxY + boxH - lineHeightPx) return;
+
+        const measured = ctx.measureText(line).width;
+        let textX = boxX + paddingPx;
+        if (box.style.align === "center") {
+          textX = boxX + (boxW - measured) / 2;
+        }
+        if (box.style.align === "right") {
+          textX = boxX + boxW - paddingPx - measured;
+        }
+        ctx.fillText(line, textX, textY);
       });
     });
+
+    if (pdfDebug) {
+      ctx.strokeStyle = "rgba(30,64,175,0.8)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+    }
+
+    const image = canvas.toDataURL("image/png");
+    doc.addImage(image, "PNG", mmToPdf(x), mmToPdf(y), mmToPdf(cardWidth), mmToPdf(cardHeight));
   });
 
+  logger.info("PDF export done", `file=${fileName}, pages=${doc.getNumberOfPages()}`);
   doc.save(fileName);
 };
