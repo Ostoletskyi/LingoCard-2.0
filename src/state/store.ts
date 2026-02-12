@@ -4,6 +4,7 @@ import type { Card } from "../model/cardSchema";
 import { defaultLayout, type Layout } from "../model/layoutSchema";
 import { normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
+import type { Box } from "../model/layoutSchema";
 
 export type ListSide = "A" | "B";
 
@@ -106,6 +107,8 @@ export type AppState = AppStateSnapshot &
     updateCardSilent: (card: Card, side: ListSide, reason?: string) => void;
     autoLayoutAllCards: (side: ListSide) => void;
     adjustColumnFontSizeByField: (side: ListSide, fieldIds: string[], deltaPt: number) => void;
+    addBlockToCard: (side: ListSide, cardId: string, kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple") => void;
+    removeSelectedBoxFromCard: (side: ListSide, cardId: string) => void;
     resetState: () => void;
     pushHistory: () => void;
     jumpToHistoryBookmark: (id: string) => void;
@@ -118,6 +121,94 @@ const HISTORY_LIMIT = 50;
 const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
+
+const createBoxTemplate = (
+  kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple",
+  currentBoxes: Box[]
+): Box => {
+  const nextZ = Math.max(0, ...currentBoxes.map((box) => box.z ?? 0)) + 1;
+  const offset = (currentBoxes.length % 8) * 2;
+  const base: Box = {
+    id: `${kind}_${crypto.randomUUID().slice(0, 8)}`,
+    xMm: 8 + offset,
+    yMm: 8 + offset,
+    wMm: 58,
+    hMm: 14,
+    z: nextZ,
+    fieldId: "inf",
+    style: {
+      fontSizePt: 11,
+      fontWeight: "normal",
+      align: "left",
+      lineHeight: 1.2,
+      paddingMm: 1,
+      border: false,
+      visible: true
+    },
+    textMode: "dynamic",
+    label: "Блок"
+  };
+
+  if (kind === "inf") {
+    return {
+      ...base,
+      fieldId: "inf",
+      wMm: 80,
+      hMm: 12,
+      style: { ...base.style, fontSizePt: 20, fontWeight: "bold" },
+      label: "Инфинитив"
+    };
+  }
+  if (kind === "freq") {
+    return {
+      ...base,
+      fieldId: "freq",
+      wMm: 24,
+      hMm: 8,
+      style: { ...base.style, fontSizePt: 12, fontWeight: "bold" },
+      label: "Частотность"
+    };
+  }
+  if (kind === "forms_rek") {
+    return {
+      ...base,
+      fieldId: "forms_rek",
+      wMm: 66,
+      hMm: 20,
+      style: { ...base.style, fontSizePt: 12 },
+      label: "Три времени + рекция"
+    };
+  }
+  if (kind === "synonyms") {
+    return {
+      ...base,
+      fieldId: "synonyms",
+      wMm: 66,
+      hMm: 18,
+      style: { ...base.style, fontSizePt: 12 },
+      label: "Синонимы"
+    };
+  }
+  if (kind === "examples") {
+    return {
+      ...base,
+      fieldId: "examples",
+      wMm: 92,
+      hMm: 30,
+      style: { ...base.style, fontSizePt: 12, lineHeight: 1.25 },
+      label: "Примеры"
+    };
+  }
+  return {
+    ...base,
+    fieldId: "custom_text",
+    wMm: 70,
+    hMm: 14,
+    textMode: "static",
+    staticText: "",
+    label: "Простой блок"
+  };
+};
 
 const cloneCards = (cards: Card[]) => cards.map((card) => structuredClone(card));
 
@@ -592,6 +683,34 @@ export const useAppStore = create<AppState>()(
       } else {
         state.cardsB = next;
       }
+    }),
+    addBlockToCard: (side, cardId, kind) => set((state) => {
+      trackStateEvent(state, get(), `addBlockToCard:${side}:${kind}`);
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const index = list.findIndex((card) => card.id === cardId);
+      if (index < 0) return;
+      const current = list[index];
+      if (!current) return;
+      const prepared = current.boxes?.length
+        ? current
+        : applySemanticLayoutToCard(current, state.layout.widthMm, state.layout.heightMm);
+      const boxes = prepared.boxes ?? [];
+      const nextBox = createBoxTemplate(kind, boxes);
+      list[index] = { ...prepared, boxes: [...boxes, nextBox] };
+      state.selectedBoxId = nextBox.id;
+    }),
+    removeSelectedBoxFromCard: (side, cardId) => set((state) => {
+      if (!state.selectedBoxId) return;
+      trackStateEvent(state, get(), `removeBox:${side}:${state.selectedBoxId}`);
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const index = list.findIndex((card) => card.id === cardId);
+      if (index < 0) return;
+      const current = list[index];
+      if (!current?.boxes?.length) return;
+      const nextBoxes = current.boxes.filter((box) => box.id !== state.selectedBoxId);
+      if (nextBoxes.length === current.boxes.length) return;
+      list[index] = { ...current, boxes: nextBoxes };
+      state.selectedBoxId = null;
     }),
     resetState: () => set((state) => {
       if (typeof window !== "undefined") {

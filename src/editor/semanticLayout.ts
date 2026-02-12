@@ -367,21 +367,6 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
     })
   );
 
-  boxes.push(
-    makeBox({
-      id: "examples_hint",
-      fieldId: "ex_1_tag",
-      text: "1) Präsens · 2) Perfekt · 3) Modalverb · 4) Präteritum · 5) Unpersönlich",
-      zone: zones.rightBottom,
-      baseFontPt: 8.5,
-      minFontPt: 7,
-      maxFontPt: 10,
-      lineHeight: 1.15,
-      label: "Шаблон примеров",
-      textMode: "static"
-    })
-  );
-
   return boxes.map((box, index) => ({ ...box, z: index + 1 }));
 };
 

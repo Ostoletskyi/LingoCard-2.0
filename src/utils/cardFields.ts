@@ -18,7 +18,11 @@ const fieldLabels: Record<string, string> = {
   tr_3_ru: "Перевод RU",
   tr_4_ru: "Перевод RU",
   freq: "Частотность",
-  tags: "Теги"
+  tags: "Теги",
+  forms_rek: "Три времени + рекция",
+  synonyms: "Синонимы",
+  examples: "Примеры",
+  custom_text: "Простой блок"
 };
 
 export const getFieldLabel = (fieldId: string) => {
@@ -65,6 +69,53 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
       text: card.tags.length ? card.tags.join(", ") : "Теги…",
       isPlaceholder: card.tags.length === 0
     };
+  }
+  if (normalizedFieldId === "forms_rek") {
+    const forms = [
+      card.forms_p3 ? `Präsens: ${card.forms_p3}` : "",
+      card.forms_prat ? `Präteritum: ${card.forms_prat}` : "",
+      card.forms_p2 ? `Partizip II: ${card.forms_p2}` : "",
+      card.forms_aux ? `Aux: ${card.forms_aux}` : ""
+    ]
+      .filter(Boolean)
+      .map((line, idx) => `${idx + 1}. ${line}`);
+    const rek = [1, 2, 3, 4, 5]
+      .map((i) => {
+        const de = card[`rek_${i}_de` as keyof Card] as string;
+        const ru = card[`rek_${i}_ru` as keyof Card] as string;
+        return de || ru ? `${de}${de && ru ? " → " : ""}${ru}` : "";
+      })
+      .filter(Boolean)
+      .map((line, idx) => `${idx + 1}. ${line}`);
+    const text = [...forms, ...rek].join("\n").trim();
+    return { text: text || "Три времени и рекция…", isPlaceholder: text.length === 0 };
+  }
+  if (normalizedFieldId === "synonyms") {
+    const text = [1, 2, 3]
+      .map((i) => {
+        const de = card[`syn_${i}_de` as keyof Card] as string;
+        const ru = card[`syn_${i}_ru` as keyof Card] as string;
+        return de || ru ? `${de}${de && ru ? " — " : ""}${ru}` : "";
+      })
+      .filter(Boolean)
+      .map((line, idx) => `${idx + 1}. ${line}`)
+      .join("\n");
+    return { text: text || "Синонимы…", isPlaceholder: text.length === 0 };
+  }
+  if (normalizedFieldId === "examples") {
+    const text = [1, 2, 3, 4, 5]
+      .map((i) => {
+        const de = card[`ex_${i}_de` as keyof Card] as string;
+        const ru = card[`ex_${i}_ru` as keyof Card] as string;
+        return de || ru ? `${de}${de && ru ? " | " : ""}${ru}` : "";
+      })
+      .filter(Boolean)
+      .map((line, idx) => `${idx + 1}. ${line}`)
+      .join("\n");
+    return { text: text || "Примеры…", isPlaceholder: text.length === 0 };
+  }
+  if (normalizedFieldId === "custom_text") {
+    return { text: "Введите текст…", isPlaceholder: true };
   }
   if (normalizedFieldId in card) {
     const value = card[normalizedFieldId as keyof Card];

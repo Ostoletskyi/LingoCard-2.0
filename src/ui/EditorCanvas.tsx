@@ -78,7 +78,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     updateCardSilent,
     pushHistory,
     adjustColumnFontSizeByField,
-    setZoom
+    setZoom,
+    removeSelectedBoxFromCard
   } = useAppStore((state) => ({
     layout: state.layout,
     zoom: state.zoom,
@@ -98,7 +99,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     updateCardSilent: state.updateCardSilent,
     pushHistory: state.pushHistory,
     adjustColumnFontSizeByField: state.adjustColumnFontSizeByField,
-    setZoom: state.setZoom
+    setZoom: state.setZoom,
+    removeSelectedBoxFromCard: state.removeSelectedBoxFromCard
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -256,7 +258,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
   const handleBeginEdit = (box: Box) => {
     if (!card) return;
-    const fieldValue = getFieldEditValue(card, box.fieldId);
+    const fieldValue =
+      box.textMode === "static" ? box.staticText ?? box.text ?? "" : getFieldEditValue(card, box.fieldId);
     setFreqValidationError(null);
     setEditingBoxId(box.id);
     setEditSession({
@@ -270,8 +273,17 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   };
 
   const commitEdit = useCallback((shouldSave: boolean) => {
-    const updateCardField = (current: Card, fieldId: string, value: string): Card => {
+    const updateCardField = (current: Card, fieldId: string, value: string, boxId: string): Card => {
       const next: Card = { ...current };
+      if (fieldId === "custom_text" || fieldId === "forms_rek" || fieldId === "synonyms" || fieldId === "examples") {
+        if (!next.boxes?.length) return next;
+        next.boxes = next.boxes.map((box) =>
+          box.id === boxId
+            ? { ...box, textMode: "static", staticText: value, text: value }
+            : box
+        );
+        return next;
+      }
       if (fieldId === "tags") {
         next.tags = value
           .split(",")
@@ -317,7 +329,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const source = editSession.side === "A" ? store.cardsA : store.cardsB;
       const currentCard = source.find((item) => item.id === editSession.cardId);
       if (currentCard) {
-        const updated = updateCardField(currentCard, editSession.fieldId, editValue);
+        const updated = updateCardField(currentCard, editSession.fieldId, editValue, editSession.boxId);
         store.updateCard(updated, editSession.side, `textEdit:${editSession.fieldId}:${editSession.cardId}`);
       }
     }
@@ -343,12 +355,29 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     }
   }, [selectedId, selectedSide, editSession, commitEdit]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Delete") return;
+      if (!selectedId || editingBoxId) return;
+      removeSelectedBoxFromCard(selectedSide, selectedId);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [removeSelectedBoxFromCard, selectedSide, selectedId, editingBoxId]);
+
   const selectedFieldIds = useMemo(
-    () =>
-      activeBoxes
-        .filter((item) => selectedBoxIds.includes(item.id))
-        .map((item) => item.fieldId),
-    [activeBoxes, selectedBoxIds]
+    () => {
+      const selectedIds = selectedBoxIds.length
+        ? selectedBoxIds
+        : selectedBoxId
+          ? [selectedBoxId]
+          : [];
+      if (!selectedIds.length) return [];
+      return activeBoxes
+        .filter((item) => selectedIds.includes(item.id))
+        .map((item) => item.fieldId);
+    },
+    [activeBoxes, selectedBoxIds, selectedBoxId]
   );
 
   const handleViewportWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
@@ -357,21 +386,21 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       event.stopPropagation();
       return;
     }
-    if (event.ctrlKey) {
-      event.preventDefault();
-      event.stopPropagation();
-      const next = zoomScale + (event.deltaY < 0 ? 0.05 : -0.05);
-      setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next)));
-      return;
-    }
-    if (selectedBoxIds.length > 0 && event.shiftKey) {
+    if (selectedFieldIds.length > 0) {
       event.preventDefault();
       event.stopPropagation();
       const step = event.shiftKey ? 2 : 1;
       const delta = event.deltaY < 0 ? step : -step;
       adjustColumnFontSizeByField(selectedSide, selectedFieldIds, delta);
+      return;
     }
-  }, [editingBoxId, zoomScale, setZoom, selectedBoxIds.length, selectedFieldIds, adjustColumnFontSizeByField, selectedSide]);
+    if (event.ctrlKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = zoomScale + (event.deltaY < 0 ? 0.05 : -0.05);
+      setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next)));
+    }
+  }, [editingBoxId, zoomScale, setZoom, selectedFieldIds, adjustColumnFontSizeByField, selectedSide]);
 
   const handlePointerLeave = () => {
     setCursorMm(null);
@@ -577,6 +606,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 }}
               />
             )}
+            {renderMode === "editor" && card?.tags?.length ? (
+              <div className="absolute right-2 top-2 text-[10px] text-slate-300 dark:text-slate-700">
+                {card.tags.join(" · ")}
+              </div>
+            ) : null}
             {activeBoxes.map((box) => {
               const fieldText = getFieldText(card, box.fieldId);
               const staticValue = box.staticText || box.text || "";
@@ -671,7 +705,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : (
-                    <div className={isPlaceholder ? "text-sm text-slate-400" : "text-sm"}>
+                    <div className={isPlaceholder ? "text-sm text-slate-400" : "text-sm"} style={{ whiteSpace: "pre-line" }}>
                       {resolvedText || fieldText.text}
                     </div>
                   )}

@@ -39,19 +39,25 @@ export const CardListPanel = ({ side }: Props) => {
   const selectAllCards = useAppStore((state) => state.selectAllCards);
   const clearCardSelection = useAppStore((state) => state.clearCardSelection);
   const autoLayoutAllCards = useAppStore((state) => state.autoLayoutAllCards);
+  const addBlockToCard = useAppStore((state) => state.addBlockToCard);
+  const removeSelectedBoxFromCard = useAppStore((state) => state.removeSelectedBoxFromCard);
   const layout = useAppStore((state) => state.layout);
+  const selectedBoxId = useAppStore((state) => state.selectedBoxId);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importErrorLog, setImportErrorLog] = useState<ImportErrorLog | null>(null);
   const [importModalType, setImportModalType] = useState<"error" | "warning" | null>(null);
+  const [blockMenuOpen, setBlockMenuOpen] = useState(false);
   const buttonBase =
-    "inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-200";
+    "inline-flex items-center justify-center text-center rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-200";
   const buttonSolid =
     "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
   const buttonLight =
     "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700";
   const buttonGhost =
     "border border-slate-200 text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:text-white";
+  const buttonDark =
+    "bg-slate-700 text-white hover:bg-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600";
   const firstDataButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstSelectionButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstExportButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -130,6 +136,31 @@ export const CardListPanel = ({ side }: Props) => {
 
   const handleCreate = () => {
     addCard({ inf: "" }, side);
+  };
+
+  const activeCardId = selectedSide === side ? selectedId : null;
+
+  const handleAddBlock = (
+    kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple"
+  ) => {
+    if (!activeCardId) {
+      setImportNotice("Сначала выберите активную карточку в этой колонке.");
+      return;
+    }
+    addBlockToCard(side, activeCardId, kind);
+    setBlockMenuOpen(false);
+  };
+
+  const handleDeleteSelectedBlock = () => {
+    if (!activeCardId) {
+      setImportNotice("Сначала выберите активную карточку в этой колонке.");
+      return;
+    }
+    if (!selectedBoxId) {
+      setImportNotice("Выделите блок (синий), затем удалите.");
+      return;
+    }
+    removeSelectedBoxFromCard(side, activeCardId);
   };
 
   const handleExport = () => {
@@ -258,6 +289,28 @@ export const CardListPanel = ({ side }: Props) => {
             <div className="grid gap-2">
             <button ref={firstDataButtonRef} onClick={handleCreate} className={`${buttonBase} ${buttonSolid}`}>
               + Новая карточка
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setBlockMenuOpen((prev) => !prev)}
+                className={`${buttonBase} ${buttonDark} relative w-full pr-8`}
+              >
+                Создать блок
+                <span className={`absolute right-3 transition-transform ${blockMenuOpen ? "rotate-180" : "rotate-0"}`}>▾</span>
+              </button>
+              {blockMenuOpen && (
+                <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                  <button onClick={() => handleAddBlock("inf")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>1. Инфинитив</button>
+                  <button onClick={() => handleAddBlock("freq")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>2. Частотность</button>
+                  <button onClick={() => handleAddBlock("forms_rek")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>3. Три времени + рекция</button>
+                  <button onClick={() => handleAddBlock("synonyms")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>4. Синонимы</button>
+                  <button onClick={() => handleAddBlock("examples")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>5. Примеры</button>
+                  <button onClick={() => handleAddBlock("simple")} className={`${buttonBase} ${buttonLight} w-full`}>6. Простой блок</button>
+                </div>
+              )}
+            </div>
+            <button onClick={handleDeleteSelectedBlock} className={`${buttonBase} ${buttonDark}`}>
+              Удалить блок
             </button>
             <label className="cursor-pointer">
               <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
