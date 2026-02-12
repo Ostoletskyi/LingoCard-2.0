@@ -70,7 +70,7 @@ export type AppState = AppStateSnapshot &
     removeCard: (id: string, side: ListSide) => void;
     moveCard: (id: string, from: ListSide) => void;
     setLayout: (layout: Layout) => void;
-    setCardSizeMm: (size: { widthMm: number; heightMm: number }) => void;
+    setCardSizeMm: (widthMm: number, heightMm: number) => void;
     updateBox: (boxId: string, update: Partial<Layout["boxes"][number]>) => void;
     beginLayoutEdit: () => void;
     endLayoutEdit: () => void;
@@ -170,6 +170,45 @@ const createBaseState = () => ({
   rulersPlacement: "outside" as const
 });
 
+const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["state"] => {
+  const base = createBaseState();
+  const cardsA = Array.isArray(raw.cardsA) ? raw.cardsA.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsA;
+  const cardsB = Array.isArray(raw.cardsB) ? raw.cardsB.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsB;
+  const selectedId =
+    typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
+      ? raw.selectedId
+      : cardsA[0]?.id ?? cardsB[0]?.id ?? null;
+  const selectedSide = raw.selectedSide === "B" ? "B" : "A";
+  const widthMm = Number.isFinite(raw.layout?.widthMm) ? raw.layout.widthMm : base.layout.widthMm;
+  const heightMm = Number.isFinite(raw.layout?.heightMm) ? raw.layout.heightMm : base.layout.heightMm;
+
+  return {
+    cardsA,
+    cardsB,
+    selectedId,
+    selectedSide,
+    layout: {
+      widthMm: Math.max(50, Math.min(400, widthMm)),
+      heightMm: Math.max(50, Math.min(400, heightMm)),
+      boxes: Array.isArray(raw.layout?.boxes) ? raw.layout.boxes : base.layout.boxes
+    },
+    selectedBoxId: typeof raw.selectedBoxId === "string" ? raw.selectedBoxId : null,
+    selectedCardIdsA: Array.isArray(raw.selectedCardIdsA) ? raw.selectedCardIdsA.filter((id) => typeof id === "string") : [],
+    selectedCardIdsB: Array.isArray(raw.selectedCardIdsB) ? raw.selectedCardIdsB.filter((id) => typeof id === "string") : [],
+    zoom: Number.isFinite(raw.zoom) ? Math.max(0.25, Math.min(2, raw.zoom)) : base.zoom,
+    gridEnabled: typeof raw.gridEnabled === "boolean" ? raw.gridEnabled : base.gridEnabled,
+    rulersEnabled: typeof raw.rulersEnabled === "boolean" ? raw.rulersEnabled : base.rulersEnabled,
+    snapEnabled: typeof raw.snapEnabled === "boolean" ? raw.snapEnabled : base.snapEnabled,
+    gridIntensity:
+      raw.gridIntensity === "low" || raw.gridIntensity === "medium" || raw.gridIntensity === "high"
+        ? raw.gridIntensity
+        : base.gridIntensity,
+    showOnlyCmLines: typeof raw.showOnlyCmLines === "boolean" ? raw.showOnlyCmLines : base.showOnlyCmLines,
+    debugOverlays: typeof raw.debugOverlays === "boolean" ? raw.debugOverlays : base.debugOverlays,
+    rulersPlacement: raw.rulersPlacement === "inside" ? "inside" : "outside"
+  };
+};
+
 const loadPersistedState = () => {
   if (typeof window === "undefined") return null;
   try {
@@ -177,7 +216,7 @@ const loadPersistedState = () => {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
     if (parsed?.version !== 1 || !parsed.state) return null;
-    return parsed.state;
+    return sanitizePersistedState(parsed.state);
   } catch {
     return null;
   }
@@ -333,10 +372,10 @@ export const useAppStore = create<AppState>()(
       recordHistory(state, get());
       state.layout = layout;
     }),
-    setCardSizeMm: (size) => set((state) => {
+    setCardSizeMm: (widthMm, heightMm) => set((state) => {
       recordHistory(state, get());
-      state.layout.widthMm = Math.max(10, size.widthMm);
-      state.layout.heightMm = Math.max(10, size.heightMm);
+      state.layout.widthMm = Math.min(400, Math.max(50, widthMm));
+      state.layout.heightMm = Math.min(400, Math.max(50, heightMm));
     }),
     updateBox: (boxId, update) => set((state) => {
       if (!state.isEditingLayout) {
