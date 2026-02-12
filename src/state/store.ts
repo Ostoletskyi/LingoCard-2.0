@@ -3,6 +3,7 @@ import { immer } from "zustand/middleware/immer";
 import type { Card } from "../model/cardSchema";
 import { defaultLayout, type Layout } from "../model/layoutSchema";
 import { normalizeCard } from "../model/cardSchema";
+import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 
 export type ListSide = "A" | "B";
 
@@ -20,6 +21,28 @@ export type AppStateSnapshot = {
 export type HistoryState = {
   past: AppStateSnapshot[];
   future: AppStateSnapshot[];
+};
+
+type PersistedState = {
+  version: 1;
+  state: {
+    cardsA: Card[];
+    cardsB: Card[];
+    selectedId: string | null;
+    selectedSide: ListSide;
+    layout: Layout;
+    selectedBoxId: string | null;
+    selectedCardIdsA: string[];
+    selectedCardIdsB: string[];
+    zoom: number;
+    gridEnabled: boolean;
+    rulersEnabled: boolean;
+    snapEnabled: boolean;
+    gridIntensity: "low" | "medium" | "high";
+    showOnlyCmLines: boolean;
+    debugOverlays: boolean;
+    rulersPlacement: "outside" | "inside";
+  };
 };
 
 export type AppState = AppStateSnapshot &
@@ -63,14 +86,102 @@ export type AppState = AppStateSnapshot &
     toggleCardSelection: (id: string, side: ListSide) => void;
     selectAllCards: (side: ListSide) => void;
     clearCardSelection: (side: ListSide) => void;
+    updateCardSilent: (card: Card, side: ListSide) => void;
+    autoLayoutAllCards: (side: ListSide) => void;
+    adjustColumnFontSizeByField: (side: ListSide, fieldIds: string[], deltaPt: number) => void;
+    resetState: () => void;
     pushHistory: () => void;
     undo: () => void;
     redo: () => void;
   };
 
 const HISTORY_LIMIT = 100;
+const STORAGE_KEY = "lc_state_v1";
 
 const cloneCards = (cards: Card[]) => cards.map((card) => structuredClone(card));
+
+const makeDemoCard = (id: string): Card =>
+  normalizeCard({
+    id,
+    inf: "machen",
+    freq: 3,
+    tags: ["B2", "grundverb", "praesens"],
+    tr_1_ru: "делать",
+    tr_1_ctx: "основное значение",
+    tr_2_ru: "выполнять",
+    tr_2_ctx: "работа и задачи",
+    tr_3_ru: "заставлять",
+    tr_3_ctx: "разговорная речь",
+    tr_4_ru: "устраивать",
+    tr_4_ctx: "организация событий",
+    forms_p3: "macht",
+    forms_prat: "machte",
+    forms_p2: "gemacht",
+    forms_aux: "haben",
+    syn_1_de: "tun",
+    syn_1_ru: "делать",
+    syn_2_de: "erledigen",
+    syn_2_ru: "выполнять",
+    syn_3_de: "verursachen",
+    syn_3_ru: "вызывать",
+    ex_1_de: "Ich mache den Plan für unser neues Projekt.",
+    ex_1_ru: "Я составляю план для нашего нового проекта.",
+    ex_1_tag: "Präsens",
+    ex_2_de: "Gestern habe ich die Präsentation für das Team gemacht.",
+    ex_2_ru: "Вчера я сделал презентацию для команды.",
+    ex_2_tag: "Perfekt",
+    ex_3_de: "Wir müssen das heute noch besser machen.",
+    ex_3_ru: "Мы должны сегодня сделать это еще лучше.",
+    ex_3_tag: "Modalverb",
+    ex_4_de: "Früher machte er alle Berichte allein.",
+    ex_4_ru: "Раньше он делал все отчёты один.",
+    ex_4_tag: "Präteritum",
+    ex_5_de: "So macht man das in unserer Abteilung.",
+    ex_5_ru: "Так это делают в нашем отделе.",
+    ex_5_tag: "Unpersönlich",
+    rek_1_de: "Mach dir zuerst eine klare Struktur.",
+    rek_1_ru: "Сначала выстрой четкую структуру.",
+    rek_2_de: "Das macht im Kontext mehr Sinn.",
+    rek_2_ru: "В контексте это имеет больше смысла.",
+    rek_3_de: "Was machst du als nächsten Schritt?",
+    rek_3_ru: "Что ты делаешь следующим шагом?",
+    rek_4_de: "Mach weiter, bis die Aussage präzise ist.",
+    rek_4_ru: "Продолжай, пока формулировка не станет точной.",
+    rek_5_de: "Damit macht der ganze Dialog mehr Sinn.",
+    rek_5_ru: "Так весь диалог звучит логичнее."
+  });
+
+const createBaseState = () => ({
+  cardsA: [applySemanticLayoutToCard(makeDemoCard("demo-a-machen"), defaultLayout.widthMm, defaultLayout.heightMm)] as Card[],
+  cardsB: [applySemanticLayoutToCard(makeDemoCard("demo-b-machen"), defaultLayout.widthMm, defaultLayout.heightMm)] as Card[],
+  selectedId: "demo-a-machen" as string | null,
+  selectedSide: "A" as ListSide,
+  layout: structuredClone(defaultLayout),
+  selectedBoxId: null as string | null,
+  selectedCardIdsA: [] as string[],
+  selectedCardIdsB: [] as string[],
+  zoom: 1,
+  gridEnabled: true,
+  rulersEnabled: true,
+  snapEnabled: true,
+  gridIntensity: "low" as const,
+  showOnlyCmLines: false,
+  debugOverlays: false,
+  rulersPlacement: "outside" as const
+});
+
+const loadPersistedState = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedState;
+    if (parsed?.version !== 1 || !parsed.state) return null;
+    return parsed.state;
+  } catch {
+    return null;
+  }
+};
 
 const snapshotState = (state: AppState): AppStateSnapshot => ({
   cardsA: cloneCards(state.cardsA),
@@ -103,29 +214,59 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.isEditingLayout = false;
 };
 
+const persistState = (state: AppState) => {
+  if (typeof window === "undefined") return;
+  const payload: PersistedState = {
+    version: 1,
+    state: {
+      cardsA: cloneCards(state.cardsA),
+      cardsB: cloneCards(state.cardsB),
+      selectedId: state.selectedId,
+      selectedSide: state.selectedSide,
+      layout: structuredClone(state.layout),
+      selectedBoxId: state.selectedBoxId,
+      selectedCardIdsA: [...state.selectedCardIdsA],
+      selectedCardIdsB: [...state.selectedCardIdsB],
+      zoom: state.zoom,
+      gridEnabled: state.gridEnabled,
+      rulersEnabled: state.rulersEnabled,
+      snapEnabled: state.snapEnabled,
+      gridIntensity: state.gridIntensity,
+      showOnlyCmLines: state.showOnlyCmLines,
+      debugOverlays: state.debugOverlays,
+      rulersPlacement: state.rulersPlacement
+    }
+  };
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+};
+
+const persisted = loadPersistedState();
+const baseState = createBaseState();
+const initialState = persisted ? { ...baseState, ...persisted } : baseState;
+
 export const useAppStore = create<AppState>()(
   immer((set, get) => ({
-    cardsA: [],
-    cardsB: [],
-    selectedId: null,
-    selectedSide: "A",
-    layout: defaultLayout,
+    cardsA: initialState.cardsA,
+    cardsB: initialState.cardsB,
+    selectedId: initialState.selectedId,
+    selectedSide: initialState.selectedSide,
+    layout: initialState.layout,
     past: [],
     future: [],
-    zoom: 1,
-    gridEnabled: true,
-    rulersEnabled: true,
-    snapEnabled: true,
-    gridIntensity: "low",
-    showOnlyCmLines: false,
-    debugOverlays: false,
-    rulersPlacement: "outside",
+    zoom: initialState.zoom,
+    gridEnabled: initialState.gridEnabled,
+    rulersEnabled: initialState.rulersEnabled,
+    snapEnabled: initialState.snapEnabled,
+    gridIntensity: initialState.gridIntensity,
+    showOnlyCmLines: initialState.showOnlyCmLines,
+    debugOverlays: initialState.debugOverlays,
+    rulersPlacement: initialState.rulersPlacement,
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,
-    selectedCardIdsA: [],
-    selectedCardIdsB: [],
-    selectedBoxId: null,
+    selectedCardIdsA: initialState.selectedCardIdsA,
+    selectedCardIdsB: initialState.selectedCardIdsB,
+    selectedBoxId: initialState.selectedBoxId,
     isEditingLayout: false,
     setZoom: (value) => set((state) => {
       state.zoom = Math.min(2, Math.max(0.25, value));
@@ -150,6 +291,13 @@ export const useAppStore = create<AppState>()(
     }),
     updateCard: (card, side) => set((state) => {
       recordHistory(state, get());
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const index = list.findIndex((item) => item.id === card.id);
+      if (index >= 0) {
+        list[index] = card;
+      }
+    }),
+    updateCardSilent: (card, side) => set((state) => {
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
@@ -270,6 +418,86 @@ export const useAppStore = create<AppState>()(
         state.selectedCardIdsB = [];
       }
     }),
+    autoLayoutAllCards: (side) => set((state) => {
+      recordHistory(state, get());
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm));
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+    }),
+    adjustColumnFontSizeByField: (side, fieldIds, deltaPt) => set((state) => {
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const targetSet = new Set(fieldIds);
+      if (!targetSet.size) {
+        return;
+      }
+      const hasAnyTarget = source.some((card) => {
+        const boxes = card.boxes?.length
+          ? card.boxes
+          : applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm).boxes;
+        return (boxes ?? []).some((box) => targetSet.has(box.fieldId));
+      });
+      if (!hasAnyTarget) {
+        return;
+      }
+      recordHistory(state, get());
+      const next = source.map((card) => {
+        const baseCard = card.boxes?.length
+          ? card
+          : applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm);
+        if (!baseCard.boxes?.length) {
+          return baseCard;
+        }
+        return {
+          ...baseCard,
+          boxes: baseCard.boxes.map((box) => {
+            if (!targetSet.has(box.fieldId)) {
+              return box;
+            }
+            return {
+              ...box,
+              style: {
+                ...box.style,
+                fontSizePt: Math.min(36, Math.max(5, box.style.fontSizePt + deltaPt))
+              }
+            };
+          })
+        };
+      });
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+    }),
+    resetState: () => set((state) => {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
+      const next = createBaseState();
+      state.cardsA = next.cardsA;
+      state.cardsB = next.cardsB;
+      state.selectedId = next.selectedId;
+      state.selectedSide = next.selectedSide;
+      state.layout = next.layout;
+      state.selectedBoxId = next.selectedBoxId;
+      state.selectedCardIdsA = next.selectedCardIdsA;
+      state.selectedCardIdsB = next.selectedCardIdsB;
+      state.zoom = next.zoom;
+      state.gridEnabled = next.gridEnabled;
+      state.rulersEnabled = next.rulersEnabled;
+      state.snapEnabled = next.snapEnabled;
+      state.gridIntensity = next.gridIntensity;
+      state.showOnlyCmLines = next.showOnlyCmLines;
+      state.debugOverlays = next.debugOverlays;
+      state.rulersPlacement = next.rulersPlacement;
+      state.past = [];
+      state.future = [];
+      state.isEditingLayout = false;
+    }),
     pushHistory: () => set((state) => {
       recordHistory(state, get());
     }),
@@ -289,3 +517,15 @@ export const useAppStore = create<AppState>()(
     })
   }))
 );
+
+if (typeof window !== "undefined") {
+  let persistTimer: number | null = null;
+  useAppStore.subscribe((state) => {
+    if (persistTimer) {
+      window.clearTimeout(persistTimer);
+    }
+    persistTimer = window.setTimeout(() => {
+      persistState(state);
+    }, 150);
+  });
+}
