@@ -219,7 +219,15 @@ const createBoxTemplate = (
   };
 };
 
-const cloneCards = (cards: Card[]) => cards.map((card) => structuredClone(card));
+const safeClone = <T>(value: T): T => {
+  try {
+    return structuredClone(value);
+  } catch {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+};
+
+const cloneCards = (cards: Card[]) => cards.map((card) => safeClone(card));
 
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
@@ -363,7 +371,7 @@ const snapshotState = (state: AppState): AppStateSnapshot => ({
   cardsB: cloneCards(state.cardsB),
   selectedId: state.selectedId,
   selectedSide: state.selectedSide,
-  layout: structuredClone(state.layout),
+  layout: safeClone(state.layout),
   selectedBoxId: state.selectedBoxId,
   selectedCardIdsA: [...state.selectedCardIdsA],
   selectedCardIdsB: [...state.selectedCardIdsB]
@@ -403,13 +411,11 @@ const appendChange = (state: AppState, action: string) => {
 
 const trackStateEvent = (
   state: AppState,
-  _current: AppState,
+  current: AppState,
   action: string,
   options?: { undoable?: boolean }
 ) => {
-  // Use the immer draft `state` as the canonical pre-mutation source inside set(...)
-  // to avoid capturing post-change snapshots from external getters.
-  const baseline = state;
+  const baseline = current;
   const undoable = options?.undoable ?? true;
   if (undoable) {
     recordHistory(state, baseline);
@@ -423,7 +429,7 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.cardsB = cloneCards(snapshot.cardsB);
   state.selectedId = snapshot.selectedId;
   state.selectedSide = snapshot.selectedSide;
-  state.layout = structuredClone(snapshot.layout);
+  state.layout = safeClone(snapshot.layout);
   state.selectedBoxId = snapshot.selectedBoxId;
   state.selectedCardIdsA = [...snapshot.selectedCardIdsA];
   state.selectedCardIdsB = [...snapshot.selectedCardIdsB];
@@ -439,7 +445,7 @@ const persistState = (state: AppState) => {
       cardsB: cloneCards(state.cardsB),
       selectedId: state.selectedId,
       selectedSide: state.selectedSide,
-      layout: structuredClone(state.layout),
+      layout: safeClone(state.layout),
       selectedBoxId: state.selectedBoxId,
       selectedCardIdsA: [...state.selectedCardIdsA],
       selectedCardIdsB: [...state.selectedCardIdsB],
