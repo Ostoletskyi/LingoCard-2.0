@@ -1,3 +1,4 @@
+import type React from "react";
 import { useAppStore } from "../state/store";
 
 type ThemeMode = "light" | "dark";
@@ -8,25 +9,64 @@ type ToolbarProps = {
 };
 
 export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
-  const zoom = useAppStore((state) => state.zoom);
-  const setZoom = useAppStore((state) => state.setZoom);
-  const undo = useAppStore((state) => state.undo);
-  const redo = useAppStore((state) => state.redo);
-  const pushHistory = useAppStore((state) => state.pushHistory);
-  const gridEnabled = useAppStore((state) => state.gridEnabled);
-  const rulersEnabled = useAppStore((state) => state.rulersEnabled);
-  const snapEnabled = useAppStore((state) => state.snapEnabled);
-  const gridIntensity = useAppStore((state) => state.gridIntensity);
-  const showOnlyCmLines = useAppStore((state) => state.showOnlyCmLines);
-  const debugOverlays = useAppStore((state) => state.debugOverlays);
-  const rulersPlacement = useAppStore((state) => state.rulersPlacement);
-  const toggleGrid = useAppStore((state) => state.toggleGrid);
-  const toggleRulers = useAppStore((state) => state.toggleRulers);
-  const toggleSnap = useAppStore((state) => state.toggleSnap);
-  const setGridIntensity = useAppStore((state) => state.setGridIntensity);
-  const toggleOnlyCmLines = useAppStore((state) => state.toggleOnlyCmLines);
-  const toggleDebugOverlays = useAppStore((state) => state.toggleDebugOverlays);
-  const setRulersPlacement = useAppStore((state) => state.setRulersPlacement);
+  const {
+    zoom,
+    layout,
+    gridEnabled,
+    rulersEnabled,
+    snapEnabled,
+    gridIntensity,
+    showOnlyCmLines,
+    debugOverlays,
+    rulersPlacement,
+    setZoom,
+    setCardSizeMm,
+    undo,
+    redo,
+    pushHistory,
+    toggleGrid,
+    toggleRulers,
+    toggleSnap,
+    setGridIntensity,
+    toggleOnlyCmLines,
+    toggleDebugOverlays,
+    setRulersPlacement
+  } = useAppStore((state) => ({
+    zoom: state.zoom,
+    layout: state.layout,
+    gridEnabled: state.gridEnabled,
+    rulersEnabled: state.rulersEnabled,
+    snapEnabled: state.snapEnabled,
+    gridIntensity: state.gridIntensity,
+    showOnlyCmLines: state.showOnlyCmLines,
+    debugOverlays: state.debugOverlays,
+    rulersPlacement: state.rulersPlacement,
+    setZoom: state.setZoom,
+    setCardSizeMm: state.setCardSizeMm,
+    undo: state.undo,
+    redo: state.redo,
+    pushHistory: state.pushHistory,
+    toggleGrid: state.toggleGrid,
+    toggleRulers: state.toggleRulers,
+    toggleSnap: state.toggleSnap,
+    setGridIntensity: state.setGridIntensity,
+    toggleOnlyCmLines: state.toggleOnlyCmLines,
+    toggleDebugOverlays: state.toggleDebugOverlays,
+    setRulersPlacement: state.setRulersPlacement
+  }));
+
+  const handleCardSizeWheel = (
+    event: React.WheelEvent<HTMLInputElement>,
+    axis: "width" | "height"
+  ) => {
+    event.preventDefault();
+    const step = event.shiftKey ? 10 : 1;
+    const delta = event.deltaY < 0 ? step : -step;
+    setCardSizeMm({
+      widthMm: axis === "width" ? layout.widthMm + delta : layout.widthMm,
+      heightMm: axis === "height" ? layout.heightMm + delta : layout.heightMm
+    });
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-soft dark:bg-slate-900/80">
@@ -58,6 +98,34 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
             onChange={(event) => setZoom(Number(event.target.value))}
           />
           <span className="text-xs text-slate-500">{Math.round(zoom * 100)}%</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">Card (mm)</span>
+          <input
+            type="number"
+            min={10}
+            step={1}
+            value={layout.widthMm}
+            onChange={(event) =>
+              setCardSizeMm({ widthMm: Number(event.target.value), heightMm: layout.heightMm })
+            }
+            onWheel={(event) => handleCardSizeWheel(event, "width")}
+            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+            title="Width mm (wheel: 1mm, Shift+wheel: 10mm)"
+          />
+          <span className="text-xs text-slate-400">×</span>
+          <input
+            type="number"
+            min={10}
+            step={1}
+            value={layout.heightMm}
+            onChange={(event) =>
+              setCardSizeMm({ widthMm: layout.widthMm, heightMm: Number(event.target.value) })
+            }
+            onWheel={(event) => handleCardSizeWheel(event, "height")}
+            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+            title="Height mm (wheel: 1mm, Shift+wheel: 10mm)"
+          />
         </div>
         <label className="flex items-center gap-1 text-xs text-slate-600">
           <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
