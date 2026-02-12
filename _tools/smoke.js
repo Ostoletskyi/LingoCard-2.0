@@ -57,6 +57,14 @@ const main = async () => {
     process.exitCode = 1;
   }
 
+  try {
+    await runCommand("npm", ["run", "build"]);
+    record("Build", "OK");
+  } catch (error) {
+    record("Build", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
   checkFiles([
     "src/model/cardSchema.ts",
     "src/model/layoutSchema.ts",
