@@ -23,3 +23,11 @@ TOOLBOX.bat
 - All scripts use `Set-StrictMode -Version Latest` and `try/catch` with `exit 0/1/2`.
 - Default launcher command format:
   `powershell -NoProfile -ExecutionPolicy Bypass -File "_tools\ps\<script>.ps1"`
+
+
+## Rebase helper
+- `_tools/Rebase.bat` is a focused wrapper for git rebase flow.
+- It resolves `PROJECT_ROOT` from `_tools/` and runs:
+  - `_tools/ps/git_pull_rebase.ps1`
+- Optional mode:
+  - `Rebase.bat --status` (status-only check)
