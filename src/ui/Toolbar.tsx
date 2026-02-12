@@ -18,8 +18,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const layout = useAppStore((state) => state.layout);
   const setZoom = useAppStore((state) => state.setZoom);
   const setCardSizeMm = useAppStore((state) => state.setCardSizeMm);
+
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
+
   const editModeEnabled = useAppStore((state) => state.editModeEnabled);
   const pushHistory = useAppStore((state) => state.pushHistory);
   const jumpToHistoryBookmark = useAppStore((state) => state.jumpToHistoryBookmark);
@@ -27,6 +29,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const historyBookmarks = useAppStore((state) => state.historyBookmarks);
   const pastCount = useAppStore((state) => state.past.length);
   const futureCount = useAppStore((state) => state.future.length);
+
   const gridEnabled = useAppStore((state) => state.gridEnabled);
   const rulersEnabled = useAppStore((state) => state.rulersEnabled);
   const snapEnabled = useAppStore((state) => state.snapEnabled);
@@ -34,6 +37,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const showOnlyCmLines = useAppStore((state) => state.showOnlyCmLines);
   const debugOverlays = useAppStore((state) => state.debugOverlays);
   const rulersPlacement = useAppStore((state) => state.rulersPlacement);
+
   const toggleGrid = useAppStore((state) => state.toggleGrid);
   const toggleRulers = useAppStore((state) => state.toggleRulers);
   const toggleSnap = useAppStore((state) => state.toggleSnap);
@@ -44,13 +48,32 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
   const [openSection, setOpenSection] = useState<ToolbarSection | null>(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem("ui.toolbar.openSection") : null;
-    return saved === "history" || saved === "view" || saved === "grid" || saved === "snap"
-      ? saved
-      : null;
+    return saved === "history" || saved === "view" || saved === "grid" || saved === "snap" ? saved : null;
   });
+
   const [viewWheelTarget, setViewWheelTarget] = useState<ViewWheelTarget>(null);
   const [selectedBookmarkId, setSelectedBookmarkId] = useState<string>("");
+
   const viewPanelRef = useRef<HTMLDivElement | null>(null);
+
+  // refs to avoid stale closures in native event listeners
+  const zoomRef = useRef<number>(zoom);
+  const widthRef = useRef<number>(layout.widthMm);
+  const heightRef = useRef<number>(layout.heightMm);
+  const wheelTargetRef = useRef<ViewWheelTarget>(viewWheelTarget);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    widthRef.current = layout.widthMm;
+    heightRef.current = layout.heightMm;
+  }, [layout.widthMm, layout.heightMm]);
+
+  useEffect(() => {
+    wheelTargetRef.current = viewWheelTarget;
+  }, [viewWheelTarget]);
 
   useEffect(() => {
     if (!historyBookmarks.length) {
@@ -64,25 +87,19 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (openSection) {
-      window.localStorage.setItem("ui.toolbar.openSection", openSection);
-    } else {
-      window.localStorage.removeItem("ui.toolbar.openSection");
-    }
+    if (openSection) window.localStorage.setItem("ui.toolbar.openSection", openSection);
+    else window.localStorage.removeItem("ui.toolbar.openSection");
   }, [openSection]);
 
   useEffect(() => {
-    if (openSection !== "view") {
-      setViewWheelTarget(null);
-    }
+    if (openSection !== "view") setViewWheelTarget(null);
   }, [openSection]);
 
+  // click outside view panel -> release wheel target
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const node = viewPanelRef.current;
-      if (!node || !node.contains(event.target as Node)) {
-        setViewWheelTarget(null);
-      }
+      if (!node || !node.contains(event.target as Node)) setViewWheelTarget(null);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
@@ -90,38 +107,68 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
   const applyZoomWheel = useCallback((deltaY: number) => {
     const direction = deltaY > 0 ? -1 : 1;
-    setZoom(clampZoom(zoom + direction * 0.05));
-  }, [zoom, setZoom]);
+    const next = clampZoom(zoomRef.current + direction * 0.05);
+    setZoom(next);
+  }, [setZoom]);
 
   const applyWidthWheel = useCallback((deltaY: number, shift: boolean) => {
     const direction = deltaY > 0 ? -1 : 1;
     const step = shift ? 10 : 1;
-    setCardSizeMm(clampMm(layout.widthMm + direction * step), layout.heightMm);
-  }, [layout.widthMm, layout.heightMm, setCardSizeMm]);
+    const nextW = clampMm(widthRef.current + direction * step);
+    setCardSizeMm(nextW, heightRef.current);
+  }, [setCardSizeMm]);
 
   const applyHeightWheel = useCallback((deltaY: number, shift: boolean) => {
     const direction = deltaY > 0 ? -1 : 1;
     const step = shift ? 10 : 1;
-    setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + direction * step));
-  }, [layout.widthMm, layout.heightMm, setCardSizeMm]);
+    const nextH = clampMm(heightRef.current + direction * step);
+    setCardSizeMm(widthRef.current, nextH);
+  }, [setCardSizeMm]);
 
   const applyViewWheelDelta = useCallback((deltaY: number, shift: boolean) => {
-    if (!viewWheelTarget) return;
-    if (viewWheelTarget === "zoom") applyZoomWheel(deltaY);
-    if (viewWheelTarget === "width") applyWidthWheel(deltaY, shift);
-    if (viewWheelTarget === "height") applyHeightWheel(deltaY, shift);
-  }, [viewWheelTarget, applyZoomWheel, applyWidthWheel, applyHeightWheel]);
+    const target = wheelTargetRef.current;
+    if (!target) return;
+    if (target === "zoom") applyZoomWheel(deltaY);
+    if (target === "width") applyWidthWheel(deltaY, shift);
+    if (target === "height") applyHeightWheel(deltaY, shift);
+  }, [applyZoomWheel, applyWidthWheel, applyHeightWheel]);
 
+  /**
+   * Key fix:
+   * Do NOT preventDefault() inside React onWheel/onWheelCapture (React uses passive listeners).
+   * Instead attach native wheel listeners with passive:false.
+   */
   useEffect(() => {
-    if (!viewWheelTarget) return;
-    const onWindowWheel = (event: WheelEvent) => {
+    const panel = viewPanelRef.current;
+    if (!panel) return;
+
+    const onPanelWheel = (event: WheelEvent) => {
+      // only intercept when some wheel target is armed
+      if (!wheelTargetRef.current) return;
+
       event.preventDefault();
       event.stopPropagation();
       applyViewWheelDelta(event.deltaY, event.shiftKey);
     };
+
+    panel.addEventListener("wheel", onPanelWheel, { passive: false });
+
+    return () => {
+      panel.removeEventListener("wheel", onPanelWheel as any);
+    };
+  }, [applyViewWheelDelta]);
+
+  // optional hard-stop: while viewWheelTarget active, also intercept wheel at window capture
+  useEffect(() => {
+    const onWindowWheel = (event: WheelEvent) => {
+      if (!wheelTargetRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
     window.addEventListener("wheel", onWindowWheel, { passive: false, capture: true });
-    return () => window.removeEventListener("wheel", onWindowWheel, { capture: true });
-  }, [viewWheelTarget, applyViewWheelDelta]);
+    return () => window.removeEventListener("wheel", onWindowWheel, { capture: true } as any);
+  }, []);
 
   const toggleSection = (section: ToolbarSection) => {
     setOpenSection((prev) => (prev === section ? null : section));
@@ -158,7 +205,11 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
         </button>
       </div>
 
-      <div className={`grid transition-all duration-200 ease-[cubic-bezier(.2,.8,.2,1)] ${openSection ? "mt-2 max-h-[340px] opacity-100" : "max-h-0 opacity-0"}`}>
+      <div
+        className={`grid transition-all duration-200 ease-[cubic-bezier(.2,.8,.2,1)] ${
+          openSection ? "mt-2 max-h-[340px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <div className="overflow-hidden rounded-lg border border-slate-100 bg-white/70 p-3 dark:border-slate-800 dark:bg-slate-900/60">
           {openSection === "history" && (
             <div className="grid gap-2">
@@ -196,9 +247,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
               </div>
 
               <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
-                <div className="mb-1 text-[11px] text-slate-500 dark:text-slate-300">
-                  ID снимка (по времени):
-                </div>
+                <div className="mb-1 text-[11px] text-slate-500 dark:text-slate-300">ID снимка (по времени):</div>
                 <select
                   size={Math.min(5, Math.max(2, historyBookmarks.length || 2))}
                   value={selectedBookmarkId}
@@ -206,22 +255,19 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                   className="h-24 w-full rounded border border-slate-200 bg-white p-1 text-[11px] dark:border-slate-700 dark:bg-slate-900"
                 >
                   {historyBookmarks.map((bookmark, index) => (
-                    <option key={bookmark.id} value={bookmark.id}>
+                    <option key={`${bookmark.id}-${index}`} value={bookmark.id}>
                       #{index + 1} · {new Date(bookmark.createdAt).toLocaleString()} · {bookmark.action}
                     </option>
                   ))}
                 </select>
+
                 <div className="mt-2 flex gap-2">
                   <button
                     className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
                     title="Перейти к состоянию проекта"
                     aria-label="Перейти к состоянию проекта"
                     disabled={!editModeEnabled || !selectedBookmarkId}
-                    onClick={() => {
-                      if (selectedBookmarkId) {
-                        jumpToHistoryBookmark(selectedBookmarkId);
-                      }
-                    }}
+                    onClick={() => selectedBookmarkId && jumpToHistoryBookmark(selectedBookmarkId)}
                   >
                     ⏪
                   </button>
@@ -230,11 +276,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     title="Удалить снимок"
                     aria-label="Удалить снимок"
                     disabled={!editModeEnabled || !selectedBookmarkId}
-                    onClick={() => {
-                      if (selectedBookmarkId) {
-                        deleteHistoryBookmark(selectedBookmarkId);
-                      }
-                    }}
+                    onClick={() => selectedBookmarkId && deleteHistoryBookmark(selectedBookmarkId)}
                   >
                     🗑
                   </button>
@@ -247,22 +289,15 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
           )}
 
           {openSection === "view" && (
-            <div
-              ref={viewPanelRef}
-              className="grid gap-2"
-              onWheelCapture={(event) => {
-                if (!viewWheelTarget) return;
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onWheel={(event) => {
-                if (!viewWheelTarget) return;
-                event.preventDefault();
-                event.stopPropagation();
-                applyViewWheelDelta(event.deltaY, event.shiftKey);
-              }}
-            >
-              <button type="button" className="text-left text-xs text-slate-600 dark:text-slate-200" onClick={() => setViewWheelTarget("zoom")}>Масштаб: {Math.round(zoom * 100)}%</button>
+            <div ref={viewPanelRef} className="grid gap-2">
+              <button
+                type="button"
+                className="text-left text-xs text-slate-600 dark:text-slate-200"
+                onClick={() => setViewWheelTarget("zoom")}
+              >
+                Масштаб: {Math.round(zoom * 100)}%
+              </button>
+
               <input
                 type="range"
                 min={0.25}
@@ -273,16 +308,20 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 onBlur={() => setViewWheelTarget(null)}
                 onPointerEnter={() => setViewWheelTarget("zoom")}
                 onChange={(event) => setZoom(Number(event.target.value))}
-                onWheel={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  applyZoomWheel(event.deltaY);
-                }}
               />
-              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={() => setZoom(1)}>Центр · 100%</button>
+
+              <button
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200"
+                onClick={() => setZoom(1)}
+              >
+                Центр · 100%
+              </button>
+
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[11px] text-slate-500 dark:text-slate-300">
-                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("width")}>Card Width (mm)</button>
+                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("width")}>
+                    Card Width (mm)
+                  </button>
                   <input
                     type="number"
                     min={50}
@@ -293,16 +332,14 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     onBlur={() => setViewWheelTarget(null)}
                     onPointerEnter={() => setViewWheelTarget("width")}
                     onChange={(event) => setCardSizeMm(clampMm(Number(event.target.value)), layout.heightMm)}
-                    onWheel={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      applyWidthWheel(event.deltaY, event.shiftKey);
-                    }}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                   />
                 </label>
+
                 <label className="text-[11px] text-slate-500 dark:text-slate-300">
-                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("height")}>Card Height (mm)</button>
+                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("height")}>
+                    Card Height (mm)
+                  </button>
                   <input
                     type="number"
                     min={50}
@@ -313,16 +350,19 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     onBlur={() => setViewWheelTarget(null)}
                     onPointerEnter={() => setViewWheelTarget("height")}
                     onChange={(event) => setCardSizeMm(layout.widthMm, clampMm(Number(event.target.value)))}
-                    onWheel={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      applyHeightWheel(event.deltaY, event.shiftKey);
-                    }}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
                   />
                 </label>
               </div>
-              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={onToggleTheme}>
+
+              <div className="text-[11px] text-slate-500 dark:text-slate-300">
+                Колесо мыши работает тут, когда выбрана цель: <b>Масштаб</b> / <b>Width</b> / <b>Height</b>. Shift = шаг 10 мм.
+              </div>
+
+              <button
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200"
+                onClick={onToggleTheme}
+              >
                 {theme === "light" ? "☀️ Светлая" : "🌙 Тёмная"}
               </button>
             </div>
@@ -330,15 +370,36 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
           {openSection === "grid" && (
             <div className="grid gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />Сетка</label>
-              <select value={gridIntensity} onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")} className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
+                Сетка
+              </label>
+
+              <select
+                value={gridIntensity}
+                onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              >
                 <option value="low">Сетка: Мягкая</option>
                 <option value="medium">Сетка: Нормальная</option>
                 <option value="high">Сетка: Контрастная</option>
               </select>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />Только см</label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />Линейки</label>
-              <select value={rulersPlacement} onChange={(event) => setRulersPlacement(event.target.value as "outside" | "inside")} className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">
+
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />
+                Только см
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />
+                Линейки
+              </label>
+
+              <select
+                value={rulersPlacement}
+                onChange={(event) => setRulersPlacement(event.target.value as "outside" | "inside")}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              >
                 <option value="outside">Линейки: Снаружи</option>
                 <option value="inside">Линейки: Внутри</option>
               </select>
@@ -347,8 +408,14 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
           {openSection === "snap" && (
             <div className="grid gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />Привязка</label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />Отладка</label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />
+                Привязка
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />
+                Отладка
+              </label>
             </div>
           )}
         </div>
