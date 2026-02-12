@@ -14,6 +14,7 @@ export const App = () => {
   const exportLabel = useAppStore((state) => state.exportLabel);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [elapsed, setElapsed] = useState(0);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   const selectedCard = useMemo(() => {
     if (!selectedId) return null;
@@ -60,47 +61,45 @@ export const App = () => {
     `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-5 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <header className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold">LingoCard 2.0</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Дневной редактор карточек немецких глаголов
-          </p>
-        </div>
+    <div className="min-h-screen bg-slate-50 px-4 py-3 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <header className="mb-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/80">
         <div className="flex items-center gap-3">
+          <h1 className="text-base font-semibold">LingoCard 2.0</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Дневной редактор карточек</p>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => {
               if (window.confirm("Сбросить состояние? Это удалит временные данные.")) {
                 resetState();
               }
             }}
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:text-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:text-white"
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:text-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:text-white"
           >
             Сбросить состояние
           </button>
           <div
-            className="rounded-full bg-white px-4 py-2 text-xs text-slate-500 shadow-soft dark:bg-slate-900 dark:text-slate-300"
+            className="rounded-lg bg-white px-3 py-1 text-[11px] text-slate-500 shadow-soft dark:bg-slate-900 dark:text-slate-300"
             title={selectedCard?.id ?? ""}
           >
             {headline}
           </div>
         </div>
       </header>
-      <div className="grid grid-cols-[300px_1fr_300px] gap-6">
+      <div className="grid grid-cols-[300px_1fr_300px] gap-4">
         <CardListPanel side="A" />
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3">
           <Toolbar theme={theme} onToggleTheme={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))} />
-          <div className="rounded-2xl bg-white p-6 shadow-soft dark:bg-slate-900/80">
-            <div className="mb-4 flex items-center justify-between">
+          <div className="rounded-2xl bg-white p-3 shadow-soft dark:bg-slate-900/80">
+            <div className="mb-2 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Рабочая область</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <h2 className="text-sm font-semibold uppercase tracking-wide">Рабочая область</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Настройте расположение элементов карточки
                 </p>
               </div>
             </div>
-            <div className="mb-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-3 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
+            <div className="mb-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
               {selectedCard ? (
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-slate-700 dark:text-slate-100">
@@ -114,7 +113,21 @@ export const App = () => {
             </div>
             <EditorCanvas />
           </div>
-          <AiControlPanel />
+          <div className="rounded-xl border border-slate-200 bg-white/90 dark:border-slate-800 dark:bg-slate-900/85">
+            <button
+              type="button"
+              onClick={() => setAiPanelOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200"
+            >
+              <span>AI panel</span>
+              <span className={`transition-transform duration-200 ${aiPanelOpen ? "rotate-180" : "rotate-0"}`}>▾</span>
+            </button>
+            <div className={`grid overflow-hidden transition-all duration-200 ease-[cubic-bezier(.2,.8,.2,1)] ${aiPanelOpen ? "max-h-[900px] opacity-100" : "max-h-0 opacity-0"}`}>
+              <div className="p-2">
+                <AiControlPanel />
+              </div>
+            </div>
+          </div>
         </div>
         <CardListPanel side="B" />
       </div>
