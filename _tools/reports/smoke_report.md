@@ -1,0 +1,28 @@
+# Smoke Report
+
+- **TypeScript**: OK
+- **BOM backup_create.ps1**: OK
+- **Parse backup_create.ps1**: OK
+- **BOM backup_restore.ps1**: OK
+- **Parse backup_restore.ps1**: OK
+- **BOM common.ps1**: OK
+- **Parse common.ps1**: OK
+- **BOM dev_server.ps1**: OK
+- **Parse dev_server.ps1**: OK
+- **BOM dev_start.ps1**: OK
+- **Parse dev_start.ps1**: OK
+- **BOM git_fix_remote_access.ps1**: OK
+- **Parse git_fix_remote_access.ps1**: OK
+- **BOM git_init_local.ps1**: OK
+- **Parse git_init_local.ps1**: OK
+- **BOM git_pull_rebase.ps1**: OK
+- **Parse git_pull_rebase.ps1**: OK
+- **BOM git_push.ps1**: OK
+- **Parse git_push.ps1**: OK
+- **BOM smoke.ps1**: OK
+- **Parse smoke.ps1**: OK
+- **BOM smoke_run.ps1**: OK
+- **Parse smoke_run.ps1**: OK
+- **BOM toolbox_selftest.ps1**: OK
+- **Parse toolbox_selftest.ps1**: OK
+- **Dev server boot**: OK
