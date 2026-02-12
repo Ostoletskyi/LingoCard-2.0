@@ -1,4 +1,4 @@
-﻿# LingoCard Toolbox
+# LingoCard Toolbox
 
 ## Entry point
 Run from project root:
@@ -7,27 +7,22 @@ Run from project root:
 TOOLBOX.bat
 ```
 
-## Structure
-- `_tools/ps/` PowerShell 5.1 scripts
-- `_reports/toolbox/YYYY-MM-DD/` runtime logs (`.md` + `.json`)
-- `_tools/backups/` backup archives
-- `_tools/tmp/` temporary restore/output data
+## Functional modules (PowerShell 5.1)
+All scripts are in `_tools/ps/` and run through the BAT menu.
 
-## Main menu
-- Backup
-- Git + Smoke
-- Dev server
-- Diagnostics / Self-test
+1. `git_pull.ps1` - update local project from git (`pull --rebase`)
+2. `git_push.ps1` - commit/push local project state to git
+3. `backup_create.ps1` - create project backup (`_tools/backups/backup_*.zip`)
+4. `backup_restore.ps1` - restore project from selected backup
+5. `smoke.ps1` - run project smoke checks
+6. `common.ps1` - shared helper functions (paths, logs, checks)
+
+## Reports and artifacts
+- `_tools/backups/` - backups
+- `_tools/reports/` - action logs
+- `_tools/tmp/` - temporary restore folders
 
 ## Notes
-- All scripts use `Set-StrictMode -Version Latest` and `try/catch` with `exit 0/1/2`.
-- Default launcher command format:
+- Menu and scripts are English-only.
+- PowerShell launch format:
   `powershell -NoProfile -ExecutionPolicy Bypass -File "_tools\ps\<script>.ps1"`
-
-
-## Rebase helper
-- `_tools/Rebase.bat` is a focused wrapper for git rebase flow.
-- It resolves `PROJECT_ROOT` from `_tools/` and runs:
-  - `_tools/ps/git_pull_rebase.ps1`
-- Optional mode:
-  - `Rebase.bat --status` (status-only check)

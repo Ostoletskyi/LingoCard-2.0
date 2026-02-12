@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import type React from "react";
 import { useAppStore } from "../state/store";
 
 type ThemeMode = "light" | "dark";
@@ -17,6 +17,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const zoom = useAppStore((state) => state.zoom);
   const layout = useAppStore((state) => state.layout);
   const setZoom = useAppStore((state) => state.setZoom);
+  const layout = useAppStore((state) => state.layout);
   const setCardSizeMm = useAppStore((state) => state.setCardSizeMm);
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
@@ -36,94 +37,19 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const toggleDebugOverlays = useAppStore((state) => state.toggleDebugOverlays);
   const setRulersPlacement = useAppStore((state) => state.setRulersPlacement);
 
-  const [openSection, setOpenSection] = useState<ToolbarSection | null>(() => {
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem("ui.toolbar.openSection") : null;
-    return saved === "history" || saved === "view" || saved === "grid" || saved === "snap"
-      ? saved
-      : null;
-  });
-  const [viewWheelTarget, setViewWheelTarget] = useState<ViewWheelTarget>(null);
-  const viewPanelRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (openSection) {
-      window.localStorage.setItem("ui.toolbar.openSection", openSection);
-    } else {
-      window.localStorage.removeItem("ui.toolbar.openSection");
-    }
-  }, [openSection]);
-
-  useEffect(() => {
-    if (openSection !== "view") {
-      setViewWheelTarget(null);
-    }
-  }, [openSection]);
-
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      const node = viewPanelRef.current;
-      if (!node || !node.contains(event.target as Node)) {
-        setViewWheelTarget(null);
-      }
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, []);
-
-  const applyZoomWheel = useCallback((deltaY: number) => {
-    const direction = deltaY > 0 ? -1 : 1;
-    setZoom(clampZoom(zoom + direction * 0.05));
-  }, [zoom, setZoom]);
-
-  const applyWidthWheel = useCallback((deltaY: number, shift: boolean) => {
-    const direction = deltaY > 0 ? -1 : 1;
-    const step = shift ? 10 : 1;
-    setCardSizeMm(clampMm(layout.widthMm + direction * step), layout.heightMm);
-  }, [layout.widthMm, layout.heightMm, setCardSizeMm]);
-
-  const applyHeightWheel = useCallback((deltaY: number, shift: boolean) => {
-    const direction = deltaY > 0 ? -1 : 1;
-    const step = shift ? 10 : 1;
-    setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + direction * step));
-  }, [layout.widthMm, layout.heightMm, setCardSizeMm]);
-
-  const applyViewWheelDelta = useCallback((deltaY: number, shift: boolean) => {
-    if (!viewWheelTarget) return;
-    if (viewWheelTarget === "zoom") applyZoomWheel(deltaY);
-    if (viewWheelTarget === "width") applyWidthWheel(deltaY, shift);
-    if (viewWheelTarget === "height") applyHeightWheel(deltaY, shift);
-  }, [viewWheelTarget, applyZoomWheel, applyWidthWheel, applyHeightWheel]);
-
-  useEffect(() => {
-    if (!viewWheelTarget) return;
-    const onWindowWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      applyViewWheelDelta(event.deltaY, event.shiftKey);
-    };
-    window.addEventListener("wheel", onWindowWheel, { passive: false, capture: true });
-    return () => window.removeEventListener("wheel", onWindowWheel, { capture: true });
-  }, [viewWheelTarget, applyViewWheelDelta]);
-
-  const toggleSection = (section: ToolbarSection) => {
-    setOpenSection((prev) => (prev === section ? null : section));
+  const handleCardSizeWheel = (
+    event: React.WheelEvent<HTMLInputElement>,
+    axis: "width" | "height"
+  ) => {
+    event.preventDefault();
+    const step = event.shiftKey ? 10 : 1;
+    const delta = event.deltaY < 0 ? step : -step;
+    setCardSizeMm({
+      widthMm: axis === "width" ? layout.widthMm + delta : layout.widthMm,
+      heightMm: axis === "height" ? layout.heightMm + delta : layout.heightMm
+    });
   };
-
-  const sectionButton = (section: ToolbarSection, label: string, icon: string) => (
-    <button
-      key={section}
-      type="button"
-      onClick={() => toggleSection(section)}
-      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-        openSection === section
-          ? "bg-sky-100 text-sky-800 dark:bg-slate-800 dark:text-sky-300"
-          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800/70 dark:text-slate-200"
-      }`}
-    >
-      {icon} {label}
-    </button>
-  );
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-soft dark:border-slate-800 dark:bg-slate-900/85">
@@ -257,6 +183,108 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
             </div>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">Card (mm)</span>
+          <input
+            type="number"
+            min={10}
+            step={1}
+            value={layout.widthMm}
+            onChange={(event) =>
+              setCardSizeMm({ widthMm: Number(event.target.value), heightMm: layout.heightMm })
+            }
+            onWheel={(event) => handleCardSizeWheel(event, "width")}
+            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+            title="Width mm (wheel: 1mm, Shift+wheel: 10mm)"
+          />
+          <span className="text-xs text-slate-400">×</span>
+          <input
+            type="number"
+            min={10}
+            step={1}
+            value={layout.heightMm}
+            onChange={(event) =>
+              setCardSizeMm({ widthMm: layout.widthMm, heightMm: Number(event.target.value) })
+            }
+            onWheel={(event) => handleCardSizeWheel(event, "height")}
+            className="w-20 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600"
+            title="Height mm (wheel: 1mm, Shift+wheel: 10mm)"
+          />
+        </div>
+        <label className="flex items-center gap-1 text-xs text-slate-600">
+          <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
+          Сетка
+        </label>
+        <select
+          value={gridIntensity}
+          onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")}
+          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          title="Интенсивность сетки"
+        >
+          <option value="low">Сетка: Мягкая</option>
+          <option value="medium">Сетка: Нормальная</option>
+          <option value="high">Сетка: Контрастная</option>
+        </select>
+        <label className="flex items-center gap-1 text-xs text-slate-600">
+          <input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />
+          Только см
+        </label>
+        <label className="flex items-center gap-1 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={rulersEnabled}
+            onChange={toggleRulers}
+            title="Показать линейки"
+          />
+          Линейки
+        </label>
+        <select
+          value={rulersPlacement}
+          onChange={(event) =>
+            setRulersPlacement(event.target.value as "outside" | "inside")
+          }
+          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        >
+          <option value="outside">Линейки: Снаружи</option>
+          <option value="inside">Линейки: Внутри</option>
+        </select>
+        <label className="flex items-center gap-1 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={snapEnabled}
+            onChange={toggleSnap}
+            title="Мягкая привязка к сетке"
+          />
+          Привязка
+        </label>
+        <label className="flex items-center gap-1 text-xs text-slate-600">
+          <input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />
+          Отладка
+        </label>
+        <button
+          className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
+          onClick={() => setZoom(1)}
+        >
+          Центр · 100%
+        </button>
+      </div>
+      <div className="flex items-center gap-2 border-l border-slate-100 pl-3 dark:border-slate-700">
+        <button
+          className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300"
+          onClick={pushHistory}
+        >
+          Снимок
+        </button>
+      </div>
+      <div className="flex items-center gap-2 border-l border-slate-100 pl-3 dark:border-slate-700">
+        <button
+          onClick={onToggleTheme}
+          title="Переключить тему"
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:text-white"
+        >
+          <span>{theme === "light" ? "☀️" : "🌙"}</span>
+          {theme === "light" ? "Светлая" : "Тёмная"}
+        </button>
       </div>
     </div>
   );

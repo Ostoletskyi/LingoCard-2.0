@@ -1,71 +1,54 @@
-﻿param(
-    [string]$ProjectRoot,
-    [string]$LogPath
-)
+﻿param([string]$ProjectRoot)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
-Ensure-ToolDirectories $root
-$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'backup_restore'
-$action = 'backup_restore'
+Ensure-ToolDirs $root
+$log = New-LogPath -ProjectRoot $root -Prefix 'backup_restore'
 
+$tempDir = $null
 try {
     $backupRoot = Join-Path $root '_tools\backups'
     $backups = Get-ChildItem -Path $backupRoot -Filter 'backup_*.zip' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
-    if (-not $backups -or $backups.Count -eq 0) {
-        Write-Host 'No backups found.' -ForegroundColor Yellow
-        Write-ToolLog -LogPaths $log -Action $action -Command 'list backups' -Result 'error' -ExitCode 1 -Details 'none found'
-        Show-LogHint -LogPaths $log
-        exit 1
-    }
+    if (-not $backups -or $backups.Count -eq 0) { throw 'No backups found in _tools\backups.' }
 
     Write-Host 'Available backups:'
     for ($i = 0; $i -lt $backups.Count; $i++) {
-        Write-Host (("[{0}] {1}" -f ($i + 1), $backups[$i].Name))
+        Write-Host ("[{0}] {1}" -f ($i + 1), $backups[$i].Name)
     }
 
-    $selected = Read-Host 'Enter backup number'
-    if (-not ($selected -as [int])) {
-        Write-ToolLog -LogPaths $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2
-        Show-LogHint -LogPaths $log
-        exit 2
-    }
-    $idx = [int]$selected - 1
-    if ($idx -lt 0 -or $idx -ge $backups.Count) {
-        Write-ToolLog -LogPaths $log -Action $action -Command 'select backup' -Result 'invalid_input' -ExitCode 2
-        Show-LogHint -LogPaths $log
-        exit 2
-    }
+    $choice = Read-Host 'Enter backup number'
+    if (-not ($choice -as [int])) { throw 'Invalid backup selection.' }
+    $index = [int]$choice - 1
+    if ($index -lt 0 -or $index -ge $backups.Count) { throw 'Backup index is out of range.' }
 
-    $picked = $backups[$idx]
+    $selected = $backups[$index]
 
-    Write-Host 'Creating pre-restore backup...'
+    Write-Host 'Creating safety backup before restore...'
     & (Join-Path $PSScriptRoot 'backup_create.ps1') -ProjectRoot $root | Out-Host
 
-    $restoreDir = Join-Path $root ("_tools\tmp\restore_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
-    New-Item -ItemType Directory -Path $restoreDir -Force | Out-Null
-    Expand-Archive -Path $picked.FullName -DestinationPath $restoreDir -Force
-    Write-Host "Backup extracted to: $restoreDir"
+    $tempDir = Join-Path $root ("_tools\tmp\restore_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    Expand-Archive -Path $selected.FullName -DestinationPath $tempDir -Force
 
-    $replace = Read-Host 'Replace current working tree now? Type YES to continue'
-    if ($replace -eq 'YES') {
-        Get-ChildItem -Path $restoreDir -Force | ForEach-Object {
-            if ($_.Name -in @('.git','node_modules','dist')) { return }
-            Copy-Item -Path $_.FullName -Destination (Join-Path $root $_.Name) -Recurse -Force
-        }
-        Write-Host 'Working tree restored from selected backup.'
-    } else {
-        Write-Host 'Replace skipped. Review extracted folder manually.'
+    $confirm = Read-Host 'Type YES to replace current working files from this backup'
+    if ($confirm -ne 'YES') {
+        Write-Host 'Restore cancelled by user.'
+        Write-Log -LogPath $log -Message "CANCEL backup_restore selected=$($selected.Name)"
+        exit 2
     }
 
-    Write-ToolLog -LogPaths $log -Action $action -Command 'Expand-Archive and optional replace' -Result 'success' -ExitCode 0 -Details $picked.Name
-    Show-LogHint -LogPaths $log
+    Get-ChildItem -Path $tempDir -Force | ForEach-Object {
+        if ($_.Name -in @('.git','node_modules','dist')) { return }
+        Copy-Item -Path $_.FullName -Destination (Join-Path $root $_.Name) -Recurse -Force
+    }
+
+    Write-Host "Restore completed from: $($selected.Name)"
+    Write-Log -LogPath $log -Message "SUCCESS backup_restore selected=$($selected.Name)"
     exit 0
 }
 catch {
     Write-Host 'Backup restore failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPaths $log -Action $action -Command 'restore' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPaths $log
+    Write-Log -LogPath $log -Message "ERROR backup_restore $($_.Exception.Message)"
     exit 1
 }
