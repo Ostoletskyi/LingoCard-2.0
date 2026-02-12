@@ -15,7 +15,8 @@ All scripts are in `_tools/ps/` and run through the BAT menu.
 3. `backup_create.ps1` - create project backup (`_tools/backups/backup_*.zip`)
 4. `backup_restore.ps1` - restore project from selected backup
 5. `smoke.ps1` - run project smoke checks
-6. `common.ps1` - shared helper functions (paths, logs, checks)
+6. `dev_start.ps1` - start local dev server and open browser automatically
+7. `common.ps1` - shared helper functions (paths, logs, checks)
 
 ## Reports and artifacts
 - `_tools/backups/` - backups

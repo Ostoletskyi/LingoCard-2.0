@@ -1,52 +1,54 @@
 ﻿param(
     [string]$ProjectRoot,
-    [string]$LogPath,
-    [switch]$OpenBrowser,
-    [switch]$CleanInstall
+    [int]$Port = 5173
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
-Ensure-ToolDirectories $root
-$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'dev_start'
-$action = 'dev_start'
+Ensure-ToolDirs $root
+$log = New-LogPath -ProjectRoot $root -Prefix 'dev_start'
 
 try {
-    if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'node is not installed.' }
-    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw 'npm is not installed.' }
+    Assert-Command node
+    Assert-Command npm
 
     Push-Location $root
     try {
-        if ($CleanInstall) {
-            if (Test-Path (Join-Path $root 'node_modules')) { Remove-Item -Path (Join-Path $root 'node_modules') -Recurse -Force }
-            npm ci 2>&1 | Tee-Object -FilePath $log.Md -Append
-            Write-Host 'Clean install completed.'
-            Write-ToolLog -LogPaths $log -Action $action -Command 'clean install' -Result 'success' -ExitCode 0
-            Show-LogHint -LogPaths $log
-            exit 0
-        }
-
         if (-not (Test-Path (Join-Path $root 'node_modules'))) {
             $install = Read-Host 'node_modules is missing. Run npm install? (Y/N)'
-            if ($install -match '^(Y|y)$') { npm install 2>&1 | Tee-Object -FilePath $log.Md -Append }
-            else { Write-ToolLog -LogPaths $log -Action $action -Command 'npm install prompt' -Result 'cancelled' -ExitCode 2; Show-LogHint -LogPaths $log; exit 2 }
+            if ($install -match '^(Y|y)$') {
+                npm install | Out-Host
+                if ($LASTEXITCODE -ne 0) {
+                    throw 'npm install failed.'
+                }
+            } else {
+                Write-Log -LogPath $log -Message 'CANCEL dev_start node_modules_missing'
+                exit 2
+            }
         }
 
-        if ($OpenBrowser) { Start-Process 'http://localhost:5173' | Out-Null }
+        $url = "http://localhost:$Port/"
+        Write-Host "Opening browser: $url"
+        Start-Process $url | Out-Null
+        Write-Host 'Starting development server...'
+        Write-Host 'Use Ctrl+C to stop the server.'
+        Write-Log -LogPath $log -Message "INFO opening_browser $url"
 
-        Write-Host 'Starting dev server. Press CTRL+C to stop.'
-        npm run dev 2>&1 | Tee-Object -FilePath $log.Md -Append
-        $exitCode = $LASTEXITCODE
-        Write-ToolLog -LogPaths $log -Action $action -Command 'npm run dev' -Result 'finished' -ExitCode $exitCode
-        Show-LogHint -LogPaths $log
-        exit $exitCode
+        npm run dev -- --host 0.0.0.0 --port $Port | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Development server exited with a non-zero status.'
+        }
+
+        Write-Log -LogPath $log -Message 'SUCCESS dev_start'
+        exit 0
     }
-    finally { Pop-Location }
+    finally {
+        Pop-Location
+    }
 }
 catch {
-    Write-Host 'Dev server failed to start.' -ForegroundColor Red
+    Write-Host 'Failed to start development server.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPaths $log -Action $action -Command 'npm run dev' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPaths $log
+    Write-Log -LogPath $log -Message "ERROR dev_start $($_.Exception.Message)"
     exit 1
 }

@@ -4,4 +4,8 @@ node_modules
 /_reports
 .env
 
-/_tools/reports
+# toolbox runtime artifacts
+/_tools/reports/*.md
+/_tools/reports/*.log
+/_tools/reports/*.json
+/_tools/reports/*.txt
