@@ -194,7 +194,6 @@ const buildTemplateZones = (widthMm: number, heightMm: number) => {
 
   return {
     hero: { xMm: margin, yMm: margin, wMm: innerW, hMm: 9.5 },
-    meta: { xMm: margin, yMm: margin + 10.5, wMm: innerW, hMm: 4.2 },
     left: { xMm: margin, yMm: contentTop, wMm: leftW, hMm: contentH },
     rightTop: { xMm: margin + leftW + gap, yMm: contentTop, wMm: rightW, hMm: contentH * 0.44 },
     rightBottom: {
