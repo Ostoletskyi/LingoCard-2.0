@@ -3,3 +3,5 @@ node_modules
 /_backups
 /_reports
 .env
+
+/_tools/reports
