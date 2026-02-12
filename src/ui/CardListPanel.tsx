@@ -43,6 +43,7 @@ export const CardListPanel = ({ side }: Props) => {
   const removeSelectedBoxFromCard = useAppStore((state) => state.removeSelectedBoxFromCard);
   const layout = useAppStore((state) => state.layout);
   const selectedBoxId = useAppStore((state) => state.selectedBoxId);
+  const editModeEnabled = useAppStore((state) => state.editModeEnabled);
   const [importNotice, setImportNotice] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importErrorLog, setImportErrorLog] = useState<ImportErrorLog | null>(null);
@@ -96,6 +97,7 @@ export const CardListPanel = ({ side }: Props) => {
   }, [cards, filter]);
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!editModeEnabled) return;
     const file = event.target.files?.[0];
     if (!file) return;
     startExport("Импорт...");
@@ -128,6 +130,7 @@ export const CardListPanel = ({ side }: Props) => {
   };
 
   const handleTextImport = async () => {
+    if (!editModeEnabled) return;
     const text = prompt("Введите инфинитивы через новую строку");
     if (!text) return;
     const cardsFromText = importInfinitivesText(text);
@@ -135,6 +138,7 @@ export const CardListPanel = ({ side }: Props) => {
   };
 
   const handleCreate = () => {
+    if (!editModeEnabled) return;
     addCard({ inf: "" }, side);
   };
 
@@ -143,6 +147,10 @@ export const CardListPanel = ({ side }: Props) => {
   const handleAddBlock = (
     kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple"
   ) => {
+    if (!editModeEnabled) {
+      setImportNotice("Включите режим редактирования в шапке.");
+      return;
+    }
     if (!activeCardId) {
       setImportNotice("Сначала выберите активную карточку в этой колонке.");
       return;
@@ -152,6 +160,10 @@ export const CardListPanel = ({ side }: Props) => {
   };
 
   const handleDeleteSelectedBlock = () => {
+    if (!editModeEnabled) {
+      setImportNotice("Включите режим редактирования в шапке.");
+      return;
+    }
     if (!activeCardId) {
       setImportNotice("Сначала выберите активную карточку в этой колонке.");
       return;
@@ -287,42 +299,43 @@ export const CardListPanel = ({ side }: Props) => {
             className={`grid overflow-hidden transition-all duration-200 ${openSection === "data" ? "mt-2 max-h-80 opacity-100" : "max-h-0 opacity-0"}`}
           >
             <div className="grid gap-2">
-            <button ref={firstDataButtonRef} onClick={handleCreate} className={`${buttonBase} ${buttonSolid}`}>
+            <button ref={firstDataButtonRef} onClick={handleCreate} disabled={!editModeEnabled} className={`${buttonBase} ${buttonSolid} disabled:opacity-50`}>
               + Новая карточка
             </button>
             <div className="relative">
               <button
                 onClick={() => setBlockMenuOpen((prev) => !prev)}
-                className={`${buttonBase} ${buttonDark} relative w-full pr-8`}
+                disabled={!editModeEnabled}
+                className={`${buttonBase} ${buttonDark} relative w-full pr-8 disabled:opacity-50`}
               >
                 Создать блок
                 <span className={`absolute right-3 transition-transform ${blockMenuOpen ? "rotate-180" : "rotate-0"}`}>▾</span>
               </button>
               {blockMenuOpen && (
                 <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                  <button onClick={() => handleAddBlock("inf")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>1. Инфинитив</button>
-                  <button onClick={() => handleAddBlock("freq")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>2. Частотность</button>
-                  <button onClick={() => handleAddBlock("forms_rek")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>3. Три времени + рекция</button>
-                  <button onClick={() => handleAddBlock("synonyms")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>4. Синонимы</button>
-                  <button onClick={() => handleAddBlock("examples")} className={`${buttonBase} ${buttonLight} w-full mb-1`}>5. Примеры</button>
-                  <button onClick={() => handleAddBlock("simple")} className={`${buttonBase} ${buttonLight} w-full`}>6. Простой блок</button>
+                  <button onClick={() => handleAddBlock("inf")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>1. Инфинитив</button>
+                  <button onClick={() => handleAddBlock("freq")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>2. Частотность</button>
+                  <button onClick={() => handleAddBlock("forms_rek")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>3. Три времени + рекция</button>
+                  <button onClick={() => handleAddBlock("synonyms")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>4. Синонимы</button>
+                  <button onClick={() => handleAddBlock("examples")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>5. Примеры</button>
+                  <button onClick={() => handleAddBlock("simple")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full`}>6. Простой блок</button>
                 </div>
               )}
             </div>
-            <button onClick={handleDeleteSelectedBlock} className={`${buttonBase} ${buttonDark}`}>
+            <button onClick={handleDeleteSelectedBlock} disabled={!editModeEnabled} className={`${buttonBase} ${buttonDark} disabled:opacity-50`}>
               Удалить блок
             </button>
-            <label className="cursor-pointer">
-              <input type="file" accept="application/json" onChange={handleImport} className="hidden" />
-              <span className={`${buttonBase} ${buttonLight} w-full`}>Импорт JSON</span>
+            <label className={editModeEnabled ? "cursor-pointer" : "cursor-not-allowed"}>
+              <input type="file" accept="application/json" onChange={handleImport} disabled={!editModeEnabled} className="hidden" />
+              <span className={`${buttonBase} ${buttonLight} w-full ${editModeEnabled ? "" : "opacity-50"}`}>Импорт JSON</span>
             </label>
-            <button onClick={handleTextImport} className={`${buttonBase} ${buttonLight}`}>
+            <button onClick={handleTextImport} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50`}>
               Импорт TXT
             </button>
             <button onClick={downloadSample} className={`${buttonBase} ${buttonGhost}`}>
               Пример файла
             </button>
-            <button onClick={handleAutoLayoutAll} className={`${buttonBase} ${buttonGhost}`}>
+            <button onClick={handleAutoLayoutAll} disabled={!editModeEnabled} className={`${buttonBase} ${buttonGhost} disabled:opacity-50`}>
               Авто-компоновка всех
             </button>
             </div>

@@ -80,7 +80,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     adjustColumnFontSizeByField,
     setZoom,
     removeSelectedBoxFromCard,
-    recordEvent
+    recordEvent,
+    editModeEnabled
   } = useAppStore((state) => ({
     layout: state.layout,
     zoom: state.zoom,
@@ -102,7 +103,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     adjustColumnFontSizeByField: state.adjustColumnFontSizeByField,
     setZoom: state.setZoom,
     removeSelectedBoxFromCard: state.removeSelectedBoxFromCard,
-    recordEvent: state.recordEvent
+    recordEvent: state.recordEvent,
+    editModeEnabled: state.editModeEnabled
   }));
 
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -155,6 +157,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   };
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
+    if (!editModeEnabled) return;
     if (editingBoxId) return;
     if (box.locked) return;
     event.stopPropagation();
@@ -184,6 +187,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
+    if (!editModeEnabled && dragState) {
+      dragActionRef.current = null;
+      setDragState(null);
+    }
     if (cardRef.current) {
       const rect = cardRef.current.getBoundingClientRect();
       const x = (event.clientX - rect.left)  / (basePxPerMm * zoomScale);
@@ -265,7 +272,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   };
 
   const handleBeginEdit = (box: Box) => {
-    if (!card) return;
+    if (!editModeEnabled || !card) return;
     const fieldValue =
       box.textMode === "static" ? box.staticText ?? box.text ?? "" : getFieldEditValue(card, box.fieldId);
     setFreqValidationError(null);
@@ -366,12 +373,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Delete") return;
-      if (!selectedId || editingBoxId) return;
+      if (!editModeEnabled || !selectedId || editingBoxId) return;
       removeSelectedBoxFromCard(selectedSide, selectedId);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [removeSelectedBoxFromCard, selectedSide, selectedId, editingBoxId]);
+  }, [removeSelectedBoxFromCard, selectedSide, selectedId, editingBoxId, editModeEnabled]);
 
   const selectedFieldIds = useMemo(
     () => {
@@ -389,6 +396,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   );
 
   const handleViewportWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!editModeEnabled) {
+      return;
+    }
     if (editingBoxId) {
       event.preventDefault();
       event.stopPropagation();
@@ -408,7 +418,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const next = zoomScale + (event.deltaY < 0 ? 0.05 : -0.05);
       setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next)));
     }
-  }, [editingBoxId, zoomScale, setZoom, selectedFieldIds, adjustColumnFontSizeByField, selectedSide]);
+  }, [editingBoxId, zoomScale, setZoom, selectedFieldIds, adjustColumnFontSizeByField, selectedSide, editModeEnabled]);
 
   const handlePointerLeave = () => {
     setCursorMm(null);
@@ -550,7 +560,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
           <span>
-            {gridEnabled ? "Сетка включена" : "Сетка выключена"} · Двойной клик = редактирование ·
+            {gridEnabled ? "Сетка включена" : "Сетка выключена"} · {editModeEnabled ? "Режим редактирования" : "Режим просмотра"} · Двойной клик = редактирование ·
             Блоки: {activeBoxes.length} / {visibleBoxes.length}
           </span>
           </div>
@@ -576,6 +586,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerLeave}
             onPointerDown={() => {
+              if (!editModeEnabled) {
+                return;
+              }
               if (editingBoxId) {
                 commitEdit(true);
                 return;
@@ -584,6 +597,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               setSelectedBoxIds([]);
             }}
             onDoubleClick={() => {
+              if (!editModeEnabled) {
+                return;
+              }
               if (editingBoxId) {
                 commitEdit(true);
               }
@@ -668,13 +684,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     handleBeginEdit(box);
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && !editingBoxId) {
+                    if (event.key === "Enter" && editModeEnabled && !editingBoxId) {
                       event.preventDefault();
                       handleBeginEdit(box);
                     }
                   }}
                 >
-                  {renderMode === "editor" && canEditLayoutGeometry && (
+                  {renderMode === "editor" && editModeEnabled && canEditLayoutGeometry && (
                     <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
                       {label}
                     </div>
@@ -732,12 +748,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       X:{box.xMm.toFixed(1)} Y:{box.yMm.toFixed(1)}
                     </span>
                   )}
-                  {renderMode === "editor" && isSelected && (
+                  {renderMode === "editor" && editModeEnabled && isSelected && (
                     <span className="absolute left-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
                       {box.wMm.toFixed(1)}×{box.hMm.toFixed(1)} мм
                     </span>
                   )}
-                  {renderMode === "editor" && canEditLayoutGeometry && isSelected && (
+                  {renderMode === "editor" && editModeEnabled && canEditLayoutGeometry && isSelected && (
                     <div className="contents">
                       {([
                         "nw",

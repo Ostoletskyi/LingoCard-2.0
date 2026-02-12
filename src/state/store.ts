@@ -58,6 +58,7 @@ type PersistedState = {
     rulersPlacement: "outside" | "inside";
     historyBookmarks: HistoryBookmark[];
     changeLog: ChangeLogEntry[];
+    editModeEnabled: boolean;
   };
 };
 
@@ -80,6 +81,7 @@ export type AppState = AppStateSnapshot &
     isEditingLayout: boolean;
     historyBookmarks: HistoryBookmark[];
     changeLog: ChangeLogEntry[];
+    editModeEnabled: boolean;
     setZoom: (value: number) => void;
     selectCard: (id: string | null, side: ListSide) => void;
     selectBox: (id: string | null) => void;
@@ -121,6 +123,7 @@ export type AppState = AppStateSnapshot &
     deleteHistoryBookmark: (id: string) => void;
     undo: () => void;
     redo: () => void;
+    toggleEditMode: () => void;
   };
 
 const HISTORY_LIMIT = 50;
@@ -287,7 +290,8 @@ const createBaseState = () => ({
   debugOverlays: false,
   rulersPlacement: "outside" as const,
   historyBookmarks: [] as HistoryBookmark[],
-  changeLog: [] as ChangeLogEntry[]
+  changeLog: [] as ChangeLogEntry[],
+  editModeEnabled: false
 });
 
 const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["state"] => {
@@ -336,7 +340,8 @@ const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["s
       : [],
     changeLog: Array.isArray(raw.changeLog)
       ? raw.changeLog.filter((item) => Boolean(item?.id && item?.at && item?.action))
-      : []
+      : [],
+    editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled
   };
 };
 
@@ -447,7 +452,8 @@ const persistState = (state: AppState) => {
       debugOverlays: state.debugOverlays,
       rulersPlacement: state.rulersPlacement,
       historyBookmarks: state.historyBookmarks,
-      changeLog: state.changeLog
+      changeLog: state.changeLog,
+      editModeEnabled: state.editModeEnabled
     }
   };
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -476,6 +482,7 @@ export const useAppStore = create<AppState>()(
     rulersPlacement: initialState.rulersPlacement,
     historyBookmarks: initialState.historyBookmarks ?? [],
     changeLog: initialState.changeLog ?? [],
+    editModeEnabled: initialState.editModeEnabled,
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,
@@ -497,6 +504,7 @@ export const useAppStore = create<AppState>()(
       state.selectedBoxId = id;
     }),
     addCard: (card, side) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `addCard:${side}`);
       const normalized = normalizeCard(card);
       if (side === "A") {
@@ -508,6 +516,7 @@ export const useAppStore = create<AppState>()(
       state.selectedSide = side;
     }),
     updateCard: (card, side, reason) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), reason ?? `updateCard:${side}:${card.id}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
@@ -516,6 +525,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     updateCardSilent: (card, side, reason, options) => set((state) => {
+      if (!state.editModeEnabled) return;
       const track = options?.track ?? true;
       if (track) {
         trackStateEvent(state, get(), reason ?? `updateCardSilent:${side}:${card.id}`);
@@ -527,6 +537,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     removeCard: (id, side) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `removeCard:${side}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === id);
@@ -538,6 +549,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     moveCard: (id, from) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `moveCard:${from}`);
       const fromList = from === "A" ? state.cardsA : state.cardsB;
       const toList = from === "A" ? state.cardsB : state.cardsA;
@@ -552,15 +564,18 @@ export const useAppStore = create<AppState>()(
       }
     }),
     setLayout: (layout) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), "setLayout");
       state.layout = layout;
     }),
     setCardSizeMm: (widthMm, heightMm) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), "setCardSizeMm");
       state.layout.widthMm = Math.min(400, Math.max(50, widthMm));
       state.layout.heightMm = Math.min(400, Math.max(50, heightMm));
     }),
     updateBox: (boxId, update) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `updateBox:${boxId}`);
       state.isEditingLayout = true;
       const box = state.layout.boxes.find((item) => item.id === boxId);
@@ -569,10 +584,12 @@ export const useAppStore = create<AppState>()(
       }
     }),
     beginLayoutEdit: () => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), "beginLayoutEdit");
       state.isEditingLayout = true;
     }),
     endLayoutEdit: () => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), "endLayoutEdit");
       state.isEditingLayout = false;
     }),
@@ -650,6 +667,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     autoLayoutAllCards: (side) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `autoLayoutAllCards:${side}`);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm));
@@ -660,6 +678,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     adjustColumnFontSizeByField: (side, fieldIds, deltaPt) => set((state) => {
+      if (!state.editModeEnabled) return;
       const source = side === "A" ? state.cardsA : state.cardsB;
       const targetSet = new Set(fieldIds);
       if (!targetSet.size) {
@@ -705,6 +724,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     addBlockToCard: (side, cardId, kind) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `addBlockToCard:${side}:${kind}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((card) => card.id === cardId);
@@ -720,7 +740,7 @@ export const useAppStore = create<AppState>()(
       state.selectedBoxId = nextBox.id;
     }),
     removeSelectedBoxFromCard: (side, cardId) => set((state) => {
-      if (!state.selectedBoxId) return;
+      if (!state.editModeEnabled || !state.selectedBoxId) return;
       trackStateEvent(state, get(), `removeBox:${side}:${state.selectedBoxId}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((card) => card.id === cardId);
@@ -733,6 +753,7 @@ export const useAppStore = create<AppState>()(
       state.selectedBoxId = null;
     }),
     recordEvent: (action) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), action, { undoable: false });
     }),
     resetState: () => set((state) => {
@@ -761,8 +782,10 @@ export const useAppStore = create<AppState>()(
       state.historyBookmarks = [];
       state.changeLog = [];
       state.isEditingLayout = false;
+      state.editModeEnabled = next.editModeEnabled;
     }),
     pushHistory: () => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), "pushHistorySnapshot");
       const createdAt = new Date().toISOString();
       state.historyBookmarks.push({
@@ -776,6 +799,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     jumpToHistoryBookmark: (id) => set((state) => {
+      if (!state.editModeEnabled) return;
       const target = state.historyBookmarks.find((bookmark) => bookmark.id === id);
       if (!target) {
         return;
@@ -784,12 +808,14 @@ export const useAppStore = create<AppState>()(
       applySnapshot(state, target.snapshot);
     }),
     deleteHistoryBookmark: (id) => set((state) => {
+      if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `deleteHistoryBookmark:${id}`);
       const before = state.historyBookmarks.length;
       state.historyBookmarks = state.historyBookmarks.filter((bookmark) => bookmark.id !== id);
       if (state.historyBookmarks.length === before) return;
     }),
     undo: () => set((state) => {
+      if (!state.editModeEnabled) return;
       const previous = state.past.pop();
       if (previous) {
         state.future.unshift(snapshotState(get()));
@@ -798,12 +824,17 @@ export const useAppStore = create<AppState>()(
       }
     }),
     redo: () => set((state) => {
+      if (!state.editModeEnabled) return;
       const next = state.future.shift();
       if (next) {
         state.past.push(snapshotState(get()));
         applySnapshot(state, next);
         appendChange(state, "redo");
       }
+    }),
+    toggleEditMode: () => set((state) => {
+      state.editModeEnabled = !state.editModeEnabled;
+      trackStateEvent(state, get(), `toggleEditMode:${state.editModeEnabled ? "on" : "off"}`, { undoable: false });
     })
   }))
 );

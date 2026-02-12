@@ -20,6 +20,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const setCardSizeMm = useAppStore((state) => state.setCardSizeMm);
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
+  const editModeEnabled = useAppStore((state) => state.editModeEnabled);
   const pushHistory = useAppStore((state) => state.pushHistory);
   const jumpToHistoryBookmark = useAppStore((state) => state.jumpToHistoryBookmark);
   const deleteHistoryBookmark = useAppStore((state) => state.deleteHistoryBookmark);
@@ -165,7 +166,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 <button
                   className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
                   onClick={undo}
-                  disabled={pastCount === 0}
+                  disabled={!editModeEnabled || pastCount === 0}
                   title="Отменить"
                   aria-label="Отменить"
                 >
@@ -174,7 +175,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 <button
                   className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
                   onClick={redo}
-                  disabled={futureCount === 0}
+                  disabled={!editModeEnabled || futureCount === 0}
                   title="Повторить"
                   aria-label="Повторить"
                 >
@@ -183,13 +184,14 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 <button
                   className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200"
                   onClick={pushHistory}
+                  disabled={!editModeEnabled}
                   title="Снимок истории"
                   aria-label="Снимок истории"
                 >
                   📸
                 </button>
                 <div className="ml-1 text-[11px] text-slate-500 dark:text-slate-300">
-                  События: {historyBookmarks.length}
+                  События: {historyBookmarks.length} · {editModeEnabled ? "Ред." : "Только чтение"}
                 </div>
               </div>
 
@@ -214,7 +216,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
                     title="Перейти к состоянию проекта"
                     aria-label="Перейти к состоянию проекта"
-                    disabled={!selectedBookmarkId}
+                    disabled={!editModeEnabled || !selectedBookmarkId}
                     onClick={() => {
                       if (selectedBookmarkId) {
                         jumpToHistoryBookmark(selectedBookmarkId);
@@ -227,7 +229,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-200 text-xs text-rose-600 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
                     title="Удалить снимок"
                     aria-label="Удалить снимок"
-                    disabled={!selectedBookmarkId}
+                    disabled={!editModeEnabled || !selectedBookmarkId}
                     onClick={() => {
                       if (selectedBookmarkId) {
                         deleteHistoryBookmark(selectedBookmarkId);

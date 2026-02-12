@@ -10,6 +10,8 @@ export const App = () => {
   const { selectedId, selectedSide, cardsA, cardsB } = useAppStore();
   const resetState = useAppStore((state) => state.resetState);
   const isExporting = useAppStore((state) => state.isExporting);
+  const editModeEnabled = useAppStore((state) => state.editModeEnabled);
+  const toggleEditMode = useAppStore((state) => state.toggleEditMode);
   const exportStartedAt = useAppStore((state) => state.exportStartedAt);
   const exportLabel = useAppStore((state) => state.exportLabel);
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -69,6 +71,18 @@ export const App = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
+            onClick={toggleEditMode}
+            className={`inline-flex items-center justify-center rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+              editModeEnabled
+                ? "border-emerald-300 bg-emerald-500 text-white hover:bg-emerald-600 dark:border-emerald-500 dark:bg-emerald-600"
+                : "border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            }`}
+            title="Включает/выключает возможность редактирования карточек"
+          >
+            Режим редактирования: {editModeEnabled ? "Вкл" : "Выкл"}
+          </button>
+          <button
             onClick={() => {
               if (window.confirm("Сбросить состояние? Это удалит временные данные.")) {
                 resetState();
@@ -105,7 +119,7 @@ export const App = () => {
                   <div className="font-semibold text-slate-700 dark:text-slate-100">
                     {selectedCard.inf || selectedCard.id} (Коллекция {selectedSide})
                   </div>
-                  <span className="text-xs text-slate-400">Готово к редактированию</span>
+                  <span className="text-xs text-slate-400">{editModeEnabled ? "Готово к редактированию" : "Режим просмотра (редактирование выключено)"}</span>
                 </div>
               ) : (
                 "Выберите карточку слева или создайте новую, чтобы начать работу."
