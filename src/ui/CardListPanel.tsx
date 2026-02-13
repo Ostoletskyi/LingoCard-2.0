@@ -49,6 +49,7 @@ export const CardListPanel = ({ side }: Props) => {
   const [importErrorLog, setImportErrorLog] = useState<ImportErrorLog | null>(null);
   const [importModalType, setImportModalType] = useState<"error" | "warning" | null>(null);
   const [blockMenuOpen, setBlockMenuOpen] = useState(false);
+  const blockMenuRef = useRef<HTMLDivElement | null>(null);
   const buttonBase =
     "inline-flex items-center justify-center text-center rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-200";
   const buttonSolid =
@@ -77,6 +78,28 @@ export const CardListPanel = ({ side }: Props) => {
       });
     }
   }, [openSection, storageKey]);
+
+
+  useEffect(() => {
+    if (!blockMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (blockMenuRef.current?.contains(target)) return;
+      setBlockMenuOpen(false);
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setBlockMenuOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [blockMenuOpen]);
 
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -302,17 +325,19 @@ export const CardListPanel = ({ side }: Props) => {
             <button ref={firstDataButtonRef} onClick={handleCreate} disabled={!editModeEnabled} className={`${buttonBase} ${buttonSolid} disabled:opacity-50`}>
               + Новая карточка
             </button>
-            <div className="relative">
+            <div ref={blockMenuRef} className="relative">
               <button
                 onClick={() => setBlockMenuOpen((prev) => !prev)}
                 disabled={!editModeEnabled}
+                aria-expanded={blockMenuOpen}
+                aria-haspopup="menu"
                 className={`${buttonBase} ${buttonDark} relative w-full pr-8 disabled:opacity-50`}
               >
                 Создать блок
                 <span className={`absolute right-3 transition-transform ${blockMenuOpen ? "rotate-180" : "rotate-0"}`}>▾</span>
               </button>
               {blockMenuOpen && (
-                <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                <div role="menu" className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-lg ring-1 ring-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-800">
                   <button onClick={() => handleAddBlock("inf")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>1. Инфинитив</button>
                   <button onClick={() => handleAddBlock("freq")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>2. Частотность</button>
                   <button onClick={() => handleAddBlock("forms_rek")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>3. Три времени + рекция</button>
@@ -431,9 +456,9 @@ export const CardListPanel = ({ side }: Props) => {
             </div>
           </div>
         )}
-        {filtered.map((card) => (
+        {filtered.map((card, index) => (
           <div
-            key={card.id}
+            key={`${card.id}-${side}-${index}`}
             className={[
               "flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition",
               selectedId === card.id && selectedSide === side

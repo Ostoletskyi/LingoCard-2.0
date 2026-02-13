@@ -229,6 +229,20 @@ const safeClone = <T>(value: T): T => {
 
 const cloneCards = (cards: Card[]) => cards.map((card) => safeClone(card));
 
+const ensureUniqueCardIds = (cards: Card[]): Card[] => {
+  const used = new Set<string>();
+  return cards.map((card) => {
+    let id = card.id?.trim() || crypto.randomUUID();
+    while (used.has(id)) {
+      id = crypto.randomUUID();
+    }
+    used.add(id);
+    if (id === card.id) return card;
+    return { ...card, id };
+  });
+};
+
+
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
     id,
@@ -304,8 +318,10 @@ const createBaseState = () => ({
 
 const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["state"] => {
   const base = createBaseState();
-  const cardsA = Array.isArray(raw.cardsA) ? raw.cardsA.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsA;
-  const cardsB = Array.isArray(raw.cardsB) ? raw.cardsB.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsB;
+  const cardsAInput = Array.isArray(raw.cardsA) ? raw.cardsA.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsA;
+  const cardsBInput = Array.isArray(raw.cardsB) ? raw.cardsB.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsB;
+  const cardsA = ensureUniqueCardIds(cardsAInput);
+  const cardsB = ensureUniqueCardIds(cardsBInput);
   const selectedId =
     typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
       ? raw.selectedId
@@ -512,12 +528,14 @@ export const useAppStore = create<AppState>()(
     addCard: (card, side) => set((state) => {
       if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `addCard:${side}`);
-      const normalized = normalizeCard(card);
-      if (side === "A") {
-        state.cardsA.push(normalized);
-      } else {
-        state.cardsB.push(normalized);
+      const normalizedBase = normalizeCard(card);
+      const target = side === "A" ? state.cardsA : state.cardsB;
+      let nextId = normalizedBase.id;
+      while (target.some((item) => item.id === nextId)) {
+        nextId = crypto.randomUUID();
       }
+      const normalized = nextId === normalizedBase.id ? normalizedBase : { ...normalizedBase, id: nextId };
+      target.push(normalized);
       state.selectedId = normalized.id;
       state.selectedSide = side;
     }),
