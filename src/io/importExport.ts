@@ -131,6 +131,19 @@ export const validateCardsImport = (
   }
 };
 
+
+const withExportBoxFontAliases = (card: Card) => ({
+  ...card,
+  boxes: (card.boxes ?? []).map((box) => ({
+    ...box,
+    fontPt: box.style?.fontSizePt ?? 11,
+    style: {
+      ...box.style,
+      fontSizePt: box.style?.fontSizePt ?? 11
+    }
+  }))
+});
+
 export const importInfinitivesText = (text: string, limit = 25): Card[] => {
   const list = text
     .split("\n")
@@ -141,6 +154,7 @@ export const importInfinitivesText = (text: string, limit = 25): Card[] => {
 };
 
 export const exportCardsToJson = (cards: Card[]): Blob => {
-  const json = JSON.stringify({ cards }, null, 2);
+  const preparedCards = cards.map(withExportBoxFontAliases);
+  const json = JSON.stringify({ cards: preparedCards }, null, 2);
   return new Blob([json], { type: "application/json" });
 };
