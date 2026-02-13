@@ -388,7 +388,7 @@ const recordHistory = (state: AppState, current: AppState) => {
 const appendHistoryBookmark = (state: AppState, current: AppState, action: string) => {
   const createdAt = new Date().toISOString();
   state.historyBookmarks.push({
-    id: createdAt,
+    id: crypto.randomUUID(),
     createdAt,
     action,
     snapshot: snapshotState(current)
@@ -795,7 +795,7 @@ export const useAppStore = create<AppState>()(
       trackStateEvent(state, get(), "pushHistorySnapshot");
       const createdAt = new Date().toISOString();
       state.historyBookmarks.push({
-        id: createdAt,
+        id: crypto.randomUUID(),
         createdAt,
         action: "manualSnapshot",
         snapshot: snapshotState(get())
