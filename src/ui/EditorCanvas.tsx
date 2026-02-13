@@ -54,9 +54,7 @@ const buildRulerTicks = (maxMm: number) => {
 type RenderMode = "editor" | "print";
 type EditorCanvasProps = { renderMode?: RenderMode };
 
-// --- Fallback: гарантированно не "2 блока" ---
-// Показываем ключевые поля + любые непустые поля карточки.
-// Геометрию fallback не редактируем, но отображение будет полным.
+// --- Fallback: гарантированно больше чем "2 блока" ---
 function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: number): Box[] {
   const pad = 4; // мм
   const x = pad;
@@ -79,8 +77,7 @@ function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: numbe
 
   const used = new Set(preferred.map((p) => p.fieldId));
 
-  // добиваем непустыми полями: показываем fieldId как есть,
-  // без подмены на custom_text (иначе теряется смысл)
+  // добиваем непустыми полями, чтобы “всё что нашли — показали”
   const extras: Array<{ fieldId: string; label?: string; h: number }> = [];
   for (const key of Object.keys(card) as Array<keyof Card>) {
     if (key === "boxes") continue;
@@ -93,9 +90,7 @@ function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: numbe
       (Array.isArray(v) && v.length > 0) ||
       (typeof v === "number" && !Number.isNaN(v));
 
-    if (nonEmpty) {
-      extras.push({ fieldId, h: 8 });
-    }
+    if (nonEmpty) extras.push({ fieldId: "custom_text", h: 8 });
   }
 
   const items = [...preferred, ...extras];
@@ -107,9 +102,10 @@ function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: numbe
     const nextH = it.h;
     if (y + nextH + pad > heightMm) break;
 
-    const boxBase: any = {
+    boxes.push({
       id: `fb_${it.fieldId}`,
       fieldId: it.fieldId,
+      ...(it.label ? { label: it.label } : {}), // <- важно для exactOptionalPropertyTypes
       locked: true,
       xMm: x,
       yMm: y,
@@ -126,13 +122,9 @@ function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: numbe
         lineHeight: 1.15,
         paddingMm: 2
       }
-    };
+    } as any);
 
-    // ВАЖНО: exactOptionalPropertyTypes — не пишем label: undefined
-    if (it.label) boxBase.label = it.label;
-
-    boxes.push(boxBase as Box);
-    y += nextH + 2; // интервал
+    y += nextH + 2;
   }
 
   return boxes;
@@ -190,9 +182,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [cursorMm, setCursorMm] = useState<{ x: number; y: number } | null>(null);
 
-  // режимы:
-  // selected (синий) = один клик
-  // editing (зелёный) = двойной клик
   const [editingBoxId, setEditingBoxId] = useState<string | null>(null);
   const [selectedBoxIds, setSelectedBoxIds] = useState<string[]>([]);
 
@@ -349,7 +338,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
     nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
 
-    updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH }, `boxResize:${dragState.boxId}`);
+    updateActiveBox(
+      dragState.boxId,
+      { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH },
+      `boxResize:${dragState.boxId}`
+    );
   };
 
   const handlePointerUp = () => {
@@ -474,37 +467,53 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     return activeBoxes.filter((b) => selectedIds.includes(b.id)).map((b) => b.fieldId);
   }, [activeBoxes, selectedBoxIds, selectedBoxId]);
 
-  const handleViewportWheel = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
+  // ✅ ВАЖНО: Wheel обрабатываем нативно и non-passive, чтобы preventDefault не ругался
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
       if (!editModeEnabled) return;
 
-      // пока редактируем текст — колесо не должно делать ничего “снаружи”
+      // Во время редактирования текста колесо не вмешивается (иначе будет мешать/срывать фокус)
       if (editingBoxId) {
-        event.preventDefault();
-        event.stopPropagation();
+        e.preventDefault();
+        e.stopPropagation();
         return;
       }
 
-      // если выделены блоки — крутим шрифт
-      if (selectedFieldIds.length > 0) {
-        event.preventDefault();
-        event.stopPropagation();
-        const step = event.shiftKey ? 2 : 1;
-        const delta = event.deltaY < 0 ? step : -step;
+      const hasSelection = selectedFieldIds.length > 0;
+
+      // Если выделены блоки — колесо меняет шрифт
+      if (hasSelection) {
+        e.preventDefault();
+        e.stopPropagation();
+        const step = e.shiftKey ? 2 : 1;
+        const delta = e.deltaY < 0 ? step : -step;
         adjustColumnFontSizeByField(selectedSide, selectedFieldIds, delta);
         return;
       }
 
-      // ctrl+wheel = zoom
-      if (event.ctrlKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        const next = zoomScale + (event.deltaY < 0 ? 0.05 : -0.05);
+      // Ctrl+Wheel = zoom (как в граф. редакторах)
+      if (e.ctrlKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = zoomScale + (e.deltaY < 0 ? 0.05 : -0.05);
         setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next)));
       }
-    },
-    [editingBoxId, selectedFieldIds, adjustColumnFontSizeByField, selectedSide, editModeEnabled, zoomScale, setZoom]
-  );
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel as any);
+  }, [
+    editModeEnabled,
+    editingBoxId,
+    selectedFieldIds,
+    selectedSide,
+    adjustColumnFontSizeByField,
+    zoomScale,
+    setZoom
+  ]);
 
   const handlePointerLeave = () => {
     setCursorMm(null);
@@ -610,9 +619,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
         {renderMode === "editor" && (
           <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>
-              Карточка {layout.widthMm}×{layout.heightMm} мм
-            </span>
+            <span>Карточка {layout.widthMm}×{layout.heightMm} мм</span>
             <span>
               {gridEnabled ? "Сетка включена" : "Сетка выключена"} · {editModeEnabled ? "Режим редактирования" : "Режим просмотра"} ·
               Один клик = выделение · Двойной клик = редактирование · Блоки: {activeBoxes.length} / {visibleBoxes.length}
@@ -624,7 +631,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           ref={viewportRef}
           className="relative"
           style={{ width: viewportWidthPx, height: viewportHeightPx, overscrollBehavior: "contain" }}
-          onWheelCapture={handleViewportWheel}
         >
           <div
             className="absolute left-0 top-0"
@@ -662,16 +668,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     backgroundImage: gridBackground,
                     backgroundSize: showOnlyCmLines
                       ? `${mmToPx(10, basePxPerMm)}px ${mmToPx(10, basePxPerMm)}px`
-                      : `${mmToPx(1, basePxPerMm)}px ${mmToPx(1, basePxPerMm)}px, ${mmToPx(1, basePxPerMm)}px ${mmToPx(
-                          1,
-                          basePxPerMm
-                        )}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(5, basePxPerMm)}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(
-                          5,
-                          basePxPerMm
-                        )}px, ${mmToPx(10, basePxPerMm)}px ${mmToPx(10, basePxPerMm)}px, ${mmToPx(10, basePxPerMm)}px ${mmToPx(
-                          10,
-                          basePxPerMm
-                        )}px`
+                      : `${mmToPx(1, basePxPerMm)}px ${mmToPx(1, basePxPerMm)}px, ${mmToPx(1, basePxPerMm)}px ${mmToPx(1, basePxPerMm)}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(5, basePxPerMm)}px, ${mmToPx(5, basePxPerMm)}px ${mmToPx(5, basePxPerMm)}px, ${mmToPx(10, basePxPerMm)}px ${mmToPx(10, basePxPerMm)}px, ${mmToPx(10, basePxPerMm)}px ${mmToPx(10, basePxPerMm)}px`
                   }}
                 />
               )}
@@ -691,7 +688,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     ? staticValue.trim().length === 0
                     : fieldText.isPlaceholder && dynamicValue.trim().length === 0;
 
-                const label = box.label || getFieldLabel(box.fieldId);
+                const label = box.label || (box as any).label_i18n || getFieldLabel(box.fieldId);
 
                 const isSelected = selectedBoxIds.includes(box.id) || selectedBoxId === box.id;
                 const isEditing = editingBoxId === box.id;
@@ -735,7 +732,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     onClick={(event) => {
                       event.stopPropagation();
                       if (!editModeEnabled) return;
-                      setSelectedBoxIds([box.id]);
+                      setSelectedBoxIds((prev) => {
+                        // одиночный клик без ctrl = одиночное выделение
+                        if (event.ctrlKey || (event as any).metaKey) {
+                          return prev.includes(box.id) ? prev.filter((id) => id !== box.id) : [...prev, box.id];
+                        }
+                        return [box.id];
+                      });
                       selectBox(box.id);
                     }}
                     onDoubleClick={(event) => {
