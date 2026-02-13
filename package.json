@@ -1,43 +1,4 @@
 {
-  "name": "lingocard-2.0",
-  "version": "2.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "tsc": "tsc --noEmit",
-    "lint": "eslint .",
-    "tools:backup": "node _tools/backup.js",
-    "tools:restore": "node _tools/restore.js",
-    "tools:smoke": "node _tools/smoke.js",
-    "tools:dev": "node _tools/dev.js",
-    "tools:preflight": "node _tools/preflight.js"
-  },
-  "dependencies": {
-    "immer": "^10.1.1",
-    "jspdf": "^2.5.1",
-    "nanoid": "^5.0.7",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "zod": "^3.23.8",
-    "zustand": "^4.5.2"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@typescript-eslint/eslint-plugin": "^8.6.0",
-    "@typescript-eslint/parser": "^8.6.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.20",
-    "eslint": "^9.11.1",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-react-hooks": "^5.1.0",
-    "eslint-plugin-react-refresh": "^0.4.12",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.14",
-    "typescript": "^5.6.2",
-    "vite": "^5.4.8"
-  }
+  "name": "git-ai-tools",
+  "type": "module"
 }
