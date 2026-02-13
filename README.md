@@ -13,7 +13,7 @@ src/
   state/             # Zustand store + undo/redo
   ui/                # React components
   utils/             # Shared utilities
-_tools/              # Backup/restore/smoke/dev scripts
+_tools/              # Backup/restore/smoke/dev/preflight scripts
 _tests/              # (reserved)
 tests/               # Smoke/preflight helpers
 ```
@@ -37,6 +37,9 @@ npm run dev
 
 ## Smoke/backup/restore
 ```bash
+# Preflight (проверка окружения для тестирования)
+npm run tools:preflight
+
 # Smoke test
 npm run tools:smoke
 
