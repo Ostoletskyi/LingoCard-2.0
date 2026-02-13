@@ -795,11 +795,20 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                         }}
                         onPointerDown={(event) => event.stopPropagation()}
                       />
-                    ) : (
-                      <div className={isPlaceholder ? "text-sm text-slate-500" : "text-sm"} style={{ whiteSpace: "pre-line" }}>
-                        {resolvedText || fieldText.text}
-                      </div>
-                    )}
+                   ) : (
+  <div
+    className={isPlaceholder ? "text-slate-500" : ""}
+    style={{
+      whiteSpace: "pre-line",
+      fontSize: "inherit",
+      fontWeight: "inherit",
+      lineHeight: "inherit"
+    }}
+  >
+    {resolvedText || fieldText.text}
+  </div>
+)}
+
 
                     {isEditing && freqValidationError && editSession?.fieldId === "freq" && (
                       <span className="absolute left-1 top-full mt-1 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-700 shadow-sm dark:bg-amber-900/40 dark:text-amber-200">
