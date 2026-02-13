@@ -54,15 +54,14 @@ const buildRulerTicks = (maxMm: number) => {
 type RenderMode = "editor" | "print";
 type EditorCanvasProps = { renderMode?: RenderMode };
 
-// --- Fallback: гарантированно больше чем "2 блока" ---
+// --- Fallback: гарантированно не "2 блока" ---
 // Показываем ключевые поля + любые непустые поля карточки.
-// Геометрию fallback не редактируем (как и раньше), но отображение будет полным.
+// Геометрию fallback не редактируем, но отображение будет полным.
 function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: number): Box[] {
   const pad = 4; // мм
   const x = pad;
   const w = Math.max(20, widthMm - pad * 2);
 
-  // базовый порядок (можно расширять)
   const preferred: Array<{ fieldId: string; label?: string; h: number }> = [
     { fieldId: "inf", label: "Infinitiv", h: 10 },
     { fieldId: "freq", label: "Freq", h: 8 },
@@ -80,7 +79,8 @@ function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: numbe
 
   const used = new Set(preferred.map((p) => p.fieldId));
 
-  // добиваем непустыми полями, чтобы “всё что нашли — показали”
+  // добиваем непустыми полями: показываем fieldId как есть,
+  // без подмены на custom_text (иначе теряется смысл)
   const extras: Array<{ fieldId: string; label?: string; h: number }> = [];
   for (const key of Object.keys(card) as Array<keyof Card>) {
     if (key === "boxes") continue;
@@ -93,23 +93,24 @@ function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: numbe
       (Array.isArray(v) && v.length > 0) ||
       (typeof v === "number" && !Number.isNaN(v));
 
-    if (nonEmpty) extras.push({ fieldId, label: undefined, h: 8 });
+    if (nonEmpty) {
+      extras.push({ fieldId, h: 8 });
+    }
   }
 
   const items = [...preferred, ...extras];
 
   let y = pad;
   const boxes: Box[] = [];
+
   for (const it of items) {
     const nextH = it.h;
     if (y + nextH + pad > heightMm) break;
 
-    boxes.push({
+    const boxBase: any = {
       id: `fb_${it.fieldId}`,
       fieldId: it.fieldId,
-      label: it.label,
-      label_i18n: undefined,
-      locked: true, // fallback: только просмотр/редактирование текста, но не геометрия
+      locked: true,
       xMm: x,
       yMm: y,
       wMm: w,
@@ -125,9 +126,13 @@ function buildFallbackBoxesFromCard(card: Card, widthMm: number, heightMm: numbe
         lineHeight: 1.15,
         paddingMm: 2
       }
-    } as any);
+    };
 
-    y += nextH + 2; // промежуток между блоками
+    // ВАЖНО: exactOptionalPropertyTypes — не пишем label: undefined
+    if (it.label) boxBase.label = it.label;
+
+    boxes.push(boxBase as Box);
+    y += nextH + 2; // интервал
   }
 
   return boxes;
@@ -225,9 +230,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
   const generatedFallbackBoxes = useMemo(() => {
     if (!card || hasCardBoxes) return [];
-    // 1) пробуем semanticLayout (если он умеет)
-    const sem = buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm) ?? [];
-    // 2) если semanticLayout опять вернул "2 блока", добиваем гарантированным fallback
+    const sem = (buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm) ?? []) as Box[];
     if (sem.length >= 6) return sem;
     return buildFallbackBoxesFromCard(card, layout.widthMm, layout.heightMm);
   }, [card, hasCardBoxes, layout.widthMm, layout.heightMm]);
@@ -252,7 +255,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
     if (!editModeEnabled) return;
-    if (editingBoxId) return; // пока редактируем — не начинаем drag
+    if (editingBoxId) return;
     if (box.locked) return;
 
     event.stopPropagation();
@@ -380,7 +383,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
         if (fieldId === "custom_text" || fieldId === "forms_rek" || fieldId === "synonyms" || fieldId === "examples") {
           if (!next.boxes?.length) return next;
-          next.boxes = next.boxes.map((b) => (b.id === boxId ? { ...b, textMode: "static", staticText: value, text: value } : b));
+          next.boxes = next.boxes.map((b) =>
+            b.id === boxId ? { ...b, textMode: "static", staticText: value, text: value } : b
+          );
           return next;
         }
 
@@ -686,7 +691,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     ? staticValue.trim().length === 0
                     : fieldText.isPlaceholder && dynamicValue.trim().length === 0;
 
-                const label = box.label || (box as any).label_i18n || getFieldLabel(box.fieldId);
+                const label = box.label || getFieldLabel(box.fieldId);
 
                 const isSelected = selectedBoxIds.includes(box.id) || selectedBoxId === box.id;
                 const isEditing = editingBoxId === box.id;
@@ -730,13 +735,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                     onClick={(event) => {
                       event.stopPropagation();
                       if (!editModeEnabled) return;
-                      // один клик = выделение (синий)
                       setSelectedBoxIds([box.id]);
                       selectBox(box.id);
                     }}
                     onDoubleClick={(event) => {
                       event.stopPropagation();
-                      // двойной клик = редактирование (зелёный)
                       handleBeginEdit(box);
                     }}
                     onKeyDown={(event) => {
@@ -755,7 +758,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                         ref={editRef}
                         className="w-full h-full resize-none outline-none cursor-text dark:text-slate-100"
                         style={{
-                          padding: mmToPx(2, basePxPerMm), // 2мм отступ от рамки
+                          padding: mmToPx(2, basePxPerMm),
                           background: "rgba(255,255,255,0.70)",
                           color: isDarkTheme ? "rgba(241,245,249,0.96)" : "rgba(15,23,42,0.92)",
                           caretColor: isDarkTheme ? "#e2e8f0" : "#0f172a",
