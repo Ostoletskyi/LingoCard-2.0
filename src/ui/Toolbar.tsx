@@ -44,9 +44,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
   const [openSection, setOpenSection] = useState<ToolbarSection | null>(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem("ui.toolbar.openSection") : null;
-    return saved === "history" || saved === "view" || saved === "grid" || saved === "snap"
-      ? saved
-      : null;
+    return saved === "history" || saved === "view" || saved === "grid" || saved === "snap" ? saved : null;
   });
   const [viewWheelTarget, setViewWheelTarget] = useState<ViewWheelTarget>(null);
   const [selectedBookmarkId, setSelectedBookmarkId] = useState<string>("");
@@ -88,37 +86,58 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, []);
 
-  const applyZoomWheel = useCallback((deltaY: number) => {
-    const direction = deltaY > 0 ? -1 : 1;
-    setZoom(clampZoom(zoom + direction * 0.05));
-  }, [zoom, setZoom]);
+  const applyZoomWheel = useCallback(
+    (deltaY: number) => {
+      const direction = deltaY > 0 ? -1 : 1;
+      setZoom(clampZoom(zoom + direction * 0.05));
+    },
+    [zoom, setZoom]
+  );
 
-  const applyWidthWheel = useCallback((deltaY: number, shift: boolean) => {
-    const direction = deltaY > 0 ? -1 : 1;
-    const step = shift ? 10 : 1;
-    setCardSizeMm(clampMm(layout.widthMm + direction * step), layout.heightMm);
-  }, [layout.widthMm, layout.heightMm, setCardSizeMm]);
+  const applyWidthWheel = useCallback(
+    (deltaY: number, shift: boolean) => {
+      const direction = deltaY > 0 ? -1 : 1;
+      const step = shift ? 10 : 1;
+      setCardSizeMm(clampMm(layout.widthMm + direction * step), layout.heightMm);
+    },
+    [layout.widthMm, layout.heightMm, setCardSizeMm]
+  );
 
-  const applyHeightWheel = useCallback((deltaY: number, shift: boolean) => {
-    const direction = deltaY > 0 ? -1 : 1;
-    const step = shift ? 10 : 1;
-    setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + direction * step));
-  }, [layout.widthMm, layout.heightMm, setCardSizeMm]);
+  const applyHeightWheel = useCallback(
+    (deltaY: number, shift: boolean) => {
+      const direction = deltaY > 0 ? -1 : 1;
+      const step = shift ? 10 : 1;
+      setCardSizeMm(layout.widthMm, clampMm(layout.heightMm + direction * step));
+    },
+    [layout.widthMm, layout.heightMm, setCardSizeMm]
+  );
 
-  const applyViewWheelDelta = useCallback((deltaY: number, shift: boolean) => {
-    if (!viewWheelTarget) return;
-    if (viewWheelTarget === "zoom") applyZoomWheel(deltaY);
-    if (viewWheelTarget === "width") applyWidthWheel(deltaY, shift);
-    if (viewWheelTarget === "height") applyHeightWheel(deltaY, shift);
-  }, [viewWheelTarget, applyZoomWheel, applyWidthWheel, applyHeightWheel]);
+  const applyViewWheelDelta = useCallback(
+    (deltaY: number, shift: boolean) => {
+      if (!viewWheelTarget) return;
+      if (viewWheelTarget === "zoom") applyZoomWheel(deltaY);
+      if (viewWheelTarget === "width") applyWidthWheel(deltaY, shift);
+      if (viewWheelTarget === "height") applyHeightWheel(deltaY, shift);
+    },
+    [viewWheelTarget, applyZoomWheel, applyWidthWheel, applyHeightWheel]
+  );
 
+  // ✅ FIX: do NOT steal wheel from the editor canvas; handle it only inside the View panel
   useEffect(() => {
     if (!viewWheelTarget) return;
+
     const onWindowWheel = (event: WheelEvent) => {
+      const panel = viewPanelRef.current;
+      if (!panel) return;
+
+      const target = event.target as Node | null;
+      if (!target || !panel.contains(target)) return;
+
       event.preventDefault();
       event.stopPropagation();
       applyViewWheelDelta(event.deltaY, event.shiftKey);
     };
+
     window.addEventListener("wheel", onWindowWheel, { passive: false, capture: true });
     return () => window.removeEventListener("wheel", onWindowWheel, { capture: true });
   }, [viewWheelTarget, applyViewWheelDelta]);
@@ -158,7 +177,11 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
         </button>
       </div>
 
-      <div className={`grid transition-all duration-200 ease-[cubic-bezier(.2,.8,.2,1)] ${openSection ? "mt-2 max-h-[340px] opacity-100" : "max-h-0 opacity-0"}`}>
+      <div
+        className={`grid transition-all duration-200 ease-[cubic-bezier(.2,.8,.2,1)] ${
+          openSection ? "mt-2 max-h-[340px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <div className="overflow-hidden rounded-lg border border-slate-100 bg-white/70 p-3 dark:border-slate-800 dark:bg-slate-900/60">
           {openSection === "history" && (
             <div className="grid gap-2">
@@ -196,9 +219,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
               </div>
 
               <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
-                <div className="mb-1 text-[11px] text-slate-500 dark:text-slate-300">
-                  ID снимка (по времени):
-                </div>
+                <div className="mb-1 text-[11px] text-slate-500 dark:text-slate-300">ID снимка (по времени):</div>
                 <select
                   size={Math.min(5, Math.max(2, historyBookmarks.length || 2))}
                   value={selectedBookmarkId}
@@ -218,9 +239,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     aria-label="Перейти к состоянию проекта"
                     disabled={!editModeEnabled || !selectedBookmarkId}
                     onClick={() => {
-                      if (selectedBookmarkId) {
-                        jumpToHistoryBookmark(selectedBookmarkId);
-                      }
+                      if (selectedBookmarkId) jumpToHistoryBookmark(selectedBookmarkId);
                     }}
                   >
                     ⏪
@@ -231,9 +250,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                     aria-label="Удалить снимок"
                     disabled={!editModeEnabled || !selectedBookmarkId}
                     onClick={() => {
-                      if (selectedBookmarkId) {
-                        deleteHistoryBookmark(selectedBookmarkId);
-                      }
+                      if (selectedBookmarkId) deleteHistoryBookmark(selectedBookmarkId);
                     }}
                   >
                     🗑
@@ -247,11 +264,14 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
           )}
 
           {openSection === "view" && (
-            <div
-              ref={viewPanelRef}
-              className="grid gap-2"
-            >
-              <button type="button" className="text-left text-xs text-slate-600 dark:text-slate-200" onClick={() => setViewWheelTarget("zoom")}>Масштаб: {Math.round(zoom * 100)}%</button>
+            <div ref={viewPanelRef} className="grid gap-2">
+              <button
+                type="button"
+                className="text-left text-xs text-slate-600 dark:text-slate-200"
+                onClick={() => setViewWheelTarget("zoom")}
+              >
+                Масштаб: {Math.round(zoom * 100)}%
+              </button>
               <input
                 type="range"
                 min={0.25}
@@ -263,10 +283,17 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                 onPointerEnter={() => setViewWheelTarget("zoom")}
                 onChange={(event) => setZoom(Number(event.target.value))}
               />
-              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={() => setZoom(1)}>Центр · 100%</button>
+              <button
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200"
+                onClick={() => setZoom(1)}
+              >
+                Центр · 100%
+              </button>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-[11px] text-slate-500 dark:text-slate-300">
-                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("width")}>Card Width (mm)</button>
+                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("width")}>
+                    Card Width (mm)
+                  </button>
                   <input
                     type="number"
                     min={50}
@@ -281,7 +308,9 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                   />
                 </label>
                 <label className="text-[11px] text-slate-500 dark:text-slate-300">
-                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("height")}>Card Height (mm)</button>
+                  <button type="button" className="text-left" onClick={() => setViewWheelTarget("height")}>
+                    Card Height (mm)
+                  </button>
                   <input
                     type="number"
                     min={50}
@@ -296,7 +325,10 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
                   />
                 </label>
               </div>
-              <button className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200" onClick={onToggleTheme}>
+              <button
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-200"
+                onClick={onToggleTheme}
+              >
                 {theme === "light" ? "☀️ Светлая" : "🌙 Тёмная"}
               </button>
             </div>
@@ -304,15 +336,32 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
           {openSection === "grid" && (
             <div className="grid gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />Сетка</label>
-              <select value={gridIntensity} onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")} className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={gridEnabled} onChange={toggleGrid} />
+                Сетка
+              </label>
+              <select
+                value={gridIntensity}
+                onChange={(event) => setGridIntensity(event.target.value as "low" | "medium" | "high")}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              >
                 <option value="low">Сетка: Мягкая</option>
                 <option value="medium">Сетка: Нормальная</option>
                 <option value="high">Сетка: Контрастная</option>
               </select>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />Только см</label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />Линейки</label>
-              <select value={rulersPlacement} onChange={(event) => setRulersPlacement(event.target.value as "outside" | "inside")} className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900">
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={showOnlyCmLines} onChange={toggleOnlyCmLines} />
+                Только см
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={rulersEnabled} onChange={toggleRulers} />
+                Линейки
+              </label>
+              <select
+                value={rulersPlacement}
+                onChange={(event) => setRulersPlacement(event.target.value as "outside" | "inside")}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+              >
                 <option value="outside">Линейки: Снаружи</option>
                 <option value="inside">Линейки: Внутри</option>
               </select>
@@ -321,8 +370,14 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
 
           {openSection === "snap" && (
             <div className="grid gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />Привязка</label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />Отладка</label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />
+                Привязка
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200">
+                <input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />
+                Отладка
+              </label>
             </div>
           )}
         </div>
