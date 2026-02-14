@@ -712,8 +712,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                   {isEditing ? (
                     <textarea
                       ref={editRef}
-                      className="w-full h-full resize-none bg-white/80 text-sm text-slate-800 outline-none cursor-text dark:bg-slate-900/80 dark:text-slate-100"
-                      style={{ padding: mmToPx(2, basePxPerMm) }}
+                      className="w-full h-full resize-none bg-white/80 text-slate-800 outline-none cursor-text dark:bg-slate-900/80 dark:text-slate-100"
+                      style={{ padding: mmToPx(2, basePxPerMm), fontSize: "inherit", lineHeight: "inherit" }}
                       value={editValue}
                       onChange={(event) => {
                         const nextValue = event.target.value;
@@ -743,7 +743,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : (
-                    <div className={isPlaceholder ? "text-sm text-slate-400" : "text-sm"} style={{ whiteSpace: "pre-line" }}>
+                    <div className={isPlaceholder ? "text-slate-400" : undefined} style={{ whiteSpace: "pre-line" }}>
                       {resolvedText || fieldText.text}
                     </div>
                   )}

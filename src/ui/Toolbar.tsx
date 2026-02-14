@@ -113,15 +113,17 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   }, [viewWheelTarget, applyZoomWheel, applyWidthWheel, applyHeightWheel]);
 
   useEffect(() => {
-    if (!viewWheelTarget) return;
-    const onWindowWheel = (event: WheelEvent) => {
+    if (!viewWheelTarget || openSection !== "view") return;
+    const panel = viewPanelRef.current;
+    if (!panel) return;
+    const onPanelWheel = (event: WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
       applyViewWheelDelta(event.deltaY, event.shiftKey);
     };
-    window.addEventListener("wheel", onWindowWheel, { passive: false, capture: true });
-    return () => window.removeEventListener("wheel", onWindowWheel, { capture: true });
-  }, [viewWheelTarget, applyViewWheelDelta]);
+    panel.addEventListener("wheel", onPanelWheel, { passive: false });
+    return () => panel.removeEventListener("wheel", onPanelWheel);
+  }, [viewWheelTarget, applyViewWheelDelta, openSection]);
 
   const toggleSection = (section: ToolbarSection) => {
     setOpenSection((prev) => (prev === section ? null : section));
