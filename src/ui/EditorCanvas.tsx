@@ -716,9 +716,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                   }}
                 >
                   {renderMode === "editor" && editModeEnabled && canEditLayoutGeometry && (
-                    <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
+                    <span
+                      className="pointer-events-none absolute left-1 -top-1 -translate-y-full rounded bg-white/85 px-1 text-[8px] uppercase tracking-wide text-slate-400 shadow-sm dark:bg-slate-900/85"
+                      style={{ lineHeight: 1 }}
+                    >
                       {label}
-                    </div>
+                    </span>
                   )}
                   {isEditing ? (
                     <textarea
