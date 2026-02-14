@@ -287,27 +287,27 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     setEditValue(fieldValue);
   };
 
-  const commitEdit = useCallback((shouldSave: boolean) => {
-    const updateCardField = (current: Card, fieldId: string, value: string, boxId: string): Card => {
+  const syncEditDraftToStore = useCallback((session: EditSession, value: string) => {
+    const updateCardField = (current: Card, fieldId: string, nextValue: string, boxId: string): Card => {
       const next: Card = { ...current };
       if (fieldId === "custom_text" || fieldId === "forms_rek" || fieldId === "synonyms" || fieldId === "examples") {
         if (!next.boxes?.length) return next;
         next.boxes = next.boxes.map((box) =>
           box.id === boxId
-            ? { ...box, textMode: "static", staticText: value, text: value }
+            ? { ...box, textMode: "static", staticText: nextValue, text: nextValue }
             : box
         );
         return next;
       }
       if (fieldId === "tags") {
-        next.tags = value
+        next.tags = nextValue
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean);
         return next;
       }
       if (fieldId === "freq") {
-        const trimmed = value.trim();
+        const trimmed = nextValue.trim();
         if (!/^[1-5]$/.test(trimmed)) {
           return next;
         }
@@ -315,17 +315,26 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         return next;
       }
       if (fieldId === "forms_aux") {
-        if (value === "haben" || value === "sein" || value === "") {
-          next.forms_aux = value;
+        if (nextValue === "haben" || nextValue === "sein" || nextValue === "") {
+          next.forms_aux = nextValue;
         }
         return next;
       }
       if (isStringCardField(fieldId)) {
-        next[fieldId] = value;
+        next[fieldId] = nextValue;
       }
       return next;
     };
 
+    const store = useAppStore.getState();
+    const source = session.side === "A" ? store.cardsA : store.cardsB;
+    const currentCard = source.find((item) => item.id === session.cardId);
+    if (!currentCard) return;
+    const updated = updateCardField(currentCard, session.fieldId, value, session.boxId);
+    store.updateCardSilent(updated, session.side, `textEditDraft:${session.fieldId}:${session.cardId}`, { track: false });
+  }, []);
+
+  const commitEdit = useCallback((shouldSave: boolean) => {
     if (!editSession) {
       setEditingBoxId(null);
       return;
@@ -341,17 +350,18 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     }
     if (shouldSave && editValue !== editSession.originalValue) {
       const store = useAppStore.getState();
+      store.pushHistory();
+      syncEditDraftToStore(editSession, editValue);
       const source = editSession.side === "A" ? store.cardsA : store.cardsB;
-      const currentCard = source.find((item) => item.id === editSession.cardId);
-      if (currentCard) {
-        const updated = updateCardField(currentCard, editSession.fieldId, editValue, editSession.boxId);
-        store.updateCard(updated, editSession.side, `textEdit:${editSession.fieldId}:${editSession.cardId}`);
+      const updatedCard = source.find((item) => item.id === editSession.cardId);
+      if (updatedCard) {
+        store.updateCard(updatedCard, editSession.side, `textEdit:${editSession.fieldId}:${editSession.cardId}`);
       }
     }
     setEditingBoxId(null);
     setEditSession(null);
     setFreqValidationError(null);
-  }, [editSession, editValue]);
+  }, [editSession, editValue, syncEditDraftToStore]);
 
   useEffect(() => {
     if (!editingBoxId) return;
@@ -690,7 +700,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       : isSelected
                         ? "2px solid rgba(14,165,233,0.16)"
                         : "none",
-                    display: box.style.visible === false ? "none" : "block"
+                    display: box.style.visible === false ? "none" : "block",
+                    overflow: "hidden"
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
                   onDoubleClick={(event) => {
@@ -722,6 +733,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                           const isValid = /^[1-5]$/.test(nextValue.trim());
                           setFreqValidationError(isValid || nextValue.trim() === "" ? null : "Не верный диапазон! Введите от 1 до 5.");
                         }
+                        if (editSession) {
+                          syncEditDraftToStore(editSession, nextValue);
+                        }
                       }}
                       onBlur={() => commitEdit(true)}
                       onKeyDown={(event) => {
@@ -743,7 +757,16 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : (
-                    <div className={isPlaceholder ? "text-slate-400" : undefined} style={{ whiteSpace: "pre-line" }}>
+                    <div
+                      className={isPlaceholder ? "text-slate-400" : undefined}
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                        fontSize: "inherit",
+                        lineHeight: "inherit"
+                      }}
+                    >
                       {resolvedText || fieldText.text}
                     </div>
                   )}
