@@ -1,0 +1,6 @@
+{
+  "baseUrl": "http://localhost:1234/v1",
+  "model": "codellama-13b-instruct",
+  "temperature": 0.15,
+  "max_tokens": 1500
+}
