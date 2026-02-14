@@ -243,6 +243,10 @@ const ensureUniqueCardIds = (cards: Card[]): Card[] => {
 };
 
 
+const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number): Card[] =>
+  cards.map((card) => (card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm)));
+
+
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
     id,
@@ -330,9 +334,12 @@ const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["s
   const widthMm = Number.isFinite(raw.layout?.widthMm) ? raw.layout.widthMm : base.layout.widthMm;
   const heightMm = Number.isFinite(raw.layout?.heightMm) ? raw.layout.heightMm : base.layout.heightMm;
 
+  const cardsAWithBoxes = ensureCardsHaveBoxes(cardsA, widthMm, heightMm);
+  const cardsBWithBoxes = ensureCardsHaveBoxes(cardsB, widthMm, heightMm);
+
   return {
-    cardsA,
-    cardsB,
+    cardsA: cardsAWithBoxes,
+    cardsB: cardsBWithBoxes,
     selectedId,
     selectedSide,
     layout: {
@@ -535,8 +542,9 @@ export const useAppStore = create<AppState>()(
         nextId = crypto.randomUUID();
       }
       const normalized = nextId === normalizedBase.id ? normalizedBase : { ...normalizedBase, id: nextId };
-      target.push(normalized);
-      state.selectedId = normalized.id;
+      const finalized = normalized.boxes && normalized.boxes.length ? normalized : applySemanticLayoutToCard(normalized, state.layout.widthMm, state.layout.heightMm);
+      target.push(finalized);
+      state.selectedId = finalized.id;
       state.selectedSide = side;
     }),
     updateCard: (card, side, reason) => set((state) => {
@@ -550,7 +558,11 @@ export const useAppStore = create<AppState>()(
       }
     }),
     updateCardSilent: (card, side, reason, options) => set((state) => {
-      if (!state.editModeEnabled) return;
+      // Text edits can be committed when edit-mode is being turned off.
+      // Without this, the UI may show changes while editing, but they are lost
+      // as soon as the user exits the green "editing" state.
+      const allowReadOnlyCommit = typeof reason === "string" && reason.startsWith("textEdit");
+      if (!state.editModeEnabled && !allowReadOnlyCommit) return;
       const track = options?.track ?? true;
       if (track) {
         trackStateEvent(state, get(), reason ?? `updateCardSilent:${side}:${card.id}`);
