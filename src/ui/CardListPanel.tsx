@@ -319,7 +319,7 @@ export const CardListPanel = ({ side }: Props) => {
           </button>
           <div
             id={`section-data-${side}`}
-            className={`grid overflow-hidden transition-all duration-200 ${openSection === "data" ? "mt-2 max-h-80 opacity-100" : "max-h-0 opacity-0"}`}
+            className={`grid transition-all duration-200 ${openSection === "data" ? (blockMenuOpen ? "mt-2 max-h-[28rem] opacity-100 overflow-visible" : "mt-2 max-h-80 opacity-100 overflow-hidden") : "max-h-0 opacity-0 overflow-hidden"}`}
           >
             <div className="grid gap-2">
             <button ref={firstDataButtonRef} onClick={handleCreate} disabled={!editModeEnabled} className={`${buttonBase} ${buttonSolid} disabled:opacity-50`}>
@@ -337,13 +337,13 @@ export const CardListPanel = ({ side }: Props) => {
                 <span className={`absolute right-3 transition-transform ${blockMenuOpen ? "rotate-180" : "rotate-0"}`}>▾</span>
               </button>
               {blockMenuOpen && (
-                <div role="menu" className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white p-1 shadow-lg ring-1 ring-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-800">
-                  <button onClick={() => handleAddBlock("inf")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>1. Инфинитив</button>
-                  <button onClick={() => handleAddBlock("freq")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>2. Частотность</button>
-                  <button onClick={() => handleAddBlock("forms_rek")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>3. Три времени + рекция</button>
-                  <button onClick={() => handleAddBlock("synonyms")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>4. Синонимы</button>
-                  <button onClick={() => handleAddBlock("examples")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full mb-1`}>5. Примеры</button>
-                  <button onClick={() => handleAddBlock("simple")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full`}>6. Простой блок</button>
+                <div role="menu" className="absolute z-20 mt-1 w-full max-h-[40vh] overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg ring-1 ring-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-800">
+                  <button onClick={() => handleAddBlock("inf")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full justify-start text-left pl-3`}>1. Инфинитив</button>
+                  <button onClick={() => handleAddBlock("freq")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full justify-start text-left pl-3`}>2. Частотность</button>
+                  <button onClick={() => handleAddBlock("forms_rek")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full justify-start text-left pl-3`}>3. Три времени + рекция</button>
+                  <button onClick={() => handleAddBlock("synonyms")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full justify-start text-left pl-3`}>4. Синонимы</button>
+                  <button onClick={() => handleAddBlock("examples")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full justify-start text-left pl-3`}>5. Примеры</button>
+                  <button onClick={() => handleAddBlock("simple")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50 w-full justify-start text-left pl-3`}>6. Простой блок</button>
                 </div>
               )}
             </div>

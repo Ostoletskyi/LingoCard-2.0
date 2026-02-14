@@ -3,6 +3,7 @@ import { useAppStore } from "../state/store";
 import { getPxPerMm, mmToPx, pxToMm } from "../utils/mmPx";
 import { selectCardById } from "../utils/selectCard";
 import { getFieldEditValue, getFieldLabel, getFieldText } from "../utils/cardFields";
+import { normalizeFieldId } from "../utils/fieldAlias";
 import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
@@ -289,8 +290,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
   const syncEditDraftToStore = useCallback((session: EditSession, value: string) => {
     const updateCardField = (current: Card, fieldId: string, nextValue: string, boxId: string): Card => {
+      const normalizedFieldId = normalizeFieldId(fieldId);
       const next: Card = { ...current };
-      if (fieldId === "custom_text" || fieldId === "forms_rek" || fieldId === "synonyms" || fieldId === "examples") {
+      if (normalizedFieldId === "custom_text" || normalizedFieldId === "forms_rek" || normalizedFieldId === "synonyms" || normalizedFieldId === "examples") {
         if (!next.boxes?.length) return next;
         next.boxes = next.boxes.map((box) =>
           box.id === boxId
@@ -299,14 +301,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         );
         return next;
       }
-      if (fieldId === "tags") {
+      if (normalizedFieldId === "tags") {
         next.tags = nextValue
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean);
         return next;
       }
-      if (fieldId === "freq") {
+      if (normalizedFieldId === "freq") {
         const trimmed = nextValue.trim();
         if (!/^[1-5]$/.test(trimmed)) {
           return next;
@@ -314,14 +316,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         next.freq = Number.parseInt(trimmed, 10) as Card["freq"];
         return next;
       }
-      if (fieldId === "forms_aux") {
+      if (normalizedFieldId === "forms_aux") {
         if (nextValue === "haben" || nextValue === "sein" || nextValue === "") {
           next.forms_aux = nextValue;
         }
         return next;
       }
-      if (isStringCardField(fieldId)) {
-        next[fieldId] = nextValue;
+      if (isStringCardField(normalizedFieldId)) {
+        next[normalizedFieldId] = nextValue;
       }
       return next;
     };
