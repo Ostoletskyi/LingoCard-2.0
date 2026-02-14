@@ -9,14 +9,11 @@
     "preview": "vite preview",
     "tsc": "tsc --noEmit",
     "lint": "eslint .",
-
     "tools:backup": "node _tools/backup.js",
     "tools:restore": "node _tools/restore.js",
     "tools:smoke": "node _tools/smoke.js",
     "tools:dev": "node _tools/dev.js",
-
-    "tools:ai:review": "node tools/git-ai/review.js",
-    "tools:ai:commitmsg": "node tools/git-ai/commitmsg.js"
+    "tools:preflight": "node _tools/preflight.js"
   },
   "dependencies": {
     "immer": "^10.1.1",

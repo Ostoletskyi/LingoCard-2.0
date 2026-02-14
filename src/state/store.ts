@@ -540,7 +540,8 @@ export const useAppStore = create<AppState>()(
       state.selectedSide = side;
     }),
     updateCard: (card, side, reason) => set((state) => {
-      if (!state.editModeEnabled) return;
+      const allowReadOnlyCommit = typeof reason === "string" && reason.startsWith("textEdit:");
+      if (!state.editModeEnabled && !allowReadOnlyCommit) return;
       trackStateEvent(state, get(), reason ?? `updateCard:${side}:${card.id}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
