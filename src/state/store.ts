@@ -59,6 +59,7 @@ type PersistedState = {
     debugOverlays: boolean;
     rulersPlacement: "outside" | "inside";
     editModeEnabled: boolean;
+    activeTemplate: LayoutTemplate | null;
   };
 };
 
@@ -237,7 +238,20 @@ const safeClone = <T>(value: T): T => {
   }
 };
 
+const toPersistableCard = (card: Card): Card => {
+  const source = safeClone(card) as Card & { meta?: Record<string, unknown> };
+  if (!source.meta) return source;
+  const { originalSource: _originalSource, ...restMeta } = source.meta;
+  if (Object.keys(restMeta).length) {
+    source.meta = restMeta;
+  } else {
+    delete source.meta;
+  }
+  return source;
+};
+
 const cloneCards = (cards: Card[]) => cards.map((card) => safeClone(card));
+const cloneCardsForPersist = (cards: Card[]) => cards.map((card) => toPersistableCard(card));
 
 const ensureUniqueCardIds = (cards: Card[]): Card[] => {
   const used = new Set<string>();
@@ -365,6 +379,11 @@ const sanitizePersistedState = (raw: PersistedState["state"]) => {
   const cardsAWithBoxes = ensureCardsHaveBoxes(cardsA, widthMm, heightMm);
   const cardsBWithBoxes = ensureCardsHaveBoxes(cardsB, widthMm, heightMm);
 
+  const safeActiveTemplate =
+    raw.activeTemplate && typeof raw.activeTemplate === "object" && (raw.activeTemplate as any).version === 1
+      ? (raw.activeTemplate as LayoutTemplate)
+      : null;
+
   return {
     cardsA: cardsAWithBoxes,
     cardsB: cardsBWithBoxes,
@@ -404,9 +423,34 @@ const loadPersistedState = () => {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
     if (parsed?.version !== 1 || !parsed.state) return null;
-    return sanitizePersistedState(parsed.state);
-  } catch {
+    const persistedCards = loadPersistedCards();
+    return sanitizePersistedState(parsed.state, persistedCards);
+} catch {
     return null;
+  }
+};
+
+const persistCards = (cardsA: Card[], cardsB: Card[]) => {
+  if (typeof window === "undefined") return;
+  try {
+    const payload = JSON.stringify({ cardsA, cardsB });
+    const chunks: string[] = [];
+    for (let index = 0; index < payload.length; index += CARDS_CHUNK_SIZE) {
+      chunks.push(payload.slice(index, index + CARDS_CHUNK_SIZE));
+    }
+    const previousMeta = window.localStorage.getItem(CARDS_META_KEY);
+    const previousChunkCount = previousMeta ? (JSON.parse(previousMeta).chunks as number | undefined) : 0;
+    chunks.forEach((chunk, index) => {
+      window.localStorage.setItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`, chunk);
+    });
+    window.localStorage.setItem(CARDS_META_KEY, JSON.stringify({ version: 1, chunks: chunks.length }));
+    const oldCount = Number.isFinite(previousChunkCount) ? Number(previousChunkCount) : 0;
+    for (let index = chunks.length; index < oldCount; index += 1) {
+      window.localStorage.removeItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
+    }
+  } catch (error) {
+    // Card persistence is best-effort; avoid crashing the app.
+    console.warn("Persist cards failed", error);
   }
 };
 
