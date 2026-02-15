@@ -18,9 +18,14 @@ export const CardListPanel = ({ side }: Props) => {
   type SidebarSection = "data" | "selection" | "export";
   const [filter, setFilter] = useState("");
   const storageKey = side === "A" ? "ui.sidebarA.openSection" : "ui.sidebarB.openSection";
+  const cardsCollapsedKey = side === "A" ? "ui.cardsPanel.collapsed.left" : "ui.cardsPanel.collapsed.right";
   const [openSection, setOpenSection] = useState<SidebarSection>(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
     return saved === "data" || saved === "selection" || saved === "export" ? saved : "data";
+  });
+  const [cardsPanelCollapsed, setCardsPanelCollapsed] = useState<boolean>(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem(cardsCollapsedKey) : null;
+    return saved === "true";
   });
   const cards = useAppStore((state) => (side === "A" ? state.cardsA : state.cardsB));
   const selectCard = useAppStore((state) => state.selectCard);
@@ -53,7 +58,7 @@ export const CardListPanel = ({ side }: Props) => {
   const [blockMenuOpen, setBlockMenuOpen] = useState(false);
   const blockMenuRef = useRef<HTMLDivElement | null>(null);
   const buttonBase =
-    "inline-flex items-center justify-center text-center rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-200";
+    "lc-btnOutline inline-flex items-center justify-center text-center rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-200";
   const buttonSolid =
     "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200";
   const buttonLight =
@@ -80,6 +85,11 @@ export const CardListPanel = ({ side }: Props) => {
       });
     }
   }, [openSection, storageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(cardsCollapsedKey, String(cardsPanelCollapsed));
+  }, [cardsCollapsedKey, cardsPanelCollapsed]);
 
 
   useEffect(() => {
@@ -150,6 +160,9 @@ export const CardListPanel = ({ side }: Props) => {
         ? `Импортировано: ${validation.cards.length}. Есть предупреждения.`
         : `Импортировано: ${validation.cards.length} карточек.`
     );
+    if (validation.cards.length >= 50) {
+      setCardsPanelCollapsed(true);
+    }
     finishExport();
     event.target.value = "";
   };
@@ -318,27 +331,38 @@ export const CardListPanel = ({ side }: Props) => {
 
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-soft flex flex-col gap-3 dark:bg-slate-900/80">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-            Коллекция {side}
-          </p>
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Карточки</h2>
-          <p className="text-xs text-slate-400 dark:text-slate-500">{cards.length} карточек</p>
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl bg-white p-4 shadow-soft dark:bg-slate-900/80">
+      <div className="shrink-0 space-y-3 bg-white/95 pb-1 dark:bg-slate-900/95">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              Коллекция {side}
+            </p>
+            <button
+              type="button"
+              onClick={() => setCardsPanelCollapsed((prev) => !prev)}
+              className="inline-flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100"
+              aria-expanded={!cardsPanelCollapsed}
+            >
+              Карточки
+              <span className={`text-xs transition-transform ${cardsPanelCollapsed ? "-rotate-90" : "rotate-0"}`}>▾</span>
+            </button>
+            <p className="text-xs text-slate-400 dark:text-slate-500">{cards.length} карточек</p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+            Список {side}
+          </span>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-          Список {side}
-        </span>
+        <input
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Поиск"
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900/60"
+        />
       </div>
-      <input
-        value={filter}
-        onChange={(event) => setFilter(event.target.value)}
-        placeholder="Поиск"
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900/60"
-      />
+      {!cardsPanelCollapsed && (
       <div
-        className="space-y-3 text-xs text-slate-600 dark:text-slate-300"
+        className="shrink-0 space-y-3 overflow-y-auto pr-1 text-xs text-slate-600 dark:text-slate-300"
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
@@ -351,7 +375,7 @@ export const CardListPanel = ({ side }: Props) => {
             type="button"
             aria-expanded={openSection === "data"}
             aria-controls={`section-data-${side}`}
-            className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "data" ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
+            className={`lc-btnOutline flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "data" ? "lc-btnOutlineActive bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
             onClick={() => toggleSection("data")}
           >
             <span>📁 Данные</span>
@@ -428,7 +452,7 @@ export const CardListPanel = ({ side }: Props) => {
             type="button"
             aria-expanded={openSection === "selection"}
             aria-controls={`section-selection-${side}`}
-            className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "selection" ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
+            className={`lc-btnOutline flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "selection" ? "lc-btnOutlineActive bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
             onClick={() => toggleSection("selection")}
           >
             <span>☑️ Выбор</span>
@@ -453,7 +477,7 @@ export const CardListPanel = ({ side }: Props) => {
             type="button"
             aria-expanded={openSection === "export"}
             aria-controls={`section-export-${side}`}
-            className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "export" ? "bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
+            className={`lc-btnOutline flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${openSection === "export" ? "lc-btnOutlineActive bg-sky-50 text-sky-700 dark:bg-slate-800 dark:text-sky-300" : "text-slate-600 dark:text-slate-200"}`}
             onClick={() => toggleSection("export")}
           >
             <span>📤 Экспорт</span>
@@ -489,7 +513,8 @@ export const CardListPanel = ({ side }: Props) => {
           </div>
         </div>
       </div>
-      <div className="flex-1 overflow-auto rounded-xl border border-slate-100 bg-slate-50/40 p-3 text-sm space-y-3 dark:border-slate-800 dark:bg-slate-900/60">
+      )}
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto rounded-xl border border-slate-100 bg-slate-50/40 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/60">
         {importNotice && (
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
             <div className="flex items-center justify-between gap-2">

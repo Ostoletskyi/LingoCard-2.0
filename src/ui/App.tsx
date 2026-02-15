@@ -63,7 +63,7 @@ export const App = () => {
     `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-3 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-50 px-4 py-3 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="mb-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/80">
         <div className="flex items-center gap-3">
           <h1 className="text-base font-semibold">LingoCard 2.0</h1>
@@ -100,9 +100,9 @@ export const App = () => {
           </div>
         </div>
       </header>
-      <div className="grid grid-cols-[300px_1fr_300px] gap-4">
+      <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr_300px] items-start gap-4">
         <CardListPanel side="A" />
-        <div className="flex flex-col gap-3">
+        <div className="sticky top-0 flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
           <Toolbar theme={theme} onToggleTheme={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))} />
           <div className="rounded-2xl bg-white p-3 shadow-soft dark:bg-slate-900/80">
             <div className="mb-2 flex items-center justify-between">
