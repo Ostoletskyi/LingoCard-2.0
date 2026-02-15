@@ -8,6 +8,7 @@ import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 import { logger } from "../utils/logger";
+import { autoResizeCardBoxes } from "../editor/autoBoxSize";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -35,6 +36,13 @@ type EditSession = {
   originalValue: string;
 };
 
+type EditTarget =
+  | { kind: "card.string"; target: `card.${string}` }
+  | { kind: "card.tags"; target: "card.tags" }
+  | { kind: "card.freq"; target: "card.freq" }
+  | { kind: "card.forms_aux"; target: "card.forms_aux" }
+  | { kind: "box.staticText"; target: "box.staticText" };
+
 const applySnap = (valueMm: number, enabled: boolean) =>
   enabled ? Math.round(valueMm / GRID_STEP_MM) * GRID_STEP_MM : valueMm;
 
@@ -44,6 +52,27 @@ const RULER_GAP_MM = 1;
 type StringCardField = Exclude<keyof Card, "freq" | "tags" | "forms_aux" | "boxes">;
 const isStringCardField = (fieldId: string): fieldId is StringCardField =>
   fieldId !== "freq" && fieldId !== "tags" && fieldId !== "boxes" && fieldId in emptyCard;
+
+const STATIC_BOX_FIELD_IDS = new Set(["custom_text", "forms_rek", "synonyms", "examples"]);
+
+const resolveEditTarget = (normalizedFieldId: string): EditTarget => {
+  if (STATIC_BOX_FIELD_IDS.has(normalizedFieldId)) {
+    return { kind: "box.staticText", target: "box.staticText" };
+  }
+  if (normalizedFieldId === "tags") {
+    return { kind: "card.tags", target: "card.tags" };
+  }
+  if (normalizedFieldId === "freq") {
+    return { kind: "card.freq", target: "card.freq" };
+  }
+  if (normalizedFieldId === "forms_aux") {
+    return { kind: "card.forms_aux", target: "card.forms_aux" };
+  }
+  if (isStringCardField(normalizedFieldId)) {
+    return { kind: "card.string", target: `card.${normalizedFieldId}` };
+  }
+  return { kind: "box.staticText", target: "box.staticText" };
+};
 
 const buildRulerTicks = (maxMm: number) => {
   const full = Array.from({ length: Math.floor(maxMm) + 1 }, (_, i) => i);
@@ -289,10 +318,20 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     setEditValue(fieldValue);
   };
 
-  const syncEditDraftToStore = useCallback((session: EditSession, value: string) => {
+  const commitEditToStore = useCallback((session: EditSession, value: string) => {
     const updateCardField = (current: Card, fieldId: string, nextValue: string, boxId: string): Card => {
       const normalizedFieldId = normalizeFieldId(fieldId);
       const next: Card = { ...current };
+      const hasTargetBox = Boolean(next.boxes?.some((box) => box.id === boxId));
+      const target = resolveEditTarget(normalizedFieldId);
+
+      logger.info("edit.commit.route", {
+        cardId: current.id,
+        boxId,
+        fieldId,
+        normalizedFieldId,
+        target: target.target
+      });
 
       const debug = useAppStore.getState().debugOverlays;
       const logTarget = (target: string) => {
@@ -311,8 +350,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         });
       };
 
-      if (normalizedFieldId === "custom_text" || normalizedFieldId === "forms_rek" || normalizedFieldId === "synonyms" || normalizedFieldId === "examples") {
-        if (!next.boxes?.length) return next;
+      if (target.kind === "box.staticText") {
+        if (!next.boxes?.length || !hasTargetBox) {
+          logger.warn("edit.commit.missingBox", { cardId: current.id, boxId, fieldId, normalizedFieldId });
+          return next;
+        }
         next.boxes = next.boxes.map((box) =>
           box.id === boxId
             ? { ...box, textMode: "static", staticText: nextValue, text: nextValue }
@@ -321,7 +363,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         logTarget("box.staticText");
         return next;
       }
-      if (normalizedFieldId === "tags") {
+      if (target.kind === "card.tags") {
         next.tags = nextValue
           .split(",")
           .map((tag) => tag.trim())
@@ -329,7 +371,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         logTarget("card.tags");
         return next;
       }
-      if (normalizedFieldId === "freq") {
+      if (target.kind === "card.freq") {
         const trimmed = nextValue.trim();
         if (!/^[1-5]$/.test(trimmed)) {
           return next;
@@ -338,7 +380,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         logTarget("card.freq");
         return next;
       }
-      if (normalizedFieldId === "forms_aux") {
+      if (target.kind === "card.forms_aux") {
         if (nextValue === "haben" || nextValue === "sein" || nextValue === "") {
           next.forms_aux = nextValue;
         }
@@ -346,7 +388,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         return next;
       }
 
-      if (isStringCardField(normalizedFieldId)) {
+      if (target.kind === "card.string") {
         // Persist into the Card field.
         (next as any)[normalizedFieldId] = nextValue;
 
@@ -368,14 +410,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         return next;
       }
 
-      // Fallback: if the fieldId is not a direct Card field (semantic/derived block),
-      // persist the edit into the concrete box as static text so it survives re-render.
-      if (next.boxes?.length) {
-        next.boxes = next.boxes.map((box) =>
-          box.id === boxId ? { ...box, textMode: "static", staticText: nextValue, text: nextValue } : box
-        );
-      }
-      logTarget("box.staticText:fallback");
       return next;
     };
 
@@ -384,8 +418,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const currentCard = source.find((item) => item.id === session.cardId);
     if (!currentCard) return;
     const updated = updateCardField(currentCard, session.fieldId, value, session.boxId);
-    store.updateCardSilent(updated, session.side, `textEditDraft:${session.fieldId}:${session.cardId}`, { track: false });
-  }, []);
+    const autoSized = autoResizeCardBoxes(updated, basePxPerMm);
+    store.updateCard(autoSized, session.side, `textEdit:${session.fieldId}:${session.cardId}`);
+  }, [basePxPerMm]);
 
   const commitEdit = useCallback((shouldSave: boolean) => {
     if (!editSession) {
@@ -404,17 +439,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (shouldSave && editValue !== editSession.originalValue) {
       const store = useAppStore.getState();
       store.pushHistory();
-      syncEditDraftToStore(editSession, editValue);
-      const source = editSession.side === "A" ? store.cardsA : store.cardsB;
-      const updatedCard = source.find((item) => item.id === editSession.cardId);
-      if (updatedCard) {
-        store.updateCard(updatedCard, editSession.side, `textEdit:${editSession.fieldId}:${editSession.cardId}`);
-      }
+      commitEditToStore(editSession, editValue);
     }
     setEditingBoxId(null);
     setEditSession(null);
     setFreqValidationError(null);
-  }, [editSession, editValue, syncEditDraftToStore]);
+  }, [editSession, editValue, commitEditToStore]);
 
   useEffect(() => {
     if (!editingBoxId) return;
@@ -727,7 +757,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               return (
                 <div
                   key={box.id}
-                  className={`absolute group ${canEditLayoutGeometry ? "cursor-move" : "cursor-text"}`}
+                  className={[
+                    "absolute group",
+                    canEditLayoutGeometry ? "cursor-move" : "cursor-text",
+                    renderMode === "editor" && !isEditing && !isSelected ? "lc-boxShade" : ""
+                  ].join(" ")}
                   tabIndex={renderMode === "editor" ? 0 : -1}
                   style={{
                     left: mmToPx(box.xMm, basePxPerMm),
@@ -788,9 +822,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                         if (editSession?.fieldId === "freq") {
                           const isValid = /^[1-5]$/.test(nextValue.trim());
                           setFreqValidationError(isValid || nextValue.trim() === "" ? null : "Не верный диапазон! Введите от 1 до 5.");
-                        }
-                        if (editSession) {
-                          syncEditDraftToStore(editSession, nextValue);
                         }
                       }}
                       onBlur={() => commitEdit(true)}
