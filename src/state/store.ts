@@ -135,9 +135,6 @@ const HISTORY_LIMIT = 50;
 const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
-const CARDS_META_KEY = "lc_cards_v1_meta";
-const CARDS_CHUNK_KEY_PREFIX = "lc_cards_v1_chunk_";
-const CARDS_CHUNK_SIZE = 180_000;
 const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
 
 const createBoxTemplate = (
@@ -367,39 +364,10 @@ const loadPersistedTemplate = (): LayoutTemplate | null => {
   }
 };
 
-const loadPersistedCards = (): { cardsA: Card[]; cardsB: Card[] } | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const metaRaw = window.localStorage.getItem(CARDS_META_KEY);
-    if (!metaRaw) return null;
-    const meta = JSON.parse(metaRaw) as { version?: number; chunks?: number };
-    const chunksCount = Number.isFinite(meta?.chunks) ? Number(meta.chunks) : 0;
-    if (meta?.version !== 1 || chunksCount < 1) return null;
-    let joined = "";
-    for (let index = 0; index < chunksCount; index += 1) {
-      const chunk = window.localStorage.getItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
-      if (!chunk) return null;
-      joined += chunk;
-    }
-    const parsed = JSON.parse(joined) as { cardsA?: Card[]; cardsB?: Card[] };
-    return {
-      cardsA: Array.isArray(parsed.cardsA) ? parsed.cardsA : [],
-      cardsB: Array.isArray(parsed.cardsB) ? parsed.cardsB : []
-    };
-  } catch {
-    return null;
-  }
-};
-
-const sanitizePersistedState = (
-  raw: PersistedState["state"],
-  persistedCards: { cardsA: Card[]; cardsB: Card[] } | null
-) => {
+const sanitizePersistedState = (raw: PersistedState["state"]) => {
   const base = createBaseState();
-  const cardsAInput = (persistedCards?.cardsA ?? base.cardsA).map((card) => normalizeCard(card)).filter(Boolean);
-  const cardsBInput = (persistedCards?.cardsB ?? base.cardsB).map((card) => normalizeCard(card)).filter(Boolean);
-  const cardsA = ensureUniqueCardIds(cardsAInput);
-  const cardsB = ensureUniqueCardIds(cardsBInput);
+  const cardsA = ensureUniqueCardIds(base.cardsA.map((card) => normalizeCard(card)).filter(Boolean));
+  const cardsB = ensureUniqueCardIds(base.cardsB.map((card) => normalizeCard(card)).filter(Boolean));
   const selectedId =
     typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
       ? raw.selectedId
@@ -578,7 +546,6 @@ const persistState = (state: AppState) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state)));
-    persistCards(cloneCardsForPersist(state.cardsA), cloneCardsForPersist(state.cardsB));
     setStorageWarning(null);
   } catch (error) {
     console.error("Persist failed: storage quota exceeded", error);

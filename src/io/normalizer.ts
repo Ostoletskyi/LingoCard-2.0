@@ -1,8 +1,10 @@
 import type { Card } from "../model/cardSchema";
 import { emptyCard, normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
-import { defaultLayout } from "../model/layoutSchema";
+import { defaultLayout, type Box } from "../model/layoutSchema";
 import { normalizeFieldId } from "../utils/fieldAlias";
+import type { CanonicalBox, CanonicalCard } from "../normalizer/canonicalTypes";
+import { ensureTemplateBoxes } from "../normalizer/ensureTemplate";
 
 export type InternalCard = Card & {
   meta?: Record<string, unknown>;
@@ -14,24 +16,6 @@ export type ImportStrategy = {
   name: Exclude<SupportedSchema, "unknown">;
   match: (raw: unknown) => boolean;
   normalize: (raw: unknown) => InternalCard[];
-};
-
-type CanonicalTranslation = { value: string };
-type CanonicalSynonym = { de: string; ru: string };
-type CanonicalExample = { de: string; ru: string; tag: string };
-type CanonicalForms = { p3: string; praet: string; p2: string; aux: "" | "haben" | "sein" };
-
-type CanonicalCardContract = {
-  id: string;
-  title: string;
-  inf: string;
-  freq: number;
-  tags: string[];
-  tr: CanonicalTranslation[];
-  forms: CanonicalForms;
-  synonyms: CanonicalSynonym[];
-  examples: CanonicalExample[];
-  boxes: Card["boxes"];
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -73,7 +57,7 @@ const toCanonicalCard = (
   item: unknown,
   schema: Exclude<SupportedSchema, "unknown">,
   index: number
-): CanonicalCardContract => {
+): CanonicalCard => {
   const source = isRecord(item) ? item : {};
   const root = isRecord(source.verb) ? source.verb : source;
   const forms = isRecord(root.forms) ? root.forms : {};
@@ -81,89 +65,139 @@ const toCanonicalCard = (
   const translationSource = pickArray(root, ["translations", "tr", "meanings", "translation"]);
   const trFromArray = translationSource
     .map((entry) => {
-      if (typeof entry === "string") return entry.trim();
-      if (isRecord(entry)) return pickString(entry, ["ru", "translation", "text", "value"]);
-      return "";
+      if (typeof entry === "string") return { value: entry.trim() };
+      if (!isRecord(entry)) return null;
+      const value = pickString(entry, ["ru", "translation", "text", "value"]);
+      const ctx = pickString(entry, ["ctx", "context", "note"]);
+      return value ? { value, ...(ctx ? { ctx } : {}) } : null;
     })
-    .filter(Boolean)
-    .map((value) => ({ value }));
+    .filter((entry): entry is { value: string; ctx?: string } => Boolean(entry));
 
   const trDirect = [
-    pickString(root, ["tr_1_ru", "translation_ru", "translation", "ru", "meaning_ru"]),
-    pickString(root, ["tr_2_ru", "translation_2_ru", "meaning_2_ru"]),
-    pickString(root, ["tr_3_ru", "translation_3_ru", "meaning_3_ru"]),
-    pickString(root, ["tr_4_ru", "translation_4_ru", "meaning_4_ru"])
+    {
+      value: pickString(root, ["tr_1_ru", "translation_ru", "translation", "ru", "meaning_ru"]),
+      ctx: pickString(root, ["tr_1_ctx", "translation_ctx", "meaning_ctx"])
+    },
+    { value: pickString(root, ["tr_2_ru", "translation_2_ru", "meaning_2_ru"]), ctx: pickString(root, ["tr_2_ctx"]) },
+    { value: pickString(root, ["tr_3_ru", "translation_3_ru", "meaning_3_ru"]), ctx: pickString(root, ["tr_3_ctx"]) },
+    { value: pickString(root, ["tr_4_ru", "translation_4_ru", "meaning_4_ru"]), ctx: pickString(root, ["tr_4_ctx"]) }
   ]
-    .filter(Boolean)
-    .map((value) => ({ value }));
+    .filter((entry) => Boolean(entry.value))
+    .map((entry) => ({ value: entry.value, ...(entry.ctx ? { ctx: entry.ctx } : {}) }));
 
-  const synonymsSource = pickArray(root, ["synonyms", "syn"]);
-  const synonyms: CanonicalSynonym[] = synonymsSource
+  const synonyms = pickArray(root, ["synonyms", "syn"])
     .map((entry) => {
       if (!isRecord(entry)) return null;
       const de = pickString(entry, ["de", "word", "lemma"]);
       const ru = pickString(entry, ["ru", "translation", "value"]);
       if (!de && !ru) return null;
-      return { de, ru };
+      return { de, ...(ru ? { ru } : {}) };
     })
-    .filter((entry): entry is CanonicalSynonym => Boolean(entry));
+    .filter((entry): entry is { de: string; ru?: string } => Boolean(entry));
 
-  const examplesSource = pickArray(root, ["examples", "example"]);
-  const examples: CanonicalExample[] = examplesSource
+  const examples = pickArray(root, ["examples", "example"])
     .map((entry) => {
       if (!isRecord(entry)) return null;
       const de = pickString(entry, ["de", "text", "source"]);
       const ru = pickString(entry, ["ru", "translation", "target"]);
       const tag = pickString(entry, ["tag", "label"]);
       if (!de && !ru) return null;
-      return { de, ru, tag };
+      return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
     })
-    .filter((entry): entry is CanonicalExample => Boolean(entry));
+    .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry));
 
   const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
-  const aux: CanonicalForms["aux"] = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
+  const aux = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
 
   const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]);
   const title = pickString(root, ["title", "name"]) || inf;
-
-  const freqValue = Number(root.freq);
-  const freq = Number.isFinite(freqValue) ? Math.max(0, Math.min(5, Math.round(freqValue))) : 0;
+  const freqRaw = Number(root.freq);
 
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source),
     title,
     inf,
-    freq,
+    freq: Number.isFinite(freqRaw) && freqRaw >= 1 && freqRaw <= 5 ? Math.round(freqRaw) : null,
     tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : [],
-    tr: trFromArray.length ? trFromArray : trDirect,
+    tr: trFromArray.length ? trFromArray.slice(0, 4) : trDirect.slice(0, 4),
     forms: {
       p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
       praet: pickString({ ...forms, ...root }, ["forms_prat", "prat", "preterite", "past"]),
       p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
       aux
     },
-    synonyms,
-    examples,
-    boxes: Array.isArray(root.boxes) ? (root.boxes as Card["boxes"]) : []
+    synonyms: synonyms.slice(0, 3),
+    examples: examples.slice(0, 5),
+    boxes: Array.isArray(root.boxes) ? (root.boxes as CanonicalBox[]) : []
   };
 };
 
-const canonicalToInternalCard = (canonical: CanonicalCardContract, source: Record<string, unknown>, schema: Exclude<SupportedSchema, "unknown">, index: number): InternalCard => {
-  const normalized = normalizeCard({
-    ...source,
+const pickCanonicalBox = (box: CanonicalBox): CanonicalBox => ({
+  id: String(box.id || `box_${crypto.randomUUID().slice(0, 8)}`),
+  fieldId: normalizeFieldId(String(box.fieldId || "custom_text")),
+  xMm: Number.isFinite(box.xMm) ? box.xMm : 0,
+  yMm: Number.isFinite(box.yMm) ? box.yMm : 0,
+  wMm: Number.isFinite(box.wMm) ? Math.max(1, box.wMm) : 20,
+  hMm: Number.isFinite(box.hMm) ? Math.max(1, box.hMm) : 8,
+  ...(typeof box.fontPt === "number" ? { fontPt: box.fontPt } : {}),
+  ...(typeof box.lineHeight === "number" ? { lineHeight: box.lineHeight } : {}),
+  ...(typeof box.paddingMm === "number" ? { paddingMm: box.paddingMm } : {}),
+  ...(box.align ? { align: box.align } : {}),
+  ...(typeof box.autoH === "boolean" ? { autoH: box.autoH } : {}),
+  ...(typeof box.reservedRightMm === "number" ? { reservedRightMm: box.reservedRightMm } : {})
+});
+
+const canonicalBoxToInternalBox = (box: CanonicalBox, index: number): Box => ({
+  id: box.id,
+  fieldId: box.fieldId,
+  xMm: box.xMm,
+  yMm: box.yMm,
+  wMm: box.wMm,
+  hMm: box.hMm,
+  z: index + 1,
+  style: {
+    fontSizePt: box.fontPt ?? 11,
+    fontWeight: "normal",
+    align: box.align ?? "left",
+    lineHeight: box.lineHeight ?? 1.2,
+    paddingMm: box.paddingMm ?? 0.8,
+    border: false,
+    visible: true
+  },
+  autoH: box.autoH,
+  reservedRightPx: typeof box.reservedRightMm === "number" ? box.reservedRightMm * 3.7795 : undefined,
+  textMode: "dynamic",
+  type: box.id
+});
+
+const canonicalToInternalCard = (
+  canonicalRaw: CanonicalCard,
+  schema: Exclude<SupportedSchema, "unknown">,
+  index: number
+): InternalCard => {
+  const canonical = ensureTemplateBoxes({
+    ...canonicalRaw,
+    boxes: (canonicalRaw.boxes ?? []).map((box) => pickCanonicalBox(box))
+  });
+
+  const internal = normalizeCard({
     id: canonical.id,
     title: canonical.title,
     inf: canonical.inf,
-    freq: (canonical.freq >= 1 && canonical.freq <= 5 ? canonical.freq : 3) as Card["freq"],
+    freq: ((canonical.freq ?? 0) >= 1 && (canonical.freq ?? 0) <= 5 ? canonical.freq ?? 0 : 0) as Card["freq"],
     tags: canonical.tags,
     tr_1_ru: canonical.tr[0]?.value ?? "",
+    tr_1_ctx: canonical.tr[0]?.ctx ?? "",
     tr_2_ru: canonical.tr[1]?.value ?? "",
+    tr_2_ctx: canonical.tr[1]?.ctx ?? "",
     tr_3_ru: canonical.tr[2]?.value ?? "",
+    tr_3_ctx: canonical.tr[2]?.ctx ?? "",
     tr_4_ru: canonical.tr[3]?.value ?? "",
-    forms_p3: canonical.forms.p3,
-    forms_prat: canonical.forms.praet,
-    forms_p2: canonical.forms.p2,
-    forms_aux: canonical.forms.aux,
+    tr_4_ctx: canonical.tr[3]?.ctx ?? "",
+    forms_p3: canonical.forms.p3 ?? "",
+    forms_prat: canonical.forms.praet ?? "",
+    forms_p2: canonical.forms.p2 ?? "",
+    forms_aux: canonical.forms.aux ?? "",
     syn_1_de: canonical.synonyms[0]?.de ?? "",
     syn_1_ru: canonical.synonyms[0]?.ru ?? "",
     syn_2_de: canonical.synonyms[1]?.de ?? "",
@@ -185,17 +219,17 @@ const canonicalToInternalCard = (canonical: CanonicalCardContract, source: Recor
     ex_5_de: canonical.examples[4]?.de ?? "",
     ex_5_ru: canonical.examples[4]?.ru ?? "",
     ex_5_tag: canonical.examples[4]?.tag ?? "",
-    boxes: canonical.boxes
+    boxes: canonical.boxes.map((box, boxIndex) => canonicalBoxToInternalBox(box, boxIndex))
   });
 
-  const withBoxes = normalized.boxes?.length
-    ? normalized
-    : applySemanticLayoutToCard(normalized, defaultLayout.widthMm, defaultLayout.heightMm);
+  const withLayout = internal.boxes?.length
+    ? internal
+    : applySemanticLayoutToCard(internal, defaultLayout.widthMm, defaultLayout.heightMm);
 
   const knownCardFields = new Set(Object.keys(emptyCard));
   const enforced = {
-    ...withBoxes,
-    boxes: (withBoxes.boxes ?? []).map((box) => {
+    ...withLayout,
+    boxes: (withLayout.boxes ?? []).map((box) => {
       const normalizedField = normalizeFieldId(box.fieldId);
       const isRealField =
         knownCardFields.has(normalizedField) &&
@@ -209,28 +243,23 @@ const canonicalToInternalCard = (canonical: CanonicalCardContract, source: Recor
     })
   };
 
+  if (index === 0) {
+    console.log("[Import] canonical sample", canonical);
+    console.log("[Import] internal sample", enforced);
+  }
+
   return {
     ...enforced,
     meta: {
-      ...(isRecord((source as { meta?: unknown }).meta)
-        ? ((source as { meta?: Record<string, unknown> }).meta ?? {})
-        : {}),
-      originalSource: source,
       importSchema: schema,
-      importIndex: index,
-      canonical: {
-        trCount: canonical.tr.length,
-        examplesCount: canonical.examples.length,
-        synonymsCount: canonical.synonyms.length
-      }
+      importIndex: index
     }
   };
 };
 
 const normalizeEntry = (item: unknown, schema: Exclude<SupportedSchema, "unknown">, index: number): InternalCard => {
-  const source = isRecord(item) ? item : {};
-  const canonical = toCanonicalCard(source, schema, index);
-  return canonicalToInternalCard(canonical, source, schema, index);
+  const canonical = toCanonicalCard(item, schema, index);
+  return canonicalToInternalCard(canonical, schema, index);
 };
 
 export const detectSchema = (raw: unknown): SupportedSchema => {
@@ -283,27 +312,5 @@ export const normalizeImportedJson = (raw: unknown): InternalCard[] => {
 
   console.log("Import stage C (fill defaults)");
   console.log("Normalized cards:", normalized.length);
-
-  const first = normalized[0];
-  if (first) {
-    const source = isRecord(first.meta?.originalSource) ? (first.meta?.originalSource as Record<string, unknown>) : {};
-    const sourceKeys = Object.keys(source);
-    const recognized = ["inf", "title", "tr_1_ru", "tr_2_ru", "forms_p3", "forms_prat", "forms_p2", "forms_aux"].filter(
-      (key) => Boolean((first as unknown as Record<string, unknown>)[key])
-    );
-    const filled = {
-      inf: first.inf,
-      title: first.title,
-      translations: [first.tr_1_ru, first.tr_2_ru, first.tr_3_ru, first.tr_4_ru].filter(Boolean).length,
-      forms: [first.forms_p3, first.forms_prat, first.forms_p2, first.forms_aux].filter(Boolean).length,
-      synonyms: [first.syn_1_de, first.syn_2_de, first.syn_3_de, first.syn_1_ru, first.syn_2_ru, first.syn_3_ru].filter(Boolean).length,
-      examples: [first.ex_1_de, first.ex_2_de, first.ex_3_de, first.ex_4_de, first.ex_5_de].filter(Boolean).length
-    };
-
-    console.log("Import first card source keys:", sourceKeys);
-    console.log("Import first card recognized fields:", recognized);
-    console.log("Import first card filled model:", filled);
-  }
-
   return normalized;
 };
