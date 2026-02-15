@@ -482,7 +482,7 @@ export const CardListPanel = ({ side }: Props) => {
               className="flex-1 text-left"
             >
               <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {card.inf || "(без названия)"}
+                {card.title || card.inf || "(без названия)"}
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 {card.tr_1_ru || "Перевод пока пуст"}

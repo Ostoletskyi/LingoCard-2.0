@@ -31,6 +31,10 @@ export const importCardsFromJson = (text: string, mode: ImportMode = "keep") => 
   const seen = new Map<string, Card>();
   payloadCards.forEach((item) => {
     const normalized = normalizeCard(item);
+    // Import-only rule: initialize title from infinitive once.
+    if (!normalized.title?.trim() && normalized.inf?.trim()) {
+      normalized.title = normalized.inf.trim();
+    }
     CardSchema.parse(normalized);
     const existing = seen.get(normalized.inf);
     if (!existing) {
@@ -85,6 +89,10 @@ export const validateCardsImport = (
       try {
         const candidate = item && typeof item === "object" ? (item as Partial<Card>) : {};
         const normalized = normalizeCard(candidate);
+        // Import-only rule: initialize title from infinitive once.
+        if (!normalized.title?.trim() && normalized.inf?.trim()) {
+          normalized.title = normalized.inf.trim();
+        }
         CardSchema.parse(normalized);
         cards.push(normalized);
       } catch (error) {
@@ -150,7 +158,13 @@ export const importInfinitivesText = (text: string, limit = 25): Card[] => {
     .map((line) => line.trim())
     .filter(Boolean)
     .slice(0, limit);
-  return list.map((inf) => normalizeCard({ inf }));
+  return list.map((inf) => {
+    const card = normalizeCard({ inf });
+    if (!card.title?.trim() && card.inf?.trim()) {
+      card.title = card.inf.trim();
+    }
+    return card;
+  });
 };
 
 export const exportCardsToJson = (cards: Card[]): Blob => {

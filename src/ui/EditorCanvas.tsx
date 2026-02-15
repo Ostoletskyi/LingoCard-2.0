@@ -7,6 +7,7 @@ import { normalizeFieldId } from "../utils/fieldAlias";
 import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
+import { logger } from "../utils/logger";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -292,6 +293,24 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const updateCardField = (current: Card, fieldId: string, nextValue: string, boxId: string): Card => {
       const normalizedFieldId = normalizeFieldId(fieldId);
       const next: Card = { ...current };
+
+      const debug = useAppStore.getState().debugOverlays;
+      const logTarget = (target: string) => {
+        if (!debug) return;
+        logger.info("edit.commit", {
+          cardId: current.id,
+          boxId,
+          fieldId,
+          normalizedFieldId,
+          target,
+          lenBefore: (() => {
+            const before = (normalizedFieldId in current ? (current as any)[normalizedFieldId] : "") as unknown;
+            return typeof before === "string" ? before.length : 0;
+          })(),
+          lenAfter: nextValue.length
+        });
+      };
+
       if (normalizedFieldId === "custom_text" || normalizedFieldId === "forms_rek" || normalizedFieldId === "synonyms" || normalizedFieldId === "examples") {
         if (!next.boxes?.length) return next;
         next.boxes = next.boxes.map((box) =>
@@ -299,6 +318,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
             ? { ...box, textMode: "static", staticText: nextValue, text: nextValue }
             : box
         );
+        logTarget("box.staticText");
         return next;
       }
       if (normalizedFieldId === "tags") {
@@ -306,6 +326,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean);
+        logTarget("card.tags");
         return next;
       }
       if (normalizedFieldId === "freq") {
@@ -314,17 +335,47 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
           return next;
         }
         next.freq = Number.parseInt(trimmed, 10) as Card["freq"];
+        logTarget("card.freq");
         return next;
       }
       if (normalizedFieldId === "forms_aux") {
         if (nextValue === "haben" || nextValue === "sein" || nextValue === "") {
           next.forms_aux = nextValue;
         }
+        logTarget("card.forms_aux");
         return next;
       }
+
       if (isStringCardField(normalizedFieldId)) {
-        next[normalizedFieldId] = nextValue;
+        // Persist into the Card field.
+        (next as any)[normalizedFieldId] = nextValue;
+
+        // IMPORTANT: If this box used to be static, it would keep showing stale staticText.
+        // When editing a real Card field (like `inf`), force the edited box back to dynamic mode.
+        if (next.boxes?.length) {
+          next.boxes = next.boxes.map((box) =>
+            box.id === boxId
+              ? {
+                  ...box,
+                  textMode: "dynamic",
+                  staticText: "",
+                  text: ""
+                }
+              : box
+          );
+        }
+        logTarget(`card.${normalizedFieldId}`);
+        return next;
       }
+
+      // Fallback: if the fieldId is not a direct Card field (semantic/derived block),
+      // persist the edit into the concrete box as static text so it survives re-render.
+      if (next.boxes?.length) {
+        next.boxes = next.boxes.map((box) =>
+          box.id === boxId ? { ...box, textMode: "static", staticText: nextValue, text: nextValue } : box
+        );
+      }
+      logTarget("box.staticText:fallback");
       return next;
     };
 

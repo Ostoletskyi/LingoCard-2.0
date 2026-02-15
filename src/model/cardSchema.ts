@@ -71,6 +71,7 @@ const rektionSchema = {
 export const CardSchema = z.object({
   id: z.string(),
   inf: z.string(),
+  title: z.string().optional(),
   freq: FrequencySchema,
   tags: z.array(z.string()),
   ...translationSchema,
@@ -86,6 +87,7 @@ export type Card = z.infer<typeof CardSchema>;
 export const emptyCard: Card = {
   id: "",
   inf: "",
+  title: "",
   freq: 3,
   tags: [],
   tr_1_ru: "",
