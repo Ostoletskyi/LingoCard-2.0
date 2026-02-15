@@ -293,6 +293,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const updateCardField = (current: Card, fieldId: string, nextValue: string, boxId: string): Card => {
       const normalizedFieldId = normalizeFieldId(fieldId);
       const next: Card = { ...current };
+      const hasTargetBox = Boolean(next.boxes?.some((box) => box.id === boxId));
 
       const debug = useAppStore.getState().debugOverlays;
       const logTarget = (target: string) => {
@@ -312,7 +313,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       };
 
       if (normalizedFieldId === "custom_text" || normalizedFieldId === "forms_rek" || normalizedFieldId === "synonyms" || normalizedFieldId === "examples") {
-        if (!next.boxes?.length) return next;
+        if (!next.boxes?.length || !hasTargetBox) {
+          logger.warn("edit.commit.missingBox", { cardId: current.id, boxId, fieldId, normalizedFieldId });
+          return next;
+        }
         next.boxes = next.boxes.map((box) =>
           box.id === boxId
             ? { ...box, textMode: "static", staticText: nextValue, text: nextValue }
@@ -374,6 +378,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
         next.boxes = next.boxes.map((box) =>
           box.id === boxId ? { ...box, textMode: "static", staticText: nextValue, text: nextValue } : box
         );
+      } else {
+        logger.warn("edit.commit.unknownFieldWithoutBoxes", {
+          cardId: current.id,
+          boxId,
+          fieldId,
+          normalizedFieldId
+        });
       }
       logTarget("box.staticText:fallback");
       return next;
