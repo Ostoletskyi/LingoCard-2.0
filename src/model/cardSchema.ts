@@ -3,6 +3,7 @@ import { BoxSchema, type Box } from "./layoutSchema";
 import { normalizeFieldId } from "../utils/fieldAlias";
 
 export const FrequencySchema = z.union([
+  z.literal(0),
   z.literal(1),
   z.literal(2),
   z.literal(3),
@@ -72,6 +73,7 @@ export const CardSchema = z.object({
   id: z.string(),
   inf: z.string(),
   title: z.string().optional(),
+  meta: z.record(z.unknown()).optional(),
   freq: FrequencySchema,
   tags: z.array(z.string()),
   ...translationSchema,
@@ -88,7 +90,7 @@ export const emptyCard: Card = {
   id: "",
   inf: "",
   title: "",
-  freq: 3,
+  freq: 0,
   tags: [],
   tr_1_ru: "",
   tr_1_ctx: "",
@@ -180,6 +182,13 @@ const normalizeImportedBoxes = (boxes: unknown): Box[] => {
         source.textMode === "static" || source.textMode === "dynamic"
           ? source.textMode
           : undefined,
+      autoH: typeof source.autoH === "boolean" ? source.autoH : undefined,
+      minH: typeof source.minH === "number" && Number.isFinite(source.minH) ? source.minH : undefined,
+      maxH: typeof source.maxH === "number" && Number.isFinite(source.maxH) ? source.maxH : undefined,
+      reservedRightPx:
+        typeof source.reservedRightPx === "number" && Number.isFinite(source.reservedRightPx)
+          ? source.reservedRightPx
+          : undefined,
       label: toString(source.label),
       label_i18n: toString(source.label_i18n),
       type: toString(source.type)
@@ -198,8 +207,8 @@ export const normalizeCard = (input: Partial<Card>): Card => {
   if (!normalized.id) {
     normalized.id = crypto.randomUUID();
   }
-  if (!normalized.freq) {
-    normalized.freq = 3;
+  if (normalized.freq === undefined || normalized.freq === null) {
+    normalized.freq = 0;
   }
   return normalized;
 };
