@@ -359,7 +359,7 @@ export const CardListPanel = ({ side }: Props) => {
           </button>
           <div
             id={`section-data-${side}`}
-            className={`grid transition-all duration-200 ${openSection === "data" ? (blockMenuOpen ? "mt-2 max-h-[28rem] opacity-100 overflow-visible" : "mt-2 max-h-80 opacity-100 overflow-hidden") : "max-h-0 opacity-0 overflow-hidden"}`}
+            className={`grid transition-all duration-200 ${openSection === "data" ? (blockMenuOpen ? "mt-2 max-h-[44rem] opacity-100 overflow-visible" : "mt-2 max-h-[44rem] opacity-100 overflow-y-auto overflow-x-hidden pr-1") : "max-h-0 opacity-0 overflow-hidden"}`}
           >
             <div className="grid gap-2">
             <button ref={firstDataButtonRef} onClick={handleCreate} disabled={!editModeEnabled} className={`${buttonBase} ${buttonSolid} disabled:opacity-50`}>
