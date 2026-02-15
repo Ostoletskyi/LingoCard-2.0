@@ -72,6 +72,7 @@ export const CardSchema = z.object({
   id: z.string(),
   inf: z.string(),
   title: z.string().optional(),
+  meta: z.record(z.unknown()).optional(),
   freq: FrequencySchema,
   tags: z.array(z.string()),
   ...translationSchema,
