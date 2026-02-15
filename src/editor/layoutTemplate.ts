@@ -51,6 +51,16 @@ const withOptional = <T extends object, K extends string, V>(base: T, key: K, va
   return { ...base, [key]: value } as T & { [P in K]?: V };
 };
 
+const toPlainStyle = (style: Box["style"]): Box["style"] => ({
+  fontSizePt: style.fontSizePt,
+  fontWeight: style.fontWeight,
+  align: style.align,
+  lineHeight: style.lineHeight,
+  paddingMm: style.paddingMm,
+  ...(typeof style.border === "boolean" ? { border: style.border } : {}),
+  ...(typeof style.visible === "boolean" ? { visible: style.visible } : {})
+});
+
 const groupBoxes = (boxes: Box[]): GroupedBoxes => {
   const groups: GroupedBoxes = new Map();
   boxes.forEach((box, index) => {
@@ -75,7 +85,7 @@ export const extractLayoutTemplate = (card: Card, cardSize: { widthMm: number; h
       wMm: box.wMm,
       hMm: box.hMm,
       z: box.z,
-      style: structuredClone(box.style)
+      style: toPlainStyle(box.style)
     };
     const withRole = withOptional(base, "role", role || undefined);
     const withRotate = withOptional(withRole, "rotateDeg", box.rotateDeg);
@@ -102,7 +112,7 @@ const buildTemplateBox = (templateBox: LayoutTemplate["boxes"][number], fallback
     wMm: templateBox.wMm,
     hMm: templateBox.hMm,
     z: templateBox.z,
-    style: structuredClone(templateBox.style),
+    style: toPlainStyle(templateBox.style),
     rotateDeg: templateBox.rotateDeg,
     locked: templateBox.locked,
     textMode: realField ? "dynamic" : templateBox.textMode,
@@ -127,7 +137,7 @@ const patchBoxFormatting = (current: Box, templateBox: LayoutTemplate["boxes"][n
     wMm: templateBox.wMm,
     hMm: templateBox.hMm,
     z: templateBox.z,
-    style: structuredClone(templateBox.style),
+    style: toPlainStyle(templateBox.style),
     rotateDeg: templateBox.rotateDeg,
     locked: templateBox.locked,
     textMode: realField ? "dynamic" : templateBox.textMode,

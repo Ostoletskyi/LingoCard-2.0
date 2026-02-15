@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { current } from "immer";
 import type { Card } from "../model/cardSchema";
 import { defaultLayout, type Layout } from "../model/layoutSchema";
 import { normalizeCard } from "../model/cardSchema";
@@ -924,10 +925,17 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const source = list.find((card) => card.id === sourceCardId);
       if (!source) return;
-      const template = extractLayoutTemplate(source, {
-        widthMm: state.layout.widthMm,
-        heightMm: state.layout.heightMm
-      });
+      let template;
+      try {
+        const plainSource = current(source);
+        template = extractLayoutTemplate(plainSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+      } catch (error) {
+        console.error("Template contains non-serializable data", error);
+        return;
+      }
       state.activeTemplate = template;
       if (typeof window !== "undefined") {
         window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
