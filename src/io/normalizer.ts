@@ -16,11 +16,28 @@ export type ImportStrategy = {
   normalize: (raw: unknown) => InternalCard[];
 };
 
+type CanonicalTranslation = { value: string };
+type CanonicalSynonym = { de: string; ru: string };
+type CanonicalExample = { de: string; ru: string; tag: string };
+type CanonicalForms = { p3: string; praet: string; p2: string; aux: "" | "haben" | "sein" };
+
+type CanonicalCardContract = {
+  id: string;
+  title: string;
+  inf: string;
+  freq: number;
+  tags: string[];
+  tr: CanonicalTranslation[];
+  forms: CanonicalForms;
+  synonyms: CanonicalSynonym[];
+  examples: CanonicalExample[];
+  boxes: Card["boxes"];
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const ensureArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-
 const toString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
 const pickString = (source: Record<string, unknown>, keys: string[]): string => {
@@ -52,85 +69,145 @@ const deterministicId = (schema: Exclude<SupportedSchema, "unknown">, index: num
   return `import_${schema}_${index + 1}_${sourceHash}`;
 };
 
-const mapExternalCardFields = (source: Record<string, unknown>) => {
-  const root = isRecord(source.verb) ? source.verb : source;
-  const forms = isRecord(root.forms) ? root.forms : {};
-
-  const translations = pickArray(root, ["translations", "tr", "meanings", "translation"]);
-  const firstTranslation = translations[0];
-  const secondTranslation = translations[1];
-  const tr1 =
-    pickString(root, ["tr_1_ru", "translation_ru", "translation", "ru", "meaning_ru"]) ||
-    (typeof firstTranslation === "string"
-      ? firstTranslation.trim()
-      : isRecord(firstTranslation)
-        ? pickString(firstTranslation, ["ru", "translation", "text", "value"])
-        : "");
-  const tr2 =
-    pickString(root, ["tr_2_ru", "translation_2_ru", "meaning_2_ru"]) ||
-    (typeof secondTranslation === "string"
-      ? secondTranslation.trim()
-      : isRecord(secondTranslation)
-        ? pickString(secondTranslation, ["ru", "translation", "text", "value"])
-        : "");
-
-  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
-  const formsAux: Card["forms_aux"] = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
-
-  const result: Partial<Card> = {
-    ...root,
-    inf: pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]),
-    title: pickString(root, ["title", "name"]),
-    tr_1_ru: tr1,
-    tr_2_ru: tr2,
-    forms_p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
-    forms_prat: pickString({ ...forms, ...root }, ["forms_prat", "prat", "preterite", "past"]),
-    forms_p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
-    forms_aux: formsAux,
-    tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : []
-  };
-
-  if (!result.title && result.inf) {
-    result.title = result.inf;
-  }
-
-  return result;
-};
-
-const enforceDynamicBoxesForRealFields = (card: Card): Card => {
-  const knownCardFields = new Set(Object.keys(emptyCard));
-  return {
-    ...card,
-    boxes: (card.boxes ?? []).map((box) => {
-      const normalizedField = normalizeFieldId(box.fieldId);
-      const isRealField = knownCardFields.has(normalizedField) && !["forms_rek", "synonyms", "examples", "custom_text"].includes(normalizedField);
-      if (!isRealField) return box;
-      return {
-        ...box,
-        textMode: "dynamic",
-        staticText: ""
-      };
-    })
-  };
-};
-
-const normalizeEntry = (
+const toCanonicalCard = (
   item: unknown,
   schema: Exclude<SupportedSchema, "unknown">,
   index: number
-): InternalCard => {
+): CanonicalCardContract => {
   const source = isRecord(item) ? item : {};
-  const mapped = mapExternalCardFields(source);
+  const root = isRecord(source.verb) ? source.verb : source;
+  const forms = isRecord(root.forms) ? root.forms : {};
+
+  const translationSource = pickArray(root, ["translations", "tr", "meanings", "translation"]);
+  const trFromArray = translationSource
+    .map((entry) => {
+      if (typeof entry === "string") return entry.trim();
+      if (isRecord(entry)) return pickString(entry, ["ru", "translation", "text", "value"]);
+      return "";
+    })
+    .filter(Boolean)
+    .map((value) => ({ value }));
+
+  const trDirect = [
+    pickString(root, ["tr_1_ru", "translation_ru", "translation", "ru", "meaning_ru"]),
+    pickString(root, ["tr_2_ru", "translation_2_ru", "meaning_2_ru"]),
+    pickString(root, ["tr_3_ru", "translation_3_ru", "meaning_3_ru"]),
+    pickString(root, ["tr_4_ru", "translation_4_ru", "meaning_4_ru"])
+  ]
+    .filter(Boolean)
+    .map((value) => ({ value }));
+
+  const synonymsSource = pickArray(root, ["synonyms", "syn"]);
+  const synonyms: CanonicalSynonym[] = synonymsSource
+    .map((entry) => {
+      if (!isRecord(entry)) return null;
+      const de = pickString(entry, ["de", "word", "lemma"]);
+      const ru = pickString(entry, ["ru", "translation", "value"]);
+      if (!de && !ru) return null;
+      return { de, ru };
+    })
+    .filter((entry): entry is CanonicalSynonym => Boolean(entry));
+
+  const examplesSource = pickArray(root, ["examples", "example"]);
+  const examples: CanonicalExample[] = examplesSource
+    .map((entry) => {
+      if (!isRecord(entry)) return null;
+      const de = pickString(entry, ["de", "text", "source"]);
+      const ru = pickString(entry, ["ru", "translation", "target"]);
+      const tag = pickString(entry, ["tag", "label"]);
+      if (!de && !ru) return null;
+      return { de, ru, tag };
+    })
+    .filter((entry): entry is CanonicalExample => Boolean(entry));
+
+  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
+  const aux: CanonicalForms["aux"] = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
+
+  const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]);
+  const title = pickString(root, ["title", "name"]) || inf;
+
+  const freqValue = Number(root.freq);
+  const freq = Number.isFinite(freqValue) ? Math.max(0, Math.min(5, Math.round(freqValue))) : 0;
+
+  return {
+    id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source),
+    title,
+    inf,
+    freq,
+    tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    tr: trFromArray.length ? trFromArray : trDirect,
+    forms: {
+      p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
+      praet: pickString({ ...forms, ...root }, ["forms_prat", "prat", "preterite", "past"]),
+      p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
+      aux
+    },
+    synonyms,
+    examples,
+    boxes: Array.isArray(root.boxes) ? (root.boxes as Card["boxes"]) : []
+  };
+};
+
+const canonicalToInternalCard = (canonical: CanonicalCardContract, source: Record<string, unknown>, schema: Exclude<SupportedSchema, "unknown">, index: number): InternalCard => {
   const normalized = normalizeCard({
-    ...mapped,
-    id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source)
+    ...source,
+    id: canonical.id,
+    title: canonical.title,
+    inf: canonical.inf,
+    freq: (canonical.freq >= 1 && canonical.freq <= 5 ? canonical.freq : 3) as Card["freq"],
+    tags: canonical.tags,
+    tr_1_ru: canonical.tr[0]?.value ?? "",
+    tr_2_ru: canonical.tr[1]?.value ?? "",
+    tr_3_ru: canonical.tr[2]?.value ?? "",
+    tr_4_ru: canonical.tr[3]?.value ?? "",
+    forms_p3: canonical.forms.p3,
+    forms_prat: canonical.forms.praet,
+    forms_p2: canonical.forms.p2,
+    forms_aux: canonical.forms.aux,
+    syn_1_de: canonical.synonyms[0]?.de ?? "",
+    syn_1_ru: canonical.synonyms[0]?.ru ?? "",
+    syn_2_de: canonical.synonyms[1]?.de ?? "",
+    syn_2_ru: canonical.synonyms[1]?.ru ?? "",
+    syn_3_de: canonical.synonyms[2]?.de ?? "",
+    syn_3_ru: canonical.synonyms[2]?.ru ?? "",
+    ex_1_de: canonical.examples[0]?.de ?? "",
+    ex_1_ru: canonical.examples[0]?.ru ?? "",
+    ex_1_tag: canonical.examples[0]?.tag ?? "",
+    ex_2_de: canonical.examples[1]?.de ?? "",
+    ex_2_ru: canonical.examples[1]?.ru ?? "",
+    ex_2_tag: canonical.examples[1]?.tag ?? "",
+    ex_3_de: canonical.examples[2]?.de ?? "",
+    ex_3_ru: canonical.examples[2]?.ru ?? "",
+    ex_3_tag: canonical.examples[2]?.tag ?? "",
+    ex_4_de: canonical.examples[3]?.de ?? "",
+    ex_4_ru: canonical.examples[3]?.ru ?? "",
+    ex_4_tag: canonical.examples[3]?.tag ?? "",
+    ex_5_de: canonical.examples[4]?.de ?? "",
+    ex_5_ru: canonical.examples[4]?.ru ?? "",
+    ex_5_tag: canonical.examples[4]?.tag ?? "",
+    boxes: canonical.boxes
   });
 
   const withBoxes = normalized.boxes?.length
     ? normalized
     : applySemanticLayoutToCard(normalized, defaultLayout.widthMm, defaultLayout.heightMm);
 
-  const enforced = enforceDynamicBoxesForRealFields(withBoxes);
+  const knownCardFields = new Set(Object.keys(emptyCard));
+  const enforced = {
+    ...withBoxes,
+    boxes: (withBoxes.boxes ?? []).map((box) => {
+      const normalizedField = normalizeFieldId(box.fieldId);
+      const isRealField =
+        knownCardFields.has(normalizedField) &&
+        !["forms_rek", "synonyms", "examples", "custom_text"].includes(normalizedField);
+      if (!isRealField) return box;
+      return {
+        ...box,
+        textMode: "dynamic" as const,
+        staticText: ""
+      };
+    })
+  };
 
   return {
     ...enforced,
@@ -140,9 +217,20 @@ const normalizeEntry = (
         : {}),
       originalSource: source,
       importSchema: schema,
-      importIndex: index
+      importIndex: index,
+      canonical: {
+        trCount: canonical.tr.length,
+        examplesCount: canonical.examples.length,
+        synonymsCount: canonical.synonyms.length
+      }
     }
   };
+};
+
+const normalizeEntry = (item: unknown, schema: Exclude<SupportedSchema, "unknown">, index: number): InternalCard => {
+  const source = isRecord(item) ? item : {};
+  const canonical = toCanonicalCard(source, schema, index);
+  return canonicalToInternalCard(canonical, source, schema, index);
 };
 
 export const detectSchema = (raw: unknown): SupportedSchema => {
@@ -168,21 +256,9 @@ export const normalizeFromVerbs = (raw: unknown): InternalCard[] => {
 };
 
 const strategies: ImportStrategy[] = [
-  {
-    name: "cards",
-    match: (raw) => detectSchema(raw) === "cards",
-    normalize: normalizeFromCards
-  },
-  {
-    name: "array",
-    match: (raw) => detectSchema(raw) === "array",
-    normalize: normalizeFromArray
-  },
-  {
-    name: "verbs",
-    match: (raw) => detectSchema(raw) === "verbs",
-    normalize: normalizeFromVerbs
-  }
+  { name: "cards", match: (raw) => detectSchema(raw) === "cards", normalize: normalizeFromCards },
+  { name: "array", match: (raw) => detectSchema(raw) === "array", normalize: normalizeFromArray },
+  { name: "verbs", match: (raw) => detectSchema(raw) === "verbs", normalize: normalizeFromVerbs }
 ];
 
 const buildUnknownSchemaError = (raw: unknown) => {
@@ -193,37 +269,40 @@ const buildUnknownSchemaError = (raw: unknown) => {
   );
 };
 
-const collectFilledFields = (card: InternalCard) => {
-  const fields: string[] = [];
-  if (card.inf) fields.push("inf");
-  if (card.title) fields.push("title");
-  if (card.tr_1_ru || card.tr_2_ru || card.tr_3_ru || card.tr_4_ru) fields.push("translations");
-  if (card.forms_p3 || card.forms_prat || card.forms_p2 || card.forms_aux) fields.push("forms");
-  if (card.syn_1_de || card.syn_1_ru) fields.push("synonyms");
-  if (card.ex_1_de || card.ex_1_ru) fields.push("examples");
-  return fields;
-};
-
 export const normalizeImportedJson = (raw: unknown): InternalCard[] => {
+  console.log("Import stage A (detect schema)");
   const detectedSchema = detectSchema(raw);
   console.log("Import schema:", detectedSchema);
   const strategy = strategies.find((item) => item.match(raw));
   if (!strategy || detectedSchema === "unknown") {
     throw buildUnknownSchemaError(raw);
   }
+
+  console.log("Import stage B (map to canonical)");
   const normalized = strategy.normalize(raw);
+
+  console.log("Import stage C (fill defaults)");
   console.log("Normalized cards:", normalized.length);
 
   const first = normalized[0];
   if (first) {
     const source = isRecord(first.meta?.originalSource) ? (first.meta?.originalSource as Record<string, unknown>) : {};
     const sourceKeys = Object.keys(source);
-    const recognized = ["inf", "title", "tr_1_ru", "tr_2_ru", "forms_p3", "forms_prat", "forms_p2", "forms_aux"].filter((key) =>
-      Boolean((first as unknown as Record<string, unknown>)[key])
+    const recognized = ["inf", "title", "tr_1_ru", "tr_2_ru", "forms_p3", "forms_prat", "forms_p2", "forms_aux"].filter(
+      (key) => Boolean((first as unknown as Record<string, unknown>)[key])
     );
+    const filled = {
+      inf: first.inf,
+      title: first.title,
+      translations: [first.tr_1_ru, first.tr_2_ru, first.tr_3_ru, first.tr_4_ru].filter(Boolean).length,
+      forms: [first.forms_p3, first.forms_prat, first.forms_p2, first.forms_aux].filter(Boolean).length,
+      synonyms: [first.syn_1_de, first.syn_2_de, first.syn_3_de, first.syn_1_ru, first.syn_2_ru, first.syn_3_ru].filter(Boolean).length,
+      examples: [first.ex_1_de, first.ex_2_de, first.ex_3_de, first.ex_4_de, first.ex_5_de].filter(Boolean).length
+    };
+
     console.log("Import first card source keys:", sourceKeys);
     console.log("Import first card recognized fields:", recognized);
-    console.log("Import first card filled sections:", collectFilledFields(first));
+    console.log("Import first card filled model:", filled);
   }
 
   return normalized;

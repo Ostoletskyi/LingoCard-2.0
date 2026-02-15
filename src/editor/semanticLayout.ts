@@ -102,6 +102,7 @@ const makeBox = (params: {
   textMode?: "static" | "dynamic";
   autoH?: boolean;
   reservedRightPx?: number;
+  semanticKey?: string;
 }) => {
   const fitted = fitTextToBox(
     params.text,
@@ -134,7 +135,8 @@ const makeBox = (params: {
     autoH: params.autoH,
     reservedRightPx: params.reservedRightPx,
     staticText: fitted.text,
-    label: params.label
+    label: params.label,
+    type: params.semanticKey ?? params.id
   };
 
   return box;
@@ -219,6 +221,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "hero_inf",
+      semanticKey: "hero_inf",
       fieldId: "inf",
       text: card.inf || "—",
       zone: zones.heroInf,
@@ -258,6 +261,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "freq",
+      semanticKey: "freq",
       fieldId: "freq",
       text: "",
       zone: zones.heroFreq,
@@ -275,6 +279,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "meta",
+      semanticKey: "meta",
       fieldId: "tags",
       text: card.tags.length ? card.tags.join(" · ") : "",
       zone: zones.heroMeta,
@@ -291,6 +296,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "hero_translations",
+      semanticKey: "hero_translations",
       fieldId: "tr_1_ru",
       text: trText,
       zone: zones.heroTranslations,
@@ -308,6 +314,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "examples",
+      semanticKey: "examples",
       fieldId: "ex_1_de",
       text: exText,
       zone: { xMm: zones.left.xMm, yMm: zones.left.yMm, wMm: zones.left.wMm, hMm: leftTopH },
@@ -324,6 +331,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "recommendations",
+      semanticKey: "recommendations",
       fieldId: "rek_1_de",
       text: rekText,
       zone: {
@@ -346,6 +354,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "forms",
+      semanticKey: "forms",
       fieldId: "forms_p3",
       text: formsText,
       zone: { xMm: zones.rightTop.xMm, yMm: zones.rightTop.yMm, wMm: zones.rightTop.wMm, hMm: rightTopHalf },
@@ -362,6 +371,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "synonyms",
+      semanticKey: "synonyms",
       fieldId: "syn_1_de",
       text: synText,
       zone: {

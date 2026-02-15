@@ -74,6 +74,26 @@ const resolveEditTarget = (normalizedFieldId: string): EditTarget => {
   return { kind: "box.staticText", target: "box.staticText" };
 };
 
+
+const getSemanticKey = (box: Box) => (box.type || box.id || "").toLowerCase();
+
+const semanticClassByKey = (semanticKey: string) => {
+  if (semanticKey.startsWith("hero")) return "lc-boxSemantic-hero";
+  if (semanticKey.includes("forms")) return "lc-boxSemantic-forms";
+  if (semanticKey.includes("syn")) return "lc-boxSemantic-synonyms";
+  if (semanticKey.includes("example")) return "lc-boxSemantic-examples";
+  if (semanticKey.includes("freq")) return "lc-boxSemantic-freq";
+  return "";
+};
+
+const renderFreqDots = (freq: number) => {
+  const dots = Math.max(0, Math.min(5, Math.round(freq || 0)));
+  if (!dots) return "";
+  return Array.from({ length: dots }, (_, index) => (
+    <span key={`freq-dot-${index}`} className="lc-freqDot" />
+  ));
+};
+
 const buildRulerTicks = (maxMm: number) => {
   const full = Array.from({ length: Math.floor(maxMm) + 1 }, (_, i) => i);
   const last = full.at(-1) ?? 0;
@@ -760,7 +780,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                   className={[
                     "absolute group",
                     canEditLayoutGeometry ? "cursor-move" : "cursor-text",
-                    renderMode === "editor" && !isEditing && !isSelected ? "lc-boxShade" : ""
+                    renderMode === "editor" && !isEditing && !isSelected ? "lc-boxShade" : "",
+                    semanticClassByKey(getSemanticKey(box))
                   ].join(" ")}
                   tabIndex={renderMode === "editor" ? 0 : -1}
                   style={{
@@ -843,6 +864,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
                     />
+                  ) : normalizeFieldId(box.fieldId) === "freq" ? (
+                    <div className="flex h-full items-center justify-start gap-1.5" aria-label="frequency dots">
+                      {renderFreqDots(card?.freq ?? 0)}
+                    </div>
                   ) : (
                     <div
                       className={isPlaceholder ? "text-slate-400" : undefined}
