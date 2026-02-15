@@ -95,23 +95,45 @@ const toCanonicalCard = (
     })
     .filter((entry): entry is { de: string; ru?: string } => Boolean(entry));
 
-  const examples = pickArray(root, ["examples", "example"])
+  // Examples can be stored as an array OR as an object keyed by tense.
+  // verbs_rich.fixed.json uses: examples: { praesens:{...}, modal:{...}, praeteritum:{...}, perfekt:{...} }
+  const examplesRaw = root.examples ?? root.example;
+  const examplesArray = Array.isArray(examplesRaw) ? examplesRaw : [];
+
+  const examplesFromArray = examplesArray
     .map((entry) => {
       if (!isRecord(entry)) return null;
-      const de = pickString(entry, ["de", "text", "source"]);
+      const de = pickString(entry, ["de", "text", "source", "sentence"]);
       const ru = pickString(entry, ["ru", "translation", "target"]);
-      const tag = pickString(entry, ["tag", "label"]);
+      const tag = pickString(entry, ["tag", "label", "type"]);
       if (!de && !ru) return null;
       return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
     })
     .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry));
 
-  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
+  const examplesFromObject = isRecord(examplesRaw)
+    ? (["praesens", "modal", "praeteritum", "perfekt"] as const)
+        .map((key) => {
+          const entry = (examplesRaw as Record<string, unknown>)[key];
+          if (!isRecord(entry)) return null;
+          const de = pickString(entry, ["de", "text", "source", "sentence"]);
+          const ru = pickString(entry, ["ru", "translation", "target"]);
+          if (!de && !ru) return null;
+          return { de, ...(ru ? { ru } : {}), tag: key };
+        })
+        .filter((entry): entry is { de: string; ru?: string; tag: string } => Boolean(entry))
+    : [];
+
+  const examples = (examplesFromArray.length ? examplesFromArray : examplesFromObject).slice(0, 5);
+
+  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary", "hilfsverb", "helper"]);
   const aux = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
 
-  const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]);
+  // NOTE: import may come from multiple schemas; keep this list liberal.
+  const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de", "Infinitiv"]);
   const title = pickString(root, ["title", "name"]) || inf;
-  const freqRaw = Number(root.freq);
+  // Some sources use "frequency" instead of "freq".
+  const freqRaw = Number((root.frequency ?? root.freq) as unknown);
 
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source),
@@ -121,9 +143,38 @@ const toCanonicalCard = (
     tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : [],
     tr: trFromArray.length ? trFromArray.slice(0, 4) : trDirect.slice(0, 4),
     forms: {
-      p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
-      praet: pickString({ ...forms, ...root }, ["forms_prat", "prat", "preterite", "past"]),
-      p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
+      // Be generous: different datasets name these differently.
+      p3: pickString({ ...forms, ...root }, [
+        "forms_p3",
+        "p3",
+        "present3",
+        "praesens3",
+        "praesens_3",
+        "praesens3sg",
+        "präsens_3",
+        "praesens3Sg"
+      ]),
+      praet: pickString({ ...forms, ...root }, [
+        "forms_prat",
+        "forms_prät",
+        "prat",
+        "prät",
+        "praet",
+        "praeteritum",
+        "präteritum",
+        "preterite",
+        "past"
+      ]),
+      p2: pickString({ ...forms, ...root }, [
+        "forms_p2",
+        "p2",
+        "partizip2",
+        "partizip_2",
+        "partizipii",
+        "partizip_ii",
+        "PartizipII",
+        "participle2"
+      ]),
       aux
     },
     synonyms: synonyms.slice(0, 3),
