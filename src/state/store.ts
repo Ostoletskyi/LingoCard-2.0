@@ -136,6 +136,33 @@ const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
 const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
+const CARDS_META_KEY = "lc_cards_meta_v1";
+const CARDS_CHUNK_KEY_PREFIX = "lc_cards_chunk_v1_";
+const CARDS_CHUNK_SIZE = 3500; // chars per chunk; keep small to avoid quota spikes
+
+type PersistedCardsPayload = { cardsA: Card[]; cardsB: Card[] };
+
+const loadPersistedCards = (): PersistedCardsPayload | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const metaRaw = window.localStorage.getItem(CARDS_META_KEY);
+    if (!metaRaw) return null;
+    const meta = JSON.parse(metaRaw) as { version?: number; chunks?: number };
+    if (meta?.version !== 1 || !Number.isFinite(meta.chunks) || (meta.chunks ?? 0) <= 0) return null;
+
+    let joined = "";
+    for (let i = 0; i < (meta.chunks ?? 0); i += 1) {
+      joined += window.localStorage.getItem(`${CARDS_CHUNK_KEY_PREFIX}${i}`) ?? "";
+    }
+    if (!joined) return null;
+    const parsed = JSON.parse(joined) as PersistedCardsPayload;
+    if (!parsed || !Array.isArray(parsed.cardsA) || !Array.isArray(parsed.cardsB)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
 
 const createBoxTemplate = (
   kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple",
@@ -364,20 +391,34 @@ const loadPersistedTemplate = (): LayoutTemplate | null => {
   }
 };
 
-const sanitizePersistedState = (raw: PersistedState["state"]) => {
+const sanitizePersistedState = (
+  raw: PersistedState["state"],
+  persistedCards: PersistedCardsPayload | null
+) => {
   const base = createBaseState();
-  const cardsA = ensureUniqueCardIds(base.cardsA.map((card) => normalizeCard(card)).filter(Boolean));
-  const cardsB = ensureUniqueCardIds(base.cardsB.map((card) => normalizeCard(card)).filter(Boolean));
+
+  const inputCardsA = persistedCards?.cardsA?.length ? persistedCards.cardsA : base.cardsA;
+  const inputCardsB = persistedCards?.cardsB?.length ? persistedCards.cardsB : base.cardsB;
+
+  const cardsA = ensureUniqueCardIds(inputCardsA.map((card) => normalizeCard(card)).filter(Boolean));
+  const cardsB = ensureUniqueCardIds(inputCardsB.map((card) => normalizeCard(card)).filter(Boolean));
+
   const selectedId =
     typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
       ? raw.selectedId
       : cardsA[0]?.id ?? cardsB[0]?.id ?? null;
+
   const selectedSide: ListSide = raw.selectedSide === "B" ? "B" : "A";
   const widthMm = Number.isFinite(raw.layout?.widthMm) ? raw.layout.widthMm : base.layout.widthMm;
   const heightMm = Number.isFinite(raw.layout?.heightMm) ? raw.layout.heightMm : base.layout.heightMm;
 
   const cardsAWithBoxes = ensureCardsHaveBoxes(cardsA, widthMm, heightMm);
   const cardsBWithBoxes = ensureCardsHaveBoxes(cardsB, widthMm, heightMm);
+
+  const safeActiveTemplate =
+    raw.activeTemplate && typeof raw.activeTemplate === "object" && (raw.activeTemplate as any).version === 1
+      ? (raw.activeTemplate as LayoutTemplate)
+      : null;
 
   return {
     cardsA: cardsAWithBoxes,
@@ -406,7 +447,7 @@ const sanitizePersistedState = (raw: PersistedState["state"]) => {
     historyBookmarks: [],
     changeLog: [],
     editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled,
-    activeTemplate: base.activeTemplate,
+    activeTemplate: safeActiveTemplate,
     storageWarning: null
   };
 };
@@ -420,27 +461,32 @@ const loadPersistedState = () => {
     if (parsed?.version !== 1 || !parsed.state) return null;
     const persistedCards = loadPersistedCards();
     return sanitizePersistedState(parsed.state, persistedCards);
-  } catch {
+} catch {
     return null;
   }
 };
 
 const persistCards = (cardsA: Card[], cardsB: Card[]) => {
   if (typeof window === "undefined") return;
-  const payload = JSON.stringify({ cardsA, cardsB });
-  const chunks: string[] = [];
-  for (let index = 0; index < payload.length; index += CARDS_CHUNK_SIZE) {
-    chunks.push(payload.slice(index, index + CARDS_CHUNK_SIZE));
-  }
-  const previousMeta = window.localStorage.getItem(CARDS_META_KEY);
-  const previousChunkCount = previousMeta ? (JSON.parse(previousMeta).chunks as number | undefined) : 0;
-  chunks.forEach((chunk, index) => {
-    window.localStorage.setItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`, chunk);
-  });
-  window.localStorage.setItem(CARDS_META_KEY, JSON.stringify({ version: 1, chunks: chunks.length }));
-  const oldCount = Number.isFinite(previousChunkCount) ? Number(previousChunkCount) : 0;
-  for (let index = chunks.length; index < oldCount; index += 1) {
-    window.localStorage.removeItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
+  try {
+    const payload = JSON.stringify({ cardsA, cardsB });
+    const chunks: string[] = [];
+    for (let index = 0; index < payload.length; index += CARDS_CHUNK_SIZE) {
+      chunks.push(payload.slice(index, index + CARDS_CHUNK_SIZE));
+    }
+    const previousMeta = window.localStorage.getItem(CARDS_META_KEY);
+    const previousChunkCount = previousMeta ? (JSON.parse(previousMeta).chunks as number | undefined) : 0;
+    chunks.forEach((chunk, index) => {
+      window.localStorage.setItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`, chunk);
+    });
+    window.localStorage.setItem(CARDS_META_KEY, JSON.stringify({ version: 1, chunks: chunks.length }));
+    const oldCount = Number.isFinite(previousChunkCount) ? Number(previousChunkCount) : 0;
+    for (let index = chunks.length; index < oldCount; index += 1) {
+      window.localStorage.removeItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
+    }
+  } catch (error) {
+    // Card persistence is best-effort; avoid crashing the app.
+    console.warn("Persist cards failed", error);
   }
 };
 
@@ -531,7 +577,8 @@ const buildPersistPayload = (state: AppState): PersistedState => ({
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
     rulersPlacement: state.rulersPlacement,
-    editModeEnabled: state.editModeEnabled
+    editModeEnabled: state.editModeEnabled,
+    activeTemplate: state.activeTemplate
   }
 });
 
@@ -545,7 +592,12 @@ const setStorageWarning = (message: string | null) => {
 const persistState = (state: AppState) => {
   if (typeof window === "undefined") return;
   try {
+    // UI/state (compact)
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state)));
+
+    // Cards (potentially large) stored separately in chunks
+    persistCards(cloneCardsForPersist(state.cardsA), cloneCardsForPersist(state.cardsB));
+
     setStorageWarning(null);
   } catch (error) {
     console.error("Persist failed: storage quota exceeded", error);
