@@ -59,6 +59,7 @@ type PersistedState = {
     debugOverlays: boolean;
     rulersPlacement: "outside" | "inside";
     editModeEnabled: boolean;
+    activeTemplate: LayoutTemplate | null;
   };
 };
 
