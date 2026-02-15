@@ -5,6 +5,7 @@ import { defaultLayout, type Layout } from "../model/layoutSchema";
 import { normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 import type { Box } from "../model/layoutSchema";
+import { applyLayoutTemplate, extractLayoutTemplate, type LayoutTemplate } from "../editor/layoutTemplate";
 
 export type ListSide = "A" | "B";
 
@@ -59,6 +60,7 @@ type PersistedState = {
     historyBookmarks: HistoryBookmark[];
     changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
+    activeTemplate: LayoutTemplate | null;
   };
 };
 
@@ -82,6 +84,7 @@ export type AppState = AppStateSnapshot &
     historyBookmarks: HistoryBookmark[];
     changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
+    activeTemplate: LayoutTemplate | null;
     setZoom: (value: number) => void;
     selectCard: (id: string | null, side: ListSide) => void;
     selectBox: (id: string | null) => void;
@@ -124,12 +127,14 @@ export type AppState = AppStateSnapshot &
     undo: () => void;
     redo: () => void;
     toggleEditMode: () => void;
+    applyCardFormattingToCards: (params: { side: ListSide; sourceCardId: string; mode: "all" | "selected" }) => void;
   };
 
 const HISTORY_LIMIT = 50;
 const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
+const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
 
 const createBoxTemplate = (
   kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple",
@@ -246,6 +251,9 @@ const ensureUniqueCardIds = (cards: Card[]): Card[] => {
 const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number): Card[] =>
   cards.map((card) => (card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm)));
 
+const ensureCardHasBoxes = (card: Card, widthMm: number, heightMm: number): Card =>
+  card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm);
+
 
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
@@ -317,8 +325,24 @@ const createBaseState = () => ({
   rulersPlacement: "outside" as const,
   historyBookmarks: [] as HistoryBookmark[],
   changeLog: [] as ChangeLogEntry[],
-  editModeEnabled: false
+  editModeEnabled: false,
+  activeTemplate: null as LayoutTemplate | null
 });
+
+const loadPersistedTemplate = (): LayoutTemplate | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LayoutTemplate;
+    if (parsed?.version !== 1 || !Array.isArray(parsed.boxes)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+};
 
 const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["state"] => {
   const base = createBaseState();
@@ -373,6 +397,11 @@ const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["s
       ? raw.changeLog.filter((item) => Boolean(item?.id && item?.at && item?.action))
       : [],
     editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled
+    ,
+    activeTemplate:
+      raw.activeTemplate && raw.activeTemplate.version === 1 && Array.isArray(raw.activeTemplate.boxes)
+        ? raw.activeTemplate
+        : base.activeTemplate
   };
 };
 
@@ -483,6 +512,8 @@ const persistState = (state: AppState) => {
       historyBookmarks: state.historyBookmarks,
       changeLog: state.changeLog,
       editModeEnabled: state.editModeEnabled
+      ,
+      activeTemplate: state.activeTemplate
     }
   };
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -491,6 +522,10 @@ const persistState = (state: AppState) => {
 const persisted = loadPersistedState();
 const baseState = createBaseState();
 const initialState = persisted ? { ...baseState, ...persisted } : baseState;
+const initialTemplate = loadPersistedTemplate();
+if (!initialState.activeTemplate && initialTemplate) {
+  initialState.activeTemplate = initialTemplate;
+}
 
 export const useAppStore = create<AppState>()(
   immer((set, get) => ({
@@ -512,6 +547,7 @@ export const useAppStore = create<AppState>()(
     historyBookmarks: initialState.historyBookmarks ?? [],
     changeLog: initialState.changeLog ?? [],
     editModeEnabled: initialState.editModeEnabled,
+    activeTemplate: initialState.activeTemplate,
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,
@@ -542,7 +578,7 @@ export const useAppStore = create<AppState>()(
         nextId = crypto.randomUUID();
       }
       const normalized = nextId === normalizedBase.id ? normalizedBase : { ...normalizedBase, id: nextId };
-      const finalized = normalized.boxes && normalized.boxes.length ? normalized : applySemanticLayoutToCard(normalized, state.layout.widthMm, state.layout.heightMm);
+      const finalized = ensureCardHasBoxes(normalized, state.layout.widthMm, state.layout.heightMm);
       target.push(finalized);
       state.selectedId = finalized.id;
       state.selectedSide = side;
@@ -554,7 +590,7 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
       }
     }),
     updateCardSilent: (card, side, reason, options) => set((state) => {
@@ -570,7 +606,7 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
       }
     }),
     removeCard: (id, side) => set((state) => {
@@ -872,6 +908,35 @@ export const useAppStore = create<AppState>()(
     toggleEditMode: () => set((state) => {
       state.editModeEnabled = !state.editModeEnabled;
       trackStateEvent(state, get(), `toggleEditMode:${state.editModeEnabled ? "on" : "off"}`, { undoable: false });
+    }),
+    applyCardFormattingToCards: ({ side, sourceCardId, mode }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const source = list.find((card) => card.id === sourceCardId);
+      if (!source) return;
+      const template = extractLayoutTemplate(source, {
+        widthMm: state.layout.widthMm,
+        heightMm: state.layout.heightMm
+      });
+      state.activeTemplate = template;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+      }
+
+      const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      const selectedSet = new Set(selected);
+      trackStateEvent(state, get(), `applyCardFormattingToCards:${side}:${mode}`);
+
+      const nextList = list.map((card) => {
+        const shouldApply = mode === "all" ? card.id !== sourceCardId : selectedSet.has(card.id) && card.id !== sourceCardId;
+        if (!shouldApply) return card;
+        return applyLayoutTemplate(card, template);
+      });
+      if (side === "A") {
+        state.cardsA = nextList;
+      } else {
+        state.cardsB = nextList;
+      }
     })
   }))
 );
