@@ -24,3 +24,11 @@ body {
 .shadow-soft {
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
 }
+
+.lc-boxShade {
+  background: rgba(100, 116, 139, 0.07);
+}
+
+.dark .lc-boxShade {
+  background: rgba(226, 232, 240, 0.12);
+}
