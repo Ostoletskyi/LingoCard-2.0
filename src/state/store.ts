@@ -241,7 +241,20 @@ const safeClone = <T>(value: T): T => {
   }
 };
 
+const toPersistableCard = (card: Card): Card => {
+  const source = safeClone(card) as Card & { meta?: Record<string, unknown> };
+  if (!source.meta) return source;
+  const { originalSource: _originalSource, ...restMeta } = source.meta;
+  if (Object.keys(restMeta).length) {
+    source.meta = restMeta;
+  } else {
+    delete source.meta;
+  }
+  return source;
+};
+
 const cloneCards = (cards: Card[]) => cards.map((card) => safeClone(card));
+const cloneCardsForPersist = (cards: Card[]) => cards.map((card) => toPersistableCard(card));
 
 const ensureUniqueCardIds = (cards: Card[]): Card[] => {
   const used = new Set<string>();
@@ -502,8 +515,8 @@ const persistState = (state: AppState) => {
   const payload: PersistedState = {
     version: 1,
     state: {
-      cardsA: cloneCards(state.cardsA),
-      cardsB: cloneCards(state.cardsB),
+      cardsA: cloneCardsForPersist(state.cardsA),
+      cardsB: cloneCardsForPersist(state.cardsB),
       selectedId: state.selectedId,
       selectedSide: state.selectedSide,
       layout: safeClone(state.layout),
@@ -525,7 +538,11 @@ const persistState = (state: AppState) => {
       activeTemplate: state.activeTemplate
     }
   };
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.error("Persist failed: Template contains non-serializable data or storage quota exceeded", error);
+  }
 };
 
 const persisted = loadPersistedState();
@@ -587,7 +604,10 @@ export const useAppStore = create<AppState>()(
         nextId = crypto.randomUUID();
       }
       const normalized = nextId === normalizedBase.id ? normalizedBase : { ...normalizedBase, id: nextId };
-      const finalized = ensureCardHasBoxes(normalized, state.layout.widthMm, state.layout.heightMm);
+      const finalized = autoResizeCardBoxes(
+        ensureCardHasBoxes(normalized, state.layout.widthMm, state.layout.heightMm),
+        getPxPerMm(1)
+      );
       target.push(finalized);
       state.selectedId = finalized.id;
       state.selectedSide = side;
@@ -948,7 +968,7 @@ export const useAppStore = create<AppState>()(
       const nextList = list.map((card) => {
         const shouldApply = mode === "all" ? card.id !== sourceCardId : selectedSet.has(card.id) && card.id !== sourceCardId;
         if (!shouldApply) return card;
-        return applyLayoutTemplate(card, template);
+        return autoResizeCardBoxes(applyLayoutTemplate(card, template), getPxPerMm(1));
       });
       if (side === "A") {
         state.cardsA = nextList;
