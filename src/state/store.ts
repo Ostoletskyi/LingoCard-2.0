@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { current } from "immer";
 import type { Card } from "../model/cardSchema";
 import { defaultLayout, type Layout } from "../model/layoutSchema";
 import { normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 import type { Box } from "../model/layoutSchema";
+import { applyLayoutTemplate, extractLayoutTemplate, type LayoutTemplate } from "../editor/layoutTemplate";
+import { autoResizeCardBoxes } from "../editor/autoBoxSize";
+import { getPxPerMm } from "../utils/mmPx";
 
 export type ListSide = "A" | "B";
 
@@ -40,8 +44,6 @@ export type ChangeLogEntry = {
 type PersistedState = {
   version: 1;
   state: {
-    cardsA: Card[];
-    cardsB: Card[];
     selectedId: string | null;
     selectedSide: ListSide;
     layout: Layout;
@@ -56,8 +58,6 @@ type PersistedState = {
     showOnlyCmLines: boolean;
     debugOverlays: boolean;
     rulersPlacement: "outside" | "inside";
-    historyBookmarks: HistoryBookmark[];
-    changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
   };
 };
@@ -82,6 +82,8 @@ export type AppState = AppStateSnapshot &
     historyBookmarks: HistoryBookmark[];
     changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
+    activeTemplate: LayoutTemplate | null;
+    storageWarning: string | null;
     setZoom: (value: number) => void;
     selectCard: (id: string | null, side: ListSide) => void;
     selectBox: (id: string | null) => void;
@@ -124,12 +126,15 @@ export type AppState = AppStateSnapshot &
     undo: () => void;
     redo: () => void;
     toggleEditMode: () => void;
+    applyCardFormattingToCards: (params: { side: ListSide; sourceCardId: string; mode: "all" | "selected" }) => void;
+    applyAutoHeightToCards: (params: { side: ListSide; mode: "all" | "selected" }) => void;
   };
 
 const HISTORY_LIMIT = 50;
 const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
+const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
 
 const createBoxTemplate = (
   kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple",
@@ -155,6 +160,7 @@ const createBoxTemplate = (
       visible: true
     },
     textMode: "dynamic",
+    autoH: false,
     label: "Блок"
   };
 
@@ -185,6 +191,7 @@ const createBoxTemplate = (
       wMm: 66,
       hMm: 20,
       style: { ...base.style, fontSizePt: 12 },
+      autoH: true,
       label: "Три времени + рекция"
     };
   }
@@ -195,6 +202,7 @@ const createBoxTemplate = (
       wMm: 66,
       hMm: 18,
       style: { ...base.style, fontSizePt: 12 },
+      autoH: true,
       label: "Синонимы"
     };
   }
@@ -205,6 +213,7 @@ const createBoxTemplate = (
       wMm: 92,
       hMm: 30,
       style: { ...base.style, fontSizePt: 12, lineHeight: 1.25 },
+      autoH: true,
       label: "Примеры"
     };
   }
@@ -214,6 +223,7 @@ const createBoxTemplate = (
     wMm: 70,
     hMm: 14,
     textMode: "static",
+    autoH: true,
     staticText: "",
     label: "Простой блок"
   };
@@ -245,6 +255,9 @@ const ensureUniqueCardIds = (cards: Card[]): Card[] => {
 
 const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number): Card[] =>
   cards.map((card) => (card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm)));
+
+const ensureCardHasBoxes = (card: Card, widthMm: number, heightMm: number): Card =>
+  card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm);
 
 
 const makeDemoCard = (id: string): Card =>
@@ -317,20 +330,35 @@ const createBaseState = () => ({
   rulersPlacement: "outside" as const,
   historyBookmarks: [] as HistoryBookmark[],
   changeLog: [] as ChangeLogEntry[],
-  editModeEnabled: false
+  editModeEnabled: false,
+  activeTemplate: null as LayoutTemplate | null,
+  storageWarning: null as string | null
 });
 
-const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["state"] => {
+const loadPersistedTemplate = (): LayoutTemplate | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LayoutTemplate;
+    if (parsed?.version !== 1 || !Array.isArray(parsed.boxes)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const sanitizePersistedState = (raw: PersistedState["state"]) => {
   const base = createBaseState();
-  const cardsAInput = Array.isArray(raw.cardsA) ? raw.cardsA.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsA;
-  const cardsBInput = Array.isArray(raw.cardsB) ? raw.cardsB.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsB;
-  const cardsA = ensureUniqueCardIds(cardsAInput);
-  const cardsB = ensureUniqueCardIds(cardsBInput);
+  const cardsA = ensureUniqueCardIds(base.cardsA.map((card) => normalizeCard(card)).filter(Boolean));
+  const cardsB = ensureUniqueCardIds(base.cardsB.map((card) => normalizeCard(card)).filter(Boolean));
   const selectedId =
     typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
       ? raw.selectedId
       : cardsA[0]?.id ?? cardsB[0]?.id ?? null;
-  const selectedSide = raw.selectedSide === "B" ? "B" : "A";
+  const selectedSide: ListSide = raw.selectedSide === "B" ? "B" : "A";
   const widthMm = Number.isFinite(raw.layout?.widthMm) ? raw.layout.widthMm : base.layout.widthMm;
   const heightMm = Number.isFinite(raw.layout?.heightMm) ? raw.layout.heightMm : base.layout.heightMm;
 
@@ -360,19 +388,12 @@ const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["s
         : base.gridIntensity,
     showOnlyCmLines: typeof raw.showOnlyCmLines === "boolean" ? raw.showOnlyCmLines : base.showOnlyCmLines,
     debugOverlays: typeof raw.debugOverlays === "boolean" ? raw.debugOverlays : base.debugOverlays,
-    rulersPlacement: raw.rulersPlacement === "inside" ? "inside" : "outside",
-    historyBookmarks: Array.isArray(raw.historyBookmarks)
-      ? raw.historyBookmarks
-          .filter((item) => Boolean(item?.id && item?.snapshot && item?.createdAt))
-          .map((item) => ({
-            ...item,
-            action: typeof item.action === "string" && item.action.trim().length > 0 ? item.action : "snapshot"
-          }))
-      : [],
-    changeLog: Array.isArray(raw.changeLog)
-      ? raw.changeLog.filter((item) => Boolean(item?.id && item?.at && item?.action))
-      : [],
-    editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled
+    rulersPlacement: (raw.rulersPlacement === "inside" ? "inside" : "outside") as "inside" | "outside",
+    historyBookmarks: [],
+    changeLog: [],
+    editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled,
+    activeTemplate: base.activeTemplate,
+    storageWarning: null
   };
 };
 
@@ -459,38 +480,52 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.isEditingLayout = false;
 };
 
+const buildPersistPayload = (state: AppState): PersistedState => ({
+  version: 1,
+  state: {
+    selectedId: state.selectedId,
+    selectedSide: state.selectedSide,
+    layout: safeClone(state.layout),
+    selectedBoxId: state.selectedBoxId,
+    selectedCardIdsA: [...state.selectedCardIdsA],
+    selectedCardIdsB: [...state.selectedCardIdsB],
+    zoom: state.zoom,
+    gridEnabled: state.gridEnabled,
+    rulersEnabled: state.rulersEnabled,
+    snapEnabled: state.snapEnabled,
+    gridIntensity: state.gridIntensity,
+    showOnlyCmLines: state.showOnlyCmLines,
+    debugOverlays: state.debugOverlays,
+    rulersPlacement: state.rulersPlacement,
+    editModeEnabled: state.editModeEnabled
+  }
+});
+
+const setStorageWarning = (message: string | null) => {
+  if (typeof window === "undefined") return;
+  const currentWarning = useAppStore.getState().storageWarning;
+  if (currentWarning === message) return;
+  useAppStore.setState({ storageWarning: message });
+};
+
 const persistState = (state: AppState) => {
   if (typeof window === "undefined") return;
-  const payload: PersistedState = {
-    version: 1,
-    state: {
-      cardsA: cloneCards(state.cardsA),
-      cardsB: cloneCards(state.cardsB),
-      selectedId: state.selectedId,
-      selectedSide: state.selectedSide,
-      layout: safeClone(state.layout),
-      selectedBoxId: state.selectedBoxId,
-      selectedCardIdsA: [...state.selectedCardIdsA],
-      selectedCardIdsB: [...state.selectedCardIdsB],
-      zoom: state.zoom,
-      gridEnabled: state.gridEnabled,
-      rulersEnabled: state.rulersEnabled,
-      snapEnabled: state.snapEnabled,
-      gridIntensity: state.gridIntensity,
-      showOnlyCmLines: state.showOnlyCmLines,
-      debugOverlays: state.debugOverlays,
-      rulersPlacement: state.rulersPlacement,
-      historyBookmarks: state.historyBookmarks,
-      changeLog: state.changeLog,
-      editModeEnabled: state.editModeEnabled
-    }
-  };
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state)));
+    setStorageWarning(null);
+  } catch (error) {
+    console.error("Persist failed: storage quota exceeded", error);
+    setStorageWarning("Storage full: изменения сохраняются только в RAM. Освободите место в браузере.");
+  }
 };
 
 const persisted = loadPersistedState();
 const baseState = createBaseState();
 const initialState = persisted ? { ...baseState, ...persisted } : baseState;
+const initialTemplate = loadPersistedTemplate();
+if (!initialState.activeTemplate && initialTemplate) {
+  initialState.activeTemplate = initialTemplate;
+}
 
 export const useAppStore = create<AppState>()(
   immer((set, get) => ({
@@ -512,6 +547,8 @@ export const useAppStore = create<AppState>()(
     historyBookmarks: initialState.historyBookmarks ?? [],
     changeLog: initialState.changeLog ?? [],
     editModeEnabled: initialState.editModeEnabled,
+    activeTemplate: initialState.activeTemplate,
+    storageWarning: initialState.storageWarning,
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,
@@ -542,7 +579,10 @@ export const useAppStore = create<AppState>()(
         nextId = crypto.randomUUID();
       }
       const normalized = nextId === normalizedBase.id ? normalizedBase : { ...normalizedBase, id: nextId };
-      const finalized = normalized.boxes && normalized.boxes.length ? normalized : applySemanticLayoutToCard(normalized, state.layout.widthMm, state.layout.heightMm);
+      const finalized = autoResizeCardBoxes(
+        ensureCardHasBoxes(normalized, state.layout.widthMm, state.layout.heightMm),
+        getPxPerMm(1)
+      );
       target.push(finalized);
       state.selectedId = finalized.id;
       state.selectedSide = side;
@@ -554,7 +594,7 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
       }
     }),
     updateCardSilent: (card, side, reason, options) => set((state) => {
@@ -570,7 +610,7 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
       }
     }),
     removeCard: (id, side) => set((state) => {
@@ -716,6 +756,7 @@ export const useAppStore = create<AppState>()(
     }),
     adjustColumnFontSizeByField: (side, fieldIds, deltaPt) => set((state) => {
       if (!state.editModeEnabled) return;
+      const pxPerMm = getPxPerMm(1);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const targetSet = new Set(fieldIds);
       if (!targetSet.size) {
@@ -738,7 +779,7 @@ export const useAppStore = create<AppState>()(
         if (!baseCard.boxes?.length) {
           return baseCard;
         }
-        return {
+        const resized = {
           ...baseCard,
           boxes: baseCard.boxes.map((box) => {
             if (!targetSet.has(box.fieldId)) {
@@ -753,6 +794,7 @@ export const useAppStore = create<AppState>()(
             };
           })
         };
+        return autoResizeCardBoxes(resized, pxPerMm);
       });
       if (side === "A") {
         state.cardsA = next;
@@ -872,6 +914,64 @@ export const useAppStore = create<AppState>()(
     toggleEditMode: () => set((state) => {
       state.editModeEnabled = !state.editModeEnabled;
       trackStateEvent(state, get(), `toggleEditMode:${state.editModeEnabled ? "on" : "off"}`, { undoable: false });
+    }),
+    applyCardFormattingToCards: ({ side, sourceCardId, mode }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const source = list.find((card) => card.id === sourceCardId);
+      if (!source) return;
+      let template;
+      try {
+        const plainSource = current(source);
+        template = extractLayoutTemplate(plainSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+      } catch (error) {
+        console.error("Template contains non-serializable data", error);
+        return;
+      }
+      state.activeTemplate = template;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+        } catch (error) {
+          console.warn("Failed to persist layout template", error);
+        }
+      }
+
+      const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      const selectedSet = new Set(selected);
+      trackStateEvent(state, get(), `applyCardFormattingToCards:${side}:${mode}`);
+
+      const nextList = list.map((card) => {
+        const shouldApply = mode === "all" ? card.id !== sourceCardId : selectedSet.has(card.id) && card.id !== sourceCardId;
+        if (!shouldApply) return card;
+        return autoResizeCardBoxes(applyLayoutTemplate(card, template), getPxPerMm(1));
+      });
+      if (side === "A") {
+        state.cardsA = nextList;
+      } else {
+        state.cardsB = nextList;
+      }
+    }),
+    applyAutoHeightToCards: ({ side, mode }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      const selectedSet = new Set(selected);
+      const pxPerMm = getPxPerMm(1);
+      trackStateEvent(state, get(), `applyAutoHeightToCards:${side}:${mode}`);
+      const next = source.map((card) => {
+        const shouldApply = mode === "all" ? true : selectedSet.has(card.id);
+        if (!shouldApply) return card;
+        return autoResizeCardBoxes(card, pxPerMm);
+      });
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
     })
   }))
 );

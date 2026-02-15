@@ -24,6 +24,10 @@ export const BoxSchema = z.object({
   text: z.string().optional(),
   staticText: z.string().optional(),
   textMode: z.enum(["static", "dynamic"]).optional(),
+  autoH: z.boolean().optional(),
+  minH: z.number().optional(),
+  maxH: z.number().optional(),
+  reservedRightPx: z.number().optional(),
   label: z.string().optional(),
   label_i18n: z.string().optional(),
   type: z.string().optional()
