@@ -41,6 +41,8 @@ export const CardListPanel = ({ side }: Props) => {
   const autoLayoutAllCards = useAppStore((state) => state.autoLayoutAllCards);
   const addBlockToCard = useAppStore((state) => state.addBlockToCard);
   const removeSelectedBoxFromCard = useAppStore((state) => state.removeSelectedBoxFromCard);
+  const applyCardFormattingToCards = useAppStore((state) => state.applyCardFormattingToCards);
+  const applyAutoHeightToCards = useAppStore((state) => state.applyAutoHeightToCards);
   const layout = useAppStore((state) => state.layout);
   const selectedBoxId = useAppStore((state) => state.selectedBoxId);
   const editModeEnabled = useAppStore((state) => state.editModeEnabled);
@@ -196,6 +198,44 @@ export const CardListPanel = ({ side }: Props) => {
       return;
     }
     removeSelectedBoxFromCard(side, activeCardId);
+  };
+
+  const handleApplyFormattingToCards = (mode: "all" | "selected") => {
+    if (!editModeEnabled) {
+      setImportNotice("Включите режим редактирования в шапке.");
+      return;
+    }
+    if (!activeCardId) {
+      setImportNotice("Сначала выберите активную карточку в этой колонке.");
+      return;
+    }
+    if (mode === "selected" && selectedCardIds.length === 0) {
+      setImportNotice("Сначала выделите карточки для применения форматирования.");
+      return;
+    }
+    applyCardFormattingToCards({ side, sourceCardId: activeCardId, mode });
+    setImportNotice(
+      mode === "all"
+        ? "Форматирование активной карточки применено ко всем карточкам списка."
+        : "Форматирование активной карточки применено к выделенным карточкам."
+    );
+  };
+
+  const handleApplyAutoHToCards = (mode: "all" | "selected") => {
+    if (!editModeEnabled) {
+      setImportNotice("Включите режим редактирования в шапке.");
+      return;
+    }
+    if (mode === "selected" && selectedCardIds.length === 0) {
+      setImportNotice("Сначала выделите карточки для авто-подстройки высоты.");
+      return;
+    }
+    applyAutoHeightToCards({ side, mode });
+    setImportNotice(
+      mode === "all"
+        ? "AutoHeight применён ко всем карточкам списка."
+        : "AutoHeight применён к выделенным карточкам."
+    );
   };
 
   const handleExport = () => {
@@ -354,6 +394,18 @@ export const CardListPanel = ({ side }: Props) => {
             </div>
             <button onClick={handleDeleteSelectedBlock} disabled={!editModeEnabled} className={`${buttonBase} ${buttonDark} disabled:opacity-50`}>
               Удалить блок
+            </button>
+            <button onClick={() => handleApplyFormattingToCards("all")} disabled={!editModeEnabled || !activeCardId} className={`${buttonBase} ${buttonDark} disabled:opacity-50`}>
+              Применить форматирование ко всем
+            </button>
+            <button onClick={() => handleApplyFormattingToCards("selected")} disabled={!editModeEnabled || !activeCardId} className={`${buttonBase} ${buttonLight} disabled:opacity-50`}>
+              Применить форматирование к выбранным
+            </button>
+            <button onClick={() => handleApplyAutoHToCards("all")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonDark} disabled:opacity-50`}>
+              Apply autoH ко всем
+            </button>
+            <button onClick={() => handleApplyAutoHToCards("selected")} disabled={!editModeEnabled} className={`${buttonBase} ${buttonLight} disabled:opacity-50`}>
+              Apply autoH к выбранным
             </button>
             <label className={editModeEnabled ? "cursor-pointer" : "cursor-not-allowed"}>
               <input type="file" accept="application/json" onChange={handleImport} disabled={!editModeEnabled} className="hidden" />
