@@ -44,8 +44,6 @@ export type ChangeLogEntry = {
 type PersistedState = {
   version: 1;
   state: {
-    cardsA: Card[];
-    cardsB: Card[];
     selectedId: string | null;
     selectedSide: ListSide;
     layout: Layout;
@@ -60,8 +58,6 @@ type PersistedState = {
     showOnlyCmLines: boolean;
     debugOverlays: boolean;
     rulersPlacement: "outside" | "inside";
-    historyBookmarks: HistoryBookmark[];
-    changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
     activeTemplate: LayoutTemplate | null;
   };
@@ -88,6 +84,7 @@ export type AppState = AppStateSnapshot &
     changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
     activeTemplate: LayoutTemplate | null;
+    storageWarning: string | null;
     setZoom: (value: number) => void;
     selectCard: (id: string | null, side: ListSide) => void;
     selectBox: (id: string | null) => void;
@@ -138,6 +135,9 @@ const HISTORY_LIMIT = 50;
 const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
+const CARDS_META_KEY = "lc_cards_v1_meta";
+const CARDS_CHUNK_KEY_PREFIX = "lc_cards_v1_chunk_";
+const CARDS_CHUNK_SIZE = 180_000;
 const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
 
 const createBoxTemplate = (
@@ -348,7 +348,8 @@ const createBaseState = () => ({
   historyBookmarks: [] as HistoryBookmark[],
   changeLog: [] as ChangeLogEntry[],
   editModeEnabled: false,
-  activeTemplate: null as LayoutTemplate | null
+  activeTemplate: null as LayoutTemplate | null,
+  storageWarning: null as string | null
 });
 
 const loadPersistedTemplate = (): LayoutTemplate | null => {
@@ -366,17 +367,44 @@ const loadPersistedTemplate = (): LayoutTemplate | null => {
   }
 };
 
-const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["state"] => {
+const loadPersistedCards = (): { cardsA: Card[]; cardsB: Card[] } | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const metaRaw = window.localStorage.getItem(CARDS_META_KEY);
+    if (!metaRaw) return null;
+    const meta = JSON.parse(metaRaw) as { version?: number; chunks?: number };
+    const chunksCount = Number.isFinite(meta?.chunks) ? Number(meta.chunks) : 0;
+    if (meta?.version !== 1 || chunksCount < 1) return null;
+    let joined = "";
+    for (let index = 0; index < chunksCount; index += 1) {
+      const chunk = window.localStorage.getItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
+      if (!chunk) return null;
+      joined += chunk;
+    }
+    const parsed = JSON.parse(joined) as { cardsA?: Card[]; cardsB?: Card[] };
+    return {
+      cardsA: Array.isArray(parsed.cardsA) ? parsed.cardsA : [],
+      cardsB: Array.isArray(parsed.cardsB) ? parsed.cardsB : []
+    };
+  } catch {
+    return null;
+  }
+};
+
+const sanitizePersistedState = (
+  raw: PersistedState["state"],
+  persistedCards: { cardsA: Card[]; cardsB: Card[] } | null
+) => {
   const base = createBaseState();
-  const cardsAInput = Array.isArray(raw.cardsA) ? raw.cardsA.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsA;
-  const cardsBInput = Array.isArray(raw.cardsB) ? raw.cardsB.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsB;
+  const cardsAInput = (persistedCards?.cardsA ?? base.cardsA).map((card) => normalizeCard(card)).filter(Boolean);
+  const cardsBInput = (persistedCards?.cardsB ?? base.cardsB).map((card) => normalizeCard(card)).filter(Boolean);
   const cardsA = ensureUniqueCardIds(cardsAInput);
   const cardsB = ensureUniqueCardIds(cardsBInput);
   const selectedId =
     typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
       ? raw.selectedId
       : cardsA[0]?.id ?? cardsB[0]?.id ?? null;
-  const selectedSide = raw.selectedSide === "B" ? "B" : "A";
+  const selectedSide: ListSide = raw.selectedSide === "B" ? "B" : "A";
   const widthMm = Number.isFinite(raw.layout?.widthMm) ? raw.layout.widthMm : base.layout.widthMm;
   const heightMm = Number.isFinite(raw.layout?.heightMm) ? raw.layout.heightMm : base.layout.heightMm;
 
@@ -406,24 +434,12 @@ const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["s
         : base.gridIntensity,
     showOnlyCmLines: typeof raw.showOnlyCmLines === "boolean" ? raw.showOnlyCmLines : base.showOnlyCmLines,
     debugOverlays: typeof raw.debugOverlays === "boolean" ? raw.debugOverlays : base.debugOverlays,
-    rulersPlacement: raw.rulersPlacement === "inside" ? "inside" : "outside",
-    historyBookmarks: Array.isArray(raw.historyBookmarks)
-      ? raw.historyBookmarks
-          .filter((item) => Boolean(item?.id && item?.snapshot && item?.createdAt))
-          .map((item) => ({
-            ...item,
-            action: typeof item.action === "string" && item.action.trim().length > 0 ? item.action : "snapshot"
-          }))
-      : [],
-    changeLog: Array.isArray(raw.changeLog)
-      ? raw.changeLog.filter((item) => Boolean(item?.id && item?.at && item?.action))
-      : [],
-    editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled
-    ,
-    activeTemplate:
-      raw.activeTemplate && raw.activeTemplate.version === 1 && Array.isArray(raw.activeTemplate.boxes)
-        ? raw.activeTemplate
-        : base.activeTemplate
+    rulersPlacement: (raw.rulersPlacement === "inside" ? "inside" : "outside") as "inside" | "outside",
+    historyBookmarks: [],
+    changeLog: [],
+    editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled,
+    activeTemplate: base.activeTemplate,
+    storageWarning: null
   };
 };
 
@@ -434,9 +450,29 @@ const loadPersistedState = () => {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
     if (parsed?.version !== 1 || !parsed.state) return null;
-    return sanitizePersistedState(parsed.state);
+    const persistedCards = loadPersistedCards();
+    return sanitizePersistedState(parsed.state, persistedCards);
   } catch {
     return null;
+  }
+};
+
+const persistCards = (cardsA: Card[], cardsB: Card[]) => {
+  if (typeof window === "undefined") return;
+  const payload = JSON.stringify({ cardsA, cardsB });
+  const chunks: string[] = [];
+  for (let index = 0; index < payload.length; index += CARDS_CHUNK_SIZE) {
+    chunks.push(payload.slice(index, index + CARDS_CHUNK_SIZE));
+  }
+  const previousMeta = window.localStorage.getItem(CARDS_META_KEY);
+  const previousChunkCount = previousMeta ? (JSON.parse(previousMeta).chunks as number | undefined) : 0;
+  chunks.forEach((chunk, index) => {
+    window.localStorage.setItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`, chunk);
+  });
+  window.localStorage.setItem(CARDS_META_KEY, JSON.stringify({ version: 1, chunks: chunks.length }));
+  const oldCount = Number.isFinite(previousChunkCount) ? Number(previousChunkCount) : 0;
+  for (let index = chunks.length; index < oldCount; index += 1) {
+    window.localStorage.removeItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
   }
 };
 
@@ -510,11 +546,9 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.isEditingLayout = false;
 };
 
-const buildPersistPayload = (state: AppState, compact = false): PersistedState => ({
+const buildPersistPayload = (state: AppState): PersistedState => ({
   version: 1,
   state: {
-    cardsA: cloneCardsForPersist(state.cardsA),
-    cardsB: cloneCardsForPersist(state.cardsB),
     selectedId: state.selectedId,
     selectedSide: state.selectedSide,
     layout: safeClone(state.layout),
@@ -529,24 +563,26 @@ const buildPersistPayload = (state: AppState, compact = false): PersistedState =
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
     rulersPlacement: state.rulersPlacement,
-    historyBookmarks: compact ? [] : safeClone(state.historyBookmarks),
-    changeLog: compact ? [] : safeClone(state.changeLog),
-    editModeEnabled: state.editModeEnabled,
-    activeTemplate: compact ? null : safeClone(state.activeTemplate)
+    editModeEnabled: state.editModeEnabled
   }
 });
+
+const setStorageWarning = (message: string | null) => {
+  if (typeof window === "undefined") return;
+  const currentWarning = useAppStore.getState().storageWarning;
+  if (currentWarning === message) return;
+  useAppStore.setState({ storageWarning: message });
+};
 
 const persistState = (state: AppState) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state)));
+    persistCards(cloneCardsForPersist(state.cardsA), cloneCardsForPersist(state.cardsB));
+    setStorageWarning(null);
   } catch (error) {
-    console.warn("Persist failed for full payload, retrying compact payload", error);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state, true)));
-    } catch (fallbackError) {
-      console.error("Persist failed: storage quota exceeded", fallbackError);
-    }
+    console.error("Persist failed: storage quota exceeded", error);
+    setStorageWarning("Storage full: изменения сохраняются только в RAM. Освободите место в браузере.");
   }
 };
 
@@ -579,6 +615,7 @@ export const useAppStore = create<AppState>()(
     changeLog: initialState.changeLog ?? [],
     editModeEnabled: initialState.editModeEnabled,
     activeTemplate: initialState.activeTemplate,
+    storageWarning: initialState.storageWarning,
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,

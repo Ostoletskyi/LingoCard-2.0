@@ -14,6 +14,7 @@ export const App = () => {
   const toggleEditMode = useAppStore((state) => state.toggleEditMode);
   const exportStartedAt = useAppStore((state) => state.exportStartedAt);
   const exportLabel = useAppStore((state) => state.exportLabel);
+  const storageWarning = useAppStore((state) => state.storageWarning);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [elapsed, setElapsed] = useState(0);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
@@ -100,6 +101,11 @@ export const App = () => {
           </div>
         </div>
       </header>
+      {storageWarning && (
+        <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+          {storageWarning}
+        </div>
+      )}
       <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr_300px] items-start gap-4">
         <CardListPanel side="A" />
         <div className="sticky top-0 flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">

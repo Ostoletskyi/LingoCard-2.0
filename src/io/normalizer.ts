@@ -1,7 +1,8 @@
 import type { Card } from "../model/cardSchema";
-import { normalizeCard } from "../model/cardSchema";
+import { emptyCard, normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 import { defaultLayout } from "../model/layoutSchema";
+import { normalizeFieldId } from "../utils/fieldAlias";
 
 export type InternalCard = Card & {
   meta?: Record<string, unknown>;
@@ -20,6 +21,24 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const ensureArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
+const toString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
+const pickString = (source: Record<string, unknown>, keys: string[]): string => {
+  for (const key of keys) {
+    const value = toString(source[key]);
+    if (value) return value;
+  }
+  return "";
+};
+
+const pickArray = (source: Record<string, unknown>, keys: string[]): unknown[] => {
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+};
+
 const hashString = (value: string) => {
   let hash = 5381;
   for (let index = 0; index < value.length; index += 1) {
@@ -33,28 +52,88 @@ const deterministicId = (schema: Exclude<SupportedSchema, "unknown">, index: num
   return `import_${schema}_${index + 1}_${sourceHash}`;
 };
 
+const mapExternalCardFields = (source: Record<string, unknown>) => {
+  const root = isRecord(source.verb) ? source.verb : source;
+  const forms = isRecord(root.forms) ? root.forms : {};
+
+  const translations = pickArray(root, ["translations", "tr", "meanings", "translation"]);
+  const firstTranslation = translations[0];
+  const secondTranslation = translations[1];
+  const tr1 =
+    pickString(root, ["tr_1_ru", "translation_ru", "translation", "ru", "meaning_ru"]) ||
+    (typeof firstTranslation === "string"
+      ? firstTranslation.trim()
+      : isRecord(firstTranslation)
+        ? pickString(firstTranslation, ["ru", "translation", "text", "value"])
+        : "");
+  const tr2 =
+    pickString(root, ["tr_2_ru", "translation_2_ru", "meaning_2_ru"]) ||
+    (typeof secondTranslation === "string"
+      ? secondTranslation.trim()
+      : isRecord(secondTranslation)
+        ? pickString(secondTranslation, ["ru", "translation", "text", "value"])
+        : "");
+
+  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
+  const formsAux: Card["forms_aux"] = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
+
+  const result: Partial<Card> = {
+    ...root,
+    inf: pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]),
+    title: pickString(root, ["title", "name"]),
+    tr_1_ru: tr1,
+    tr_2_ru: tr2,
+    forms_p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
+    forms_prat: pickString({ ...forms, ...root }, ["forms_prat", "prat", "preterite", "past"]),
+    forms_p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
+    forms_aux: formsAux,
+    tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : []
+  };
+
+  if (!result.title && result.inf) {
+    result.title = result.inf;
+  }
+
+  return result;
+};
+
+const enforceDynamicBoxesForRealFields = (card: Card): Card => {
+  const knownCardFields = new Set(Object.keys(emptyCard));
+  return {
+    ...card,
+    boxes: (card.boxes ?? []).map((box) => {
+      const normalizedField = normalizeFieldId(box.fieldId);
+      const isRealField = knownCardFields.has(normalizedField) && !["forms_rek", "synonyms", "examples", "custom_text"].includes(normalizedField);
+      if (!isRealField) return box;
+      return {
+        ...box,
+        textMode: "dynamic",
+        staticText: ""
+      };
+    })
+  };
+};
+
 const normalizeEntry = (
   item: unknown,
   schema: Exclude<SupportedSchema, "unknown">,
   index: number
 ): InternalCard => {
   const source = isRecord(item) ? item : {};
+  const mapped = mapExternalCardFields(source);
   const normalized = normalizeCard({
-    ...source,
+    ...mapped,
     id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source)
-  } as Partial<Card>);
+  });
 
-  const withTitle =
-    !normalized.title?.trim() && normalized.inf?.trim()
-      ? { ...normalized, title: normalized.inf.trim() }
-      : normalized;
+  const withBoxes = normalized.boxes?.length
+    ? normalized
+    : applySemanticLayoutToCard(normalized, defaultLayout.widthMm, defaultLayout.heightMm);
 
-  const withBoxes = withTitle.boxes?.length
-    ? withTitle
-    : applySemanticLayoutToCard(withTitle, defaultLayout.widthMm, defaultLayout.heightMm);
+  const enforced = enforceDynamicBoxesForRealFields(withBoxes);
 
   return {
-    ...withBoxes,
+    ...enforced,
     meta: {
       ...(isRecord((source as { meta?: unknown }).meta)
         ? ((source as { meta?: Record<string, unknown> }).meta ?? {})
@@ -114,6 +193,17 @@ const buildUnknownSchemaError = (raw: unknown) => {
   );
 };
 
+const collectFilledFields = (card: InternalCard) => {
+  const fields: string[] = [];
+  if (card.inf) fields.push("inf");
+  if (card.title) fields.push("title");
+  if (card.tr_1_ru || card.tr_2_ru || card.tr_3_ru || card.tr_4_ru) fields.push("translations");
+  if (card.forms_p3 || card.forms_prat || card.forms_p2 || card.forms_aux) fields.push("forms");
+  if (card.syn_1_de || card.syn_1_ru) fields.push("synonyms");
+  if (card.ex_1_de || card.ex_1_ru) fields.push("examples");
+  return fields;
+};
+
 export const normalizeImportedJson = (raw: unknown): InternalCard[] => {
   const detectedSchema = detectSchema(raw);
   console.log("Import schema:", detectedSchema);
@@ -123,5 +213,18 @@ export const normalizeImportedJson = (raw: unknown): InternalCard[] => {
   }
   const normalized = strategy.normalize(raw);
   console.log("Normalized cards:", normalized.length);
+
+  const first = normalized[0];
+  if (first) {
+    const source = isRecord(first.meta?.originalSource) ? (first.meta?.originalSource as Record<string, unknown>) : {};
+    const sourceKeys = Object.keys(source);
+    const recognized = ["inf", "title", "tr_1_ru", "tr_2_ru", "forms_p3", "forms_prat", "forms_p2", "forms_aux"].filter((key) =>
+      Boolean((first as unknown as Record<string, unknown>)[key])
+    );
+    console.log("Import first card source keys:", sourceKeys);
+    console.log("Import first card recognized fields:", recognized);
+    console.log("Import first card filled sections:", collectFilledFields(first));
+  }
+
   return normalized;
 };
