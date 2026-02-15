@@ -25,6 +25,8 @@ const fieldLabels: Record<string, string> = {
   custom_text: "Простой блок"
 };
 
+
+const warnedMissingFields = new Set<string>();
 export const getFieldLabel = (fieldId: string) => {
   const normalized = normalizeFieldId(fieldId);
   return fieldLabels[normalized] ?? `Поле: ${normalized}`;
@@ -70,6 +72,40 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
       isPlaceholder: card.tags.length === 0
     };
   }
+  if (normalizedFieldId === "hero_inf") {
+    return { text: card.inf || "—", isPlaceholder: !card.inf };
+  }
+  if (normalizedFieldId === "meta") {
+    return {
+      text: card.tags.length ? card.tags.join(", ") : "Теги…",
+      isPlaceholder: card.tags.length === 0
+    };
+  }
+  if (normalizedFieldId === "hero_translations") {
+    const fromAgg = (card.translations ?? [])
+      .map((item, idx) => {
+        const line = `${item.value}${item.ctx ? ` (${item.ctx})` : ""}`.trim();
+        return line ? `${idx + 1}. ${line}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
+  }
+  if (normalizedFieldId === "forms") {
+    const fromAgg = card.forms
+      ? [
+          card.forms.p3 ? `1. P3: ${card.forms.p3}` : "",
+          card.forms.praet ? `2. Prät: ${card.forms.praet}` : "",
+          card.forms.p2 ? `3. P2: ${card.forms.p2}` : "",
+          card.forms.aux ? `4. Aux: ${card.forms.aux}` : ""
+        ].filter(Boolean).join("\n")
+      : "";
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
+  }
   if (normalizedFieldId === "forms_rek") {
     const forms = [
       card.forms_p3 ? `Präsens: ${card.forms_p3}` : "",
@@ -91,6 +127,16 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     return { text: text || "Три времени и рекция…", isPlaceholder: text.length === 0 };
   }
   if (normalizedFieldId === "synonyms") {
+    const fromAgg = (card.synonyms ?? [])
+      .map((item, idx) => {
+        const line = `${item.de}${item.de && item.ru ? " — " : ""}${item.ru ?? ""}`.trim();
+        return line ? `${idx + 1}. ${line}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
     const text = [1, 2, 3]
       .map((i) => {
         const de = card[`syn_${i}_de` as keyof Card] as string;
@@ -103,6 +149,16 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     return { text: text || "Синонимы…", isPlaceholder: text.length === 0 };
   }
   if (normalizedFieldId === "examples") {
+    const fromAgg = (card.examples ?? [])
+      .map((item, idx) => {
+        const line = `${item.de}${item.de && item.ru ? " | " : ""}${item.ru ?? ""}`.trim();
+        return line ? `${idx + 1}. ${line}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
     const text = [1, 2, 3, 4, 5]
       .map((i) => {
         const de = card[`ex_${i}_de` as keyof Card] as string;
@@ -122,6 +178,10 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     if (typeof value === "string" && value.trim().length > 0) {
       return { text: value, isPlaceholder: false };
     }
+  }
+  if (!warnedMissingFields.has(normalizedFieldId)) {
+    warnedMissingFields.add(normalizedFieldId);
+    console.warn("Missing field:", normalizedFieldId);
   }
   return { text: placeholder, isPlaceholder: true };
 };

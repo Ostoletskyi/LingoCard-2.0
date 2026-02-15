@@ -219,6 +219,10 @@ const canonicalToInternalCard = (
     ex_5_de: canonical.examples[4]?.de ?? "",
     ex_5_ru: canonical.examples[4]?.ru ?? "",
     ex_5_tag: canonical.examples[4]?.tag ?? "",
+    translations: canonical.tr,
+    forms: canonical.forms,
+    synonyms: canonical.synonyms,
+    examples: canonical.examples,
     boxes: canonical.boxes.map((box, boxIndex) => canonicalBoxToInternalBox(box, boxIndex))
   });
 
@@ -246,6 +250,7 @@ const canonicalToInternalCard = (
   if (index === 0) {
     console.log("[Import] canonical sample", canonical);
     console.log("[Import] internal sample", enforced);
+    console.log("Mapped card:", enforced);
   }
 
   return {
