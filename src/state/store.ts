@@ -246,6 +246,9 @@ const ensureUniqueCardIds = (cards: Card[]): Card[] => {
 const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number): Card[] =>
   cards.map((card) => (card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm)));
 
+const ensureCardHasBoxes = (card: Card, widthMm: number, heightMm: number): Card =>
+  card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm);
+
 
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
@@ -542,7 +545,7 @@ export const useAppStore = create<AppState>()(
         nextId = crypto.randomUUID();
       }
       const normalized = nextId === normalizedBase.id ? normalizedBase : { ...normalizedBase, id: nextId };
-      const finalized = normalized.boxes && normalized.boxes.length ? normalized : applySemanticLayoutToCard(normalized, state.layout.widthMm, state.layout.heightMm);
+      const finalized = ensureCardHasBoxes(normalized, state.layout.widthMm, state.layout.heightMm);
       target.push(finalized);
       state.selectedId = finalized.id;
       state.selectedSide = side;
@@ -554,7 +557,7 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
       }
     }),
     updateCardSilent: (card, side, reason, options) => set((state) => {
@@ -570,7 +573,7 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
       }
     }),
     removeCard: (id, side) => set((state) => {
