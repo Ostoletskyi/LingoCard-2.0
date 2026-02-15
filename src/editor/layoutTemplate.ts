@@ -18,6 +18,10 @@ export type LayoutTemplate = {
     rotateDeg?: number;
     locked?: boolean;
     textMode?: Box["textMode"];
+    autoH?: boolean;
+    minH?: number;
+    maxH?: number;
+    reservedRightPx?: number;
     label?: string;
     label_i18n?: string;
     type?: string;
@@ -73,27 +77,17 @@ export const extractLayoutTemplate = (card: Card, cardSize: { widthMm: number; h
       z: box.z,
       style: structuredClone(box.style)
     };
-    return withOptional(
-      withOptional(
-        withOptional(
-          withOptional(
-            withOptional(
-              withOptional(withOptional(base, "role", role || undefined), "rotateDeg", box.rotateDeg),
-              "locked",
-              box.locked
-            ),
-            "textMode",
-            box.textMode
-          ),
-          "label",
-          box.label
-        ),
-        "label_i18n",
-        box.label_i18n
-      ),
-      "type",
-      box.type
-    );
+    const withRole = withOptional(base, "role", role || undefined);
+    const withRotate = withOptional(withRole, "rotateDeg", box.rotateDeg);
+    const withLocked = withOptional(withRotate, "locked", box.locked);
+    const withTextMode = withOptional(withLocked, "textMode", box.textMode);
+    const withAutoH = withOptional(withTextMode, "autoH", box.autoH);
+    const withMinH = withOptional(withAutoH, "minH", box.minH);
+    const withMaxH = withOptional(withMinH, "maxH", box.maxH);
+    const withReserved = withOptional(withMaxH, "reservedRightPx", box.reservedRightPx);
+    const withLabel = withOptional(withReserved, "label", box.label);
+    const withLabelI18n = withOptional(withLabel, "label_i18n", box.label_i18n);
+    return withOptional(withLabelI18n, "type", box.type);
   })
 });
 
@@ -112,6 +106,10 @@ const buildTemplateBox = (templateBox: LayoutTemplate["boxes"][number], fallback
     rotateDeg: templateBox.rotateDeg,
     locked: templateBox.locked,
     textMode: realField ? "dynamic" : templateBox.textMode,
+    autoH: templateBox.autoH,
+    minH: templateBox.minH,
+    maxH: templateBox.maxH,
+    reservedRightPx: templateBox.reservedRightPx,
     label: templateBox.label,
     label_i18n: templateBox.label_i18n,
     type: templateBox.type
@@ -133,6 +131,10 @@ const patchBoxFormatting = (current: Box, templateBox: LayoutTemplate["boxes"][n
     rotateDeg: templateBox.rotateDeg,
     locked: templateBox.locked,
     textMode: realField ? "dynamic" : templateBox.textMode,
+    autoH: templateBox.autoH ?? current.autoH,
+    minH: templateBox.minH ?? current.minH,
+    maxH: templateBox.maxH ?? current.maxH,
+    reservedRightPx: templateBox.reservedRightPx ?? current.reservedRightPx,
     label: templateBox.label,
     label_i18n: templateBox.label_i18n,
     type: templateBox.type

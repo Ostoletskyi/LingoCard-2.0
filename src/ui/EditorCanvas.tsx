@@ -8,6 +8,7 @@ import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 import { logger } from "../utils/logger";
+import { autoResizeCardBoxes } from "../editor/autoBoxSize";
 
 const GRID_STEP_MM = 1;
 const MIN_BOX_SIZE_MM = 5;
@@ -417,8 +418,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const currentCard = source.find((item) => item.id === session.cardId);
     if (!currentCard) return;
     const updated = updateCardField(currentCard, session.fieldId, value, session.boxId);
-    store.updateCard(updated, session.side, `textEdit:${session.fieldId}:${session.cardId}`);
-  }, []);
+    const autoSized = autoResizeCardBoxes(updated, basePxPerMm);
+    store.updateCard(autoSized, session.side, `textEdit:${session.fieldId}:${session.cardId}`);
+  }, [basePxPerMm]);
 
   const commitEdit = useCallback((shouldSave: boolean) => {
     if (!editSession) {

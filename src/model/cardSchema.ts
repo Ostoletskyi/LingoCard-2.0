@@ -181,6 +181,13 @@ const normalizeImportedBoxes = (boxes: unknown): Box[] => {
         source.textMode === "static" || source.textMode === "dynamic"
           ? source.textMode
           : undefined,
+      autoH: typeof source.autoH === "boolean" ? source.autoH : undefined,
+      minH: typeof source.minH === "number" && Number.isFinite(source.minH) ? source.minH : undefined,
+      maxH: typeof source.maxH === "number" && Number.isFinite(source.maxH) ? source.maxH : undefined,
+      reservedRightPx:
+        typeof source.reservedRightPx === "number" && Number.isFinite(source.reservedRightPx)
+          ? source.reservedRightPx
+          : undefined,
       label: toString(source.label),
       label_i18n: toString(source.label_i18n),
       type: toString(source.type)

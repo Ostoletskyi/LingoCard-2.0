@@ -6,6 +6,8 @@ import { normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 import type { Box } from "../model/layoutSchema";
 import { applyLayoutTemplate, extractLayoutTemplate, type LayoutTemplate } from "../editor/layoutTemplate";
+import { autoResizeCardBoxes } from "../editor/autoBoxSize";
+import { getPxPerMm } from "../utils/mmPx";
 
 export type ListSide = "A" | "B";
 
@@ -128,6 +130,7 @@ export type AppState = AppStateSnapshot &
     redo: () => void;
     toggleEditMode: () => void;
     applyCardFormattingToCards: (params: { side: ListSide; sourceCardId: string; mode: "all" | "selected" }) => void;
+    applyAutoHeightToCards: (params: { side: ListSide; mode: "all" | "selected" }) => void;
   };
 
 const HISTORY_LIMIT = 50;
@@ -160,6 +163,7 @@ const createBoxTemplate = (
       visible: true
     },
     textMode: "dynamic",
+    autoH: false,
     label: "Блок"
   };
 
@@ -190,6 +194,7 @@ const createBoxTemplate = (
       wMm: 66,
       hMm: 20,
       style: { ...base.style, fontSizePt: 12 },
+      autoH: true,
       label: "Три времени + рекция"
     };
   }
@@ -200,6 +205,7 @@ const createBoxTemplate = (
       wMm: 66,
       hMm: 18,
       style: { ...base.style, fontSizePt: 12 },
+      autoH: true,
       label: "Синонимы"
     };
   }
@@ -210,6 +216,7 @@ const createBoxTemplate = (
       wMm: 92,
       hMm: 30,
       style: { ...base.style, fontSizePt: 12, lineHeight: 1.25 },
+      autoH: true,
       label: "Примеры"
     };
   }
@@ -219,6 +226,7 @@ const createBoxTemplate = (
     wMm: 70,
     hMm: 14,
     textMode: "static",
+    autoH: true,
     staticText: "",
     label: "Простой блок"
   };
@@ -752,6 +760,7 @@ export const useAppStore = create<AppState>()(
     }),
     adjustColumnFontSizeByField: (side, fieldIds, deltaPt) => set((state) => {
       if (!state.editModeEnabled) return;
+      const pxPerMm = getPxPerMm(1);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const targetSet = new Set(fieldIds);
       if (!targetSet.size) {
@@ -774,7 +783,7 @@ export const useAppStore = create<AppState>()(
         if (!baseCard.boxes?.length) {
           return baseCard;
         }
-        return {
+        const resized = {
           ...baseCard,
           boxes: baseCard.boxes.map((box) => {
             if (!targetSet.has(box.fieldId)) {
@@ -789,6 +798,7 @@ export const useAppStore = create<AppState>()(
             };
           })
         };
+        return autoResizeCardBoxes(resized, pxPerMm);
       });
       if (side === "A") {
         state.cardsA = next;
@@ -936,6 +946,24 @@ export const useAppStore = create<AppState>()(
         state.cardsA = nextList;
       } else {
         state.cardsB = nextList;
+      }
+    }),
+    applyAutoHeightToCards: ({ side, mode }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      const selectedSet = new Set(selected);
+      const pxPerMm = getPxPerMm(1);
+      trackStateEvent(state, get(), `applyAutoHeightToCards:${side}:${mode}`);
+      const next = source.map((card) => {
+        const shouldApply = mode === "all" ? true : selectedSet.has(card.id);
+        if (!shouldApply) return card;
+        return autoResizeCardBoxes(card, pxPerMm);
+      });
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
       }
     })
   }))
