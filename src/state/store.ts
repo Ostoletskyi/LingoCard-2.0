@@ -510,38 +510,43 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.isEditingLayout = false;
 };
 
+const buildPersistPayload = (state: AppState, compact = false): PersistedState => ({
+  version: 1,
+  state: {
+    cardsA: cloneCardsForPersist(state.cardsA),
+    cardsB: cloneCardsForPersist(state.cardsB),
+    selectedId: state.selectedId,
+    selectedSide: state.selectedSide,
+    layout: safeClone(state.layout),
+    selectedBoxId: state.selectedBoxId,
+    selectedCardIdsA: [...state.selectedCardIdsA],
+    selectedCardIdsB: [...state.selectedCardIdsB],
+    zoom: state.zoom,
+    gridEnabled: state.gridEnabled,
+    rulersEnabled: state.rulersEnabled,
+    snapEnabled: state.snapEnabled,
+    gridIntensity: state.gridIntensity,
+    showOnlyCmLines: state.showOnlyCmLines,
+    debugOverlays: state.debugOverlays,
+    rulersPlacement: state.rulersPlacement,
+    historyBookmarks: compact ? [] : safeClone(state.historyBookmarks),
+    changeLog: compact ? [] : safeClone(state.changeLog),
+    editModeEnabled: state.editModeEnabled,
+    activeTemplate: compact ? null : safeClone(state.activeTemplate)
+  }
+});
+
 const persistState = (state: AppState) => {
   if (typeof window === "undefined") return;
-  const payload: PersistedState = {
-    version: 1,
-    state: {
-      cardsA: cloneCardsForPersist(state.cardsA),
-      cardsB: cloneCardsForPersist(state.cardsB),
-      selectedId: state.selectedId,
-      selectedSide: state.selectedSide,
-      layout: safeClone(state.layout),
-      selectedBoxId: state.selectedBoxId,
-      selectedCardIdsA: [...state.selectedCardIdsA],
-      selectedCardIdsB: [...state.selectedCardIdsB],
-      zoom: state.zoom,
-      gridEnabled: state.gridEnabled,
-      rulersEnabled: state.rulersEnabled,
-      snapEnabled: state.snapEnabled,
-      gridIntensity: state.gridIntensity,
-      showOnlyCmLines: state.showOnlyCmLines,
-      debugOverlays: state.debugOverlays,
-      rulersPlacement: state.rulersPlacement,
-      historyBookmarks: state.historyBookmarks,
-      changeLog: state.changeLog,
-      editModeEnabled: state.editModeEnabled
-      ,
-      activeTemplate: state.activeTemplate
-    }
-  };
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state)));
   } catch (error) {
-    console.error("Persist failed: Template contains non-serializable data or storage quota exceeded", error);
+    console.warn("Persist failed for full payload, retrying compact payload", error);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state, true)));
+    } catch (fallbackError) {
+      console.error("Persist failed: storage quota exceeded", fallbackError);
+    }
   }
 };
 
@@ -958,7 +963,11 @@ export const useAppStore = create<AppState>()(
       }
       state.activeTemplate = template;
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+        try {
+          window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+        } catch (error) {
+          console.warn("Failed to persist layout template", error);
+        }
       }
 
       const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
