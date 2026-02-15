@@ -100,6 +100,8 @@ const makeBox = (params: {
   weight?: "normal" | "bold";
   label: string;
   textMode?: "static" | "dynamic";
+  autoH?: boolean;
+  reservedRightPx?: number;
 }) => {
   const fitted = fitTextToBox(
     params.text,
@@ -129,6 +131,8 @@ const makeBox = (params: {
       visible: true
     },
     textMode: params.textMode ?? "static",
+    autoH: params.autoH,
+    reservedRightPx: params.reservedRightPx,
     staticText: fitted.text,
     label: params.label
   };
@@ -224,7 +228,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       lineHeight: 1.05,
       weight: "bold",
       label: "Infinitiv",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false
     })
   );
 
@@ -261,7 +266,9 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 16,
       lineHeight: 1,
       label: "Частотность",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false,
+      reservedRightPx: 24
     })
   );
 
@@ -276,7 +283,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 10,
       lineHeight: 1.1,
       label: "Meta",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false
     })
   );
 
@@ -291,7 +299,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 12,
       lineHeight: 1.2,
       label: "Переводы",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
@@ -307,7 +316,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.25,
       label: "Примеры",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
@@ -327,7 +337,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 13,
       lineHeight: 1.18,
       label: "Рекомендации",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
@@ -343,7 +354,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.16,
       label: "Формы и рекция",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
@@ -363,7 +375,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.16,
       label: "Синонимы",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
