@@ -178,6 +178,11 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     if (typeof value === "string" && value.trim().length > 0) {
       return { text: value, isPlaceholder: false };
     }
+    return { text: placeholder, isPlaceholder: true };
+  }
+  if (!warnedMissingFields.has(normalizedFieldId)) {
+    warnedMissingFields.add(normalizedFieldId);
+    console.warn("Missing field:", normalizedFieldId);
   }
   if (!warnedMissingFields.has(normalizedFieldId)) {
     warnedMissingFields.add(normalizedFieldId);
