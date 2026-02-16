@@ -45,7 +45,17 @@ type AnyPersistedState = { version?: unknown; state?: unknown };
 
 const migratePersistedState = (raw: AnyPersistedState): PersistedState | null => {
   if (raw?.version === 1 && raw.state && typeof raw.state === "object") {
-    return raw as PersistedState;
+    const state = raw.state as Record<string, unknown>;
+    return {
+      version: 1,
+      state: {
+        ...(state as PersistedState["state"]),
+        activeTemplate:
+          state.activeTemplate && typeof state.activeTemplate === "object"
+            ? (state.activeTemplate as LayoutTemplate)
+            : null
+      }
+    };
   }
   if (typeof raw?.version === "number") {
     console.warn("[Persist][Migration] Unsupported persisted version", raw.version);
@@ -71,7 +81,7 @@ type PersistedState = {
     debugOverlays: boolean;
     rulersPlacement: "outside" | "inside";
     editModeEnabled: boolean;
-    activeTemplate?: LayoutTemplate | null;
+    activeTemplate: LayoutTemplate | null;
   };
 };
 
