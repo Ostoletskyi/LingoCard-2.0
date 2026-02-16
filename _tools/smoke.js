@@ -72,20 +72,22 @@ for (const box of DEFAULT_TEMPLATE_BOXES) {
 `
   );
 
-  const esbuild = await import("esbuild");
-  await esbuild.build({
-    entryPoints: [entryPath],
-    outfile: bundlePath,
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    logLevel: "silent"
-  });
+  try {
+    const esbuild = await import("esbuild");
+    await esbuild.build({
+      entryPoints: [entryPath],
+      outfile: bundlePath,
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      logLevel: "silent"
+    });
 
-  await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`);
-
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  record("Runtime contracts", "OK");
+    await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`);
+    record("Runtime contracts", "OK");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 };
 
 const checkDevServer = () =>

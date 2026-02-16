@@ -44,6 +44,23 @@ for (const filePath of requiredFiles) {
   pushCheck(`file ${filePath}`, exists(filePath), exists(filePath) ? "ok" : "missing");
 }
 
+
+const sourceFiles = fs.readdirSync(path.join(projectRoot, "src"), { recursive: true })
+  .filter((p) => typeof p === "string" && /\.(ts|tsx|js|jsx|css)$/.test(p));
+
+for (const rel of sourceFiles) {
+  const full = path.join(projectRoot, "src", rel);
+  try {
+    const content = fs.readFileSync(full, "utf-8");
+    const hasMarkers = content.includes("<<<<<<<") || content.includes("=======") || content.includes(">>>>>>>");
+    if (hasMarkers) {
+      pushCheck(`merge markers in src/${rel}`, false, "resolve rebase conflict markers");
+    }
+  } catch (error) {
+    pushCheck(`scan src/${rel}`, false, error instanceof Error ? error.message : String(error));
+  }
+}
+
 const exportChecks = [
   { file: "src/io/normalizer.ts", exportName: "normalizeImportedJson" },
   { file: "src/io/normalizer.ts", exportName: "detectSchema" },
