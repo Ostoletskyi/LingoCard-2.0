@@ -71,33 +71,44 @@ const warnInvariant = (message: string, details?: unknown) => {
   console.warn("[Import][Invariant]", message, details ?? "");
 };
 
-const sanitizeCanonicalBox = (box: CanonicalBox, index: number): CanonicalBox => {
-  const rawX = Number.isFinite(box.xMm) ? box.xMm : 0;
-  const rawY = Number.isFinite(box.yMm) ? box.yMm : 0;
-  const rawW = Number.isFinite(box.wMm) && box.wMm > 0 ? box.wMm : 20;
-  const rawH = Number.isFinite(box.hMm) && box.hMm > 0 ? box.hMm : 8;
+const sanitizeCanonicalBox = (boxRaw: unknown, index: number): CanonicalBox => {
+  const source = isRecord(boxRaw) ? boxRaw : {};
+
+  const rawX = Number.isFinite(source.xMm) ? Number(source.xMm) : 0;
+  const rawY = Number.isFinite(source.yMm) ? Number(source.yMm) : 0;
+  const rawW = Number.isFinite(source.wMm) && Number(source.wMm) > 0 ? Number(source.wMm) : 20;
+  const rawH = Number.isFinite(source.hMm) && Number(source.hMm) > 0 ? Number(source.hMm) : 8;
+
+  const align = source.align === "left" || source.align === "center" || source.align === "right"
+    ? source.align
+    : undefined;
 
   const safe: CanonicalBox = {
-    id: String(box.id || `box_${index + 1}`),
-    fieldId: normalizeFieldId(String(box.fieldId || "custom_text")),
+    id: toString(source.id) || `box_${index + 1}`,
+    fieldId: normalizeFieldId(toString(source.fieldId) || "custom_text"),
     xMm: clampNumber(rawX, BOX_LIMITS.xMm.min, BOX_LIMITS.xMm.max),
     yMm: clampNumber(rawY, BOX_LIMITS.yMm.min, BOX_LIMITS.yMm.max),
     wMm: clampNumber(rawW, BOX_LIMITS.wMm.min, BOX_LIMITS.wMm.max),
     hMm: clampNumber(rawH, BOX_LIMITS.hMm.min, BOX_LIMITS.hMm.max),
-    ...(typeof box.fontPt === "number" ? { fontPt: box.fontPt } : {}),
-    ...(typeof box.lineHeight === "number" ? { lineHeight: box.lineHeight } : {}),
-    ...(typeof box.paddingMm === "number" ? { paddingMm: box.paddingMm } : {}),
-    ...(box.align ? { align: box.align } : {}),
-    ...(typeof box.autoH === "boolean" ? { autoH: box.autoH } : {}),
-    ...(typeof box.reservedRightMm === "number" ? { reservedRightMm: box.reservedRightMm } : {})
+    ...(typeof source.fontPt === "number" ? { fontPt: source.fontPt } : {}),
+    ...(typeof source.lineHeight === "number" ? { lineHeight: source.lineHeight } : {}),
+    ...(typeof source.paddingMm === "number" ? { paddingMm: source.paddingMm } : {}),
+    ...(align ? { align } : {}),
+    ...(typeof source.autoH === "boolean" ? { autoH: source.autoH } : {}),
+    ...(typeof source.reservedRightMm === "number" ? { reservedRightMm: source.reservedRightMm } : {})
   };
 
   if (safe.xMm !== rawX || safe.yMm !== rawY || safe.wMm !== rawW || safe.hMm !== rawH) {
-    warnInvariant("Box geometry out of bounds, clamped", { id: safe.id, raw: { xMm: rawX, yMm: rawY, wMm: rawW, hMm: rawH }, safe });
+    warnInvariant("Box geometry out of bounds, clamped", {
+      id: safe.id,
+      raw: { xMm: rawX, yMm: rawY, wMm: rawW, hMm: rawH },
+      safe
+    });
   }
 
   return safe;
 };
+
 
 const enforceCanonicalInvariants = (card: CanonicalCard): CanonicalCard => {
   const freq = card.freq == null ? null : Number(card.freq);
@@ -249,11 +260,11 @@ const toCanonicalCard = (
     synonyms: synonyms.slice(0, 3),
     examples: examples.slice(0, 5),
     recommendations: (recommendationsFromArray.length ? recommendationsFromArray : recommendationsDirect).slice(0, 5),
-    boxes: Array.isArray(root.boxes) ? (root.boxes as CanonicalBox[]) : []
+    boxes: Array.isArray(root.boxes) ? root.boxes.map((box, boxIndex) => sanitizeCanonicalBox(box, boxIndex)) : []
   };
 };
 
-const pickCanonicalBox = (box: CanonicalBox, index: number): CanonicalBox => sanitizeCanonicalBox(box, index);
+const pickCanonicalBox = (box: unknown, index: number): CanonicalBox => sanitizeCanonicalBox(box, index);
 
 const canonicalBoxToInternalBox = (box: CanonicalBox, index: number): Box => ({
   id: box.id,
