@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import { pathToFileURL } from "node:url";
 import { runCommand, projectRoot, ensureDir } from "./utils.js";
 
 const reportDir = path.join(projectRoot, "_reports");
@@ -20,6 +21,73 @@ const checkFiles = (files) => {
       process.exitCode = 1;
     }
   });
+};
+
+
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
+
+const runRuntimeContracts = async () => {
+  const tmpDir = path.join(projectRoot, "_tmp", "smoke-runtime");
+  ensureDir(tmpDir);
+
+  const entryPath = path.join(tmpDir, "runtime-contract-entry.ts");
+  const bundlePath = path.join(tmpDir, "runtime-contract-entry.mjs");
+
+  fs.writeFileSync(
+    entryPath,
+    `import { normalizeImportedJson } from "${projectRoot}/src/io/normalizer.ts";
+import { DEFAULT_TEMPLATE_BOXES } from "${projectRoot}/src/layout/defaultTemplate.ts";
+import { getFieldText } from "${projectRoot}/src/utils/cardFields.ts";
+import { normalizeCard } from "${projectRoot}/src/model/cardSchema.ts";
+
+const assert = (condition: unknown, message: string) => {
+  if (!condition) throw new Error(message);
+};
+
+const fixtures = [
+  { cards: [{ id: "a1", inf: "machen", translations: [{ value: "делать" }] }] },
+  { verbs: [{ infinitive: "gehen", translations: [{ ru: "идти" }], forms: { p3: "geht" } }] },
+  [{ id: "arr-1", inf: "sein", tr_1_ru: "быть" }],
+  { cards: [{ id: "bad-1", inf: 123, forms: { aux: "invalid" }, boxes: [{ id: "b", fieldId: "inf", wMm: -20, hMm: 0 }] }] }
+];
+
+for (const [index, fixture] of fixtures.entries()) {
+  const cards = normalizeImportedJson(fixture);
+  assert(Array.isArray(cards) && cards.length > 0, \`fixture \${index} produced no cards\`);
+  const card = cards[0];
+  assert(typeof card.id === "string" && card.id.length > 0, \`fixture \${index} missing id\`);
+  assert(typeof card.inf === "string", \`fixture \${index} missing inf\`);
+  assert(typeof card.title === "string", \`fixture \${index} missing title\`);
+  assert(Array.isArray(card.boxes) && card.boxes.length > 0, \`fixture \${index} missing boxes\`);
+  assert(typeof card.freq === "number" && card.freq >= 0 && card.freq <= 5, \`fixture \${index} invalid freq\`);
+}
+
+const sampleCard = normalizeCard({ inf: "testen", tr_1_ru: "тест", forms_p3: "testet", ex_1_de: "Ich teste." });
+for (const box of DEFAULT_TEMPLATE_BOXES) {
+  const result = getFieldText(sampleCard, box.fieldId);
+  assert(typeof result.text === "string", \`getFieldText invalid for \${box.fieldId}\`);
+}
+`
+  );
+
+  try {
+    const esbuild = await import("esbuild");
+    await esbuild.build({
+      entryPoints: [entryPath],
+      outfile: bundlePath,
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      logLevel: "silent"
+    });
+
+    await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`);
+    record("Runtime contracts", "OK");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 };
 
 const checkDevServer = () =>
@@ -57,11 +125,27 @@ const main = async () => {
     process.exitCode = 1;
   }
 
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
   try {
     await runCommand("npm", ["run", "build"]);
     record("Build", "OK");
   } catch (error) {
     record("Build", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 
@@ -71,6 +155,10 @@ const main = async () => {
     "src/state/store.ts",
     "src/ui/EditorCanvas.tsx",
     "src/io/importExport.ts",
+    "src/io/normalizer.ts",
+    "src/normalizer/canonicalTypes.ts",
+    "src/normalizer/ensureTemplate.ts",
+    "src/layout/defaultTemplate.ts",
     "src/pdf/exportPdf.ts",
     "src/ai/lmStudioClient.ts",
     "_tools/backup.js"
