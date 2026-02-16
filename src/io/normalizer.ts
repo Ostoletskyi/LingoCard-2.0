@@ -189,8 +189,12 @@ const toCanonicalCard = (
       return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
     })
     .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry));
-  const recommendationsFromArray = pickArray(root, ["recommendations", "rektion", "rek"]) 
+  const recommendationsFromArray = pickArray(root, ["recommendations", "rektion", "rek"])
     .map((entry) => {
+      if (typeof entry === "string") {
+        const de = entry.trim();
+        return de ? { de } : null;
+      }
       if (!isRecord(entry)) return null;
       const de = pickString(entry, ["de", "text", "source"]);
       const ru = pickString(entry, ["ru", "translation", "target"]);
@@ -222,7 +226,7 @@ const toCanonicalCard = (
     tr: trFromArray.length ? trFromArray.slice(0, 4) : trDirect.slice(0, 4),
     forms: {
       p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
-      praet: pickString({ ...forms, ...root }, ["forms_prat", "prat", "preterite", "past"]),
+      praet: pickString({ ...forms, ...root }, ["forms_prat", "forms_praet", "prat", "praet", "präteritum", "preterite", "past"]),
       p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
       aux
     },

@@ -59,7 +59,7 @@ type PersistedState = {
     debugOverlays: boolean;
     rulersPlacement: "outside" | "inside";
     editModeEnabled: boolean;
-    activeTemplate: LayoutTemplate | null;
+    activeTemplate?: LayoutTemplate | null;
   };
 };
 
@@ -448,7 +448,10 @@ const sanitizePersistedState = (raw: PersistedState["state"], persistedCards: Pe
     historyBookmarks: [],
     changeLog: [],
     editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled,
-    activeTemplate: base.activeTemplate,
+    activeTemplate:
+      raw.activeTemplate && raw.activeTemplate.version === 1 && Array.isArray(raw.activeTemplate.boxes)
+        ? raw.activeTemplate
+        : base.activeTemplate,
     storageWarning: null
   };
 };
@@ -575,7 +578,8 @@ const buildPersistPayload = (state: AppState): PersistedState => ({
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
     rulersPlacement: state.rulersPlacement,
-    editModeEnabled: state.editModeEnabled
+    editModeEnabled: state.editModeEnabled,
+    activeTemplate: state.activeTemplate ? safeClone(state.activeTemplate) : null
   }
 });
 
