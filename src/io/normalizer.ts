@@ -53,6 +53,21 @@ const pickArray = (source: Record<string, unknown>, keys: string[]): unknown[] =
   return [];
 };
 
+const pickObject = (source: Record<string, unknown>, keys: string[]): Record<string, unknown> | null => {
+  for (const key of keys) {
+    const value = source[key];
+    if (isRecord(value)) return value;
+  }
+  return null;
+};
+
+const normalizeAux = (value: string): "haben" | "sein" | "" => {
+  const token = value.trim().toLowerCase();
+  if (["haben", "hat"].includes(token)) return "haben";
+  if (["sein", "ist"].includes(token)) return "sein";
+  return "";
+};
+
 const hashString = (value: string) => {
   let hash = 5381;
   for (let index = 0; index < value.length; index += 1) {
@@ -205,7 +220,7 @@ const toCanonicalCard = (
     })
     .filter((entry): entry is { de: string; ru?: string } => Boolean(entry));
 
-  const examples = pickArray(root, ["examples", "example"])
+  const examplesArray = pickArray(root, ["examples", "example"])
     .map((entry) => {
       if (!isRecord(entry)) return null;
       const de = pickString(entry, ["de", "text", "source"]);
@@ -215,6 +230,22 @@ const toCanonicalCard = (
       return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
     })
     .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry));
+
+  const examplesObject = pickObject(root, ["examples"]);
+  const examplesFromObject = examplesObject
+    ? Object.entries(examplesObject)
+        .map(([key, value]) => {
+          if (!isRecord(value)) return null;
+          const de = pickString(value, ["de", "text", "source"]);
+          const ru = pickString(value, ["ru", "translation", "target"]);
+          const tag = pickString(value, ["tag", "label"]) || key;
+          if (!de && !ru) return null;
+          return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
+        })
+        .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry))
+    : [];
+
+  const examples = examplesArray.length ? examplesArray : examplesFromObject;
   const recommendationsFromArray = pickArray(root, ["recommendations", "rektion", "rek"])
     .map((entry) => {
       if (typeof entry === "string") {
@@ -237,11 +268,11 @@ const toCanonicalCard = (
     .filter((entry) => Boolean(entry.de || entry.ru));
 
   const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
-  const aux = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
+  const aux = normalizeAux(rawAux);
 
   const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]);
   const title = pickString(root, ["title", "name"]) || inf;
-  const freqRaw = Number(root.freq);
+  const freqRaw = Number(root.freq ?? root.frequency);
 
   return {
     canonicalVersion: 1,
@@ -249,12 +280,15 @@ const toCanonicalCard = (
     title,
     inf,
     freq: Number.isFinite(freqRaw) && freqRaw >= 1 && freqRaw <= 5 ? Math.round(freqRaw) : null,
-    tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    tags: [
+      ...(Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : []),
+      ...(Array.isArray(root.prefixes) ? root.prefixes.filter((tag): tag is string => typeof tag === "string") : [])
+    ].slice(0, 12),
     tr: trFromArray.length ? trFromArray.slice(0, 4) : trDirect.slice(0, 4),
     forms: {
-      p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
-      praet: pickString({ ...forms, ...root }, ["forms_prat", "forms_praet", "prat", "praet", "präteritum", "preterite", "past"]),
-      p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
+      p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3", "praesens_3"]),
+      praet: pickString({ ...forms, ...root }, ["forms_prat", "forms_praet", "prat", "praet", "praeteritum", "präteritum", "preterite", "past"]),
+      p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "partizip_2", "participle2"]),
       aux
     },
     synonyms: synonyms.slice(0, 3),

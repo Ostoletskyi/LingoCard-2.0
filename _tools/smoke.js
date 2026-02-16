@@ -53,6 +53,30 @@ const fixtures = [
   { cards: [{ id: "bad-1", inf: 123, forms: { aux: "invalid" }, boxes: [{ id: "b", fieldId: "inf", wMm: -20, hMm: 0 }] }] }
 ];
 
+const referenceCardPayload = [{
+  id: "ablehnen",
+  frequency: 5,
+  infinitive: "ablehnen",
+  translations: ["отклонять", "отказываться", "не принимать"],
+  forms: {
+    praesens_3: "lehnt ab",
+    praeteritum: "lehnte ab",
+    partizip_2: "abgelehnt",
+    auxiliary: "hat"
+  },
+  examples: {
+    praesens: { de: "Ich lehne das Angebot ab.", ru: "Я отклоняю предложение." },
+    modal: { de: "Man kann ablehnen.", ru: "Можно отклонить." },
+    praeteritum: { de: "Er lehnte ab.", ru: "Он отказал." },
+    perfekt: { de: "Sie hat abgelehnt.", ru: "Она отказала." }
+  },
+  synonyms: [
+    { word: "zurückweisen", translation: "отклонять" },
+    { word: "verweigern", translation: "отказывать" }
+  ],
+  prefixes: ["отделяемые: ab-"]
+}];
+
 for (const [index, fixture] of fixtures.entries()) {
   const cards = normalizeImportedJson(fixture);
   assert(Array.isArray(cards) && cards.length > 0, \`fixture \${index} produced no cards\`);
@@ -63,6 +87,16 @@ for (const [index, fixture] of fixtures.entries()) {
   assert(Array.isArray(card.boxes) && card.boxes.length > 0, \`fixture \${index} missing boxes\`);
   assert(typeof card.freq === "number" && card.freq >= 0 && card.freq <= 5, \`fixture \${index} invalid freq\`);
 }
+
+const [referenceCard] = normalizeImportedJson(referenceCardPayload);
+assert(referenceCard.inf === "ablehnen", "reference schema: inf mapping failed");
+assert(referenceCard.freq === 5, "reference schema: frequency mapping failed");
+assert(referenceCard.forms_p3 === "lehnt ab", "reference schema: forms.praesens_3 mapping failed");
+assert(referenceCard.forms_prat === "lehnte ab", "reference schema: forms.praeteritum mapping failed");
+assert(referenceCard.forms_p2 === "abgelehnt", "reference schema: forms.partizip_2 mapping failed");
+assert(referenceCard.forms_aux === "haben", "reference schema: forms.auxiliary=hat normalization failed");
+assert(referenceCard.ex_1_de.length > 0 && referenceCard.ex_1_ru.length > 0, "reference schema: examples object mapping failed");
+assert(referenceCard.tags.some((tag) => tag.includes("ab-")), "reference schema: prefixes->tags mapping failed");
 
 const sampleCard = normalizeCard({ inf: "testen", tr_1_ru: "тест", forms_p3: "testet", ex_1_de: "Ich teste." });
 for (const box of DEFAULT_TEMPLATE_BOXES) {
