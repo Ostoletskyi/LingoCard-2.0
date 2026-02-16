@@ -95,45 +95,45 @@ const toCanonicalCard = (
     })
     .filter((entry): entry is { de: string; ru?: string } => Boolean(entry));
 
-  // Examples can be stored as an array OR as an object keyed by tense.
-  // verbs_rich.fixed.json uses: examples: { praesens:{...}, modal:{...}, praeteritum:{...}, perfekt:{...} }
-  const examplesRaw = root.examples ?? root.example;
-  const examplesArray = Array.isArray(examplesRaw) ? examplesRaw : [];
-
-  const examplesFromArray = examplesArray
-    .map((entry) => {
-      if (!isRecord(entry)) return null;
-      const de = pickString(entry, ["de", "text", "source", "sentence"]);
-      const ru = pickString(entry, ["ru", "translation", "target"]);
-      const tag = pickString(entry, ["tag", "label", "type"]);
-      if (!de && !ru) return null;
-      return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
-    })
-    .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry));
+  // Examples can be either:
+  // 1) Array: [{de, ru, tag?}, ...]
+  // 2) Object: { praesens: {de, ru}, modal: {...}, praeteritum: {...}, perfekt: {...} }
+  const examplesRaw = (root as Record<string, unknown>).examples ?? (root as Record<string, unknown>).example;
+  const examplesFromArray = Array.isArray(examplesRaw)
+    ? examplesRaw
+        .map((entry) => {
+          if (!isRecord(entry)) return null;
+          const de = pickString(entry, ["de", "text", "source"]);
+          const ru = pickString(entry, ["ru", "translation", "target"]);
+          const tag = pickString(entry, ["tag", "label"]);
+          if (!de && !ru) return null;
+          return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
+        })
+        .filter((entry): entry is { de: string; ru?: string; tag?: string } => entry !== null)
+    : [];
 
   const examplesFromObject = isRecord(examplesRaw)
     ? (["praesens", "modal", "praeteritum", "perfekt"] as const)
         .map((key) => {
-          const entry = (examplesRaw as Record<string, unknown>)[key];
+          const entry = examplesRaw[key];
           if (!isRecord(entry)) return null;
-          const de = pickString(entry, ["de", "text", "source", "sentence"]);
+          const de = pickString(entry, ["de", "text", "source"]);
           const ru = pickString(entry, ["ru", "translation", "target"]);
           if (!de && !ru) return null;
           return { de, ...(ru ? { ru } : {}), tag: key };
         })
-        .filter((entry): entry is { de: string; ru?: string; tag: string } => Boolean(entry))
+        .filter((entry): entry is { de: string; ru?: string; tag?: string } => entry !== null)
     : [];
 
   const examples = (examplesFromArray.length ? examplesFromArray : examplesFromObject).slice(0, 5);
 
-  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary", "hilfsverb", "helper"]);
-  const aux = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
+  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary", "auxVerb"]);
+  const rawAuxLc = rawAux.toLowerCase();
+  const aux = rawAuxLc === "haben" || rawAuxLc === "sein" ? (rawAuxLc as "haben" | "sein") : "";
 
-  // NOTE: import may come from multiple schemas; keep this list liberal.
-  const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de", "Infinitiv"]);
+  const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]);
   const title = pickString(root, ["title", "name"]) || inf;
-  // Some sources use "frequency" instead of "freq".
-  const freqRaw = Number((root.frequency ?? root.freq) as unknown);
+  const freqRaw = Number((root as any).frequency ?? (root as any).freq);
 
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source),
@@ -143,7 +143,6 @@ const toCanonicalCard = (
     tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : [],
     tr: trFromArray.length ? trFromArray.slice(0, 4) : trDirect.slice(0, 4),
     forms: {
-      // Be generous: different datasets name these differently.
       p3: pickString({ ...forms, ...root }, [
         "forms_p3",
         "p3",
@@ -151,17 +150,13 @@ const toCanonicalCard = (
         "praesens3",
         "praesens_3",
         "praesens3sg",
-        "präsens_3",
-        "praesens3Sg"
+        "present_3s"
       ]),
       praet: pickString({ ...forms, ...root }, [
         "forms_prat",
-        "forms_prät",
         "prat",
-        "prät",
         "praet",
         "praeteritum",
-        "präteritum",
         "preterite",
         "past"
       ]),
@@ -171,14 +166,13 @@ const toCanonicalCard = (
         "partizip2",
         "partizip_2",
         "partizipii",
-        "partizip_ii",
-        "PartizipII",
-        "participle2"
+        "participle2",
+        "pp"
       ]),
       aux
     },
     synonyms: synonyms.slice(0, 3),
-    examples: examples.slice(0, 5),
+    examples,
     boxes: Array.isArray(root.boxes) ? (root.boxes as CanonicalBox[]) : []
   };
 };

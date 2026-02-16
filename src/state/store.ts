@@ -63,6 +63,12 @@ type PersistedState = {
   };
 };
 
+type PersistedCardsPayload = {
+  version: 1;
+  cardsA: Card[];
+  cardsB: Card[];
+};
+
 export type AppState = AppStateSnapshot &
   HistoryState & {
     zoom: number;
@@ -136,6 +142,12 @@ const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
 const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
+
+// Card payload is stored separately (chunked) to avoid localStorage quota issues.
+const CARDS_META_KEY = "lc_cards_meta_v1";
+const CARDS_CHUNK_KEY_PREFIX = "lc_cards_chunk_v1_";
+// Keep chunks safely under typical per-item limits.
+const CARDS_CHUNK_SIZE = 350_000;
 
 const createBoxTemplate = (
   kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple",
@@ -364,10 +376,36 @@ const loadPersistedTemplate = (): LayoutTemplate | null => {
   }
 };
 
-const sanitizePersistedState = (raw: PersistedState["state"]) => {
+const loadPersistedCards = (): PersistedCardsPayload | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const metaRaw = window.localStorage.getItem(CARDS_META_KEY);
+    if (!metaRaw) return null;
+    const meta = JSON.parse(metaRaw) as { version?: number; chunks?: number };
+    if (meta?.version !== 1 || !Number.isFinite(meta.chunks)) return null;
+    const chunksCount = Math.max(0, Number(meta.chunks));
+    let payload = "";
+    for (let i = 0; i < chunksCount; i += 1) {
+      payload += window.localStorage.getItem(`${CARDS_CHUNK_KEY_PREFIX}${i}`) ?? "";
+    }
+    if (!payload) return null;
+    const parsed = JSON.parse(payload) as PersistedCardsPayload;
+    if (parsed?.version !== 1 || !Array.isArray(parsed.cardsA) || !Array.isArray(parsed.cardsB)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const sanitizePersistedState = (
+  raw: PersistedState["state"],
+  persistedCards?: PersistedCardsPayload | null
+) => {
   const base = createBaseState();
-  const cardsA = ensureUniqueCardIds(base.cardsA.map((card) => normalizeCard(card)).filter(Boolean));
-  const cardsB = ensureUniqueCardIds(base.cardsB.map((card) => normalizeCard(card)).filter(Boolean));
+  const sourceCardsA = persistedCards?.cardsA ?? base.cardsA;
+  const sourceCardsB = persistedCards?.cardsB ?? base.cardsB;
+  const cardsA = ensureUniqueCardIds(sourceCardsA.map((card) => normalizeCard(card)).filter(Boolean));
+  const cardsB = ensureUniqueCardIds(sourceCardsB.map((card) => normalizeCard(card)).filter(Boolean));
   const selectedId =
     typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
       ? raw.selectedId
@@ -411,7 +449,7 @@ const sanitizePersistedState = (raw: PersistedState["state"]) => {
     historyBookmarks: [],
     changeLog: [],
     editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled,
-    activeTemplate: base.activeTemplate,
+    activeTemplate: safeActiveTemplate,
     storageWarning: null
   };
 };
@@ -425,7 +463,7 @@ const loadPersistedState = () => {
     if (parsed?.version !== 1 || !parsed.state) return null;
     const persistedCards = loadPersistedCards();
     return sanitizePersistedState(parsed.state, persistedCards);
-} catch {
+  } catch {
     return null;
   }
 };
@@ -433,7 +471,7 @@ const loadPersistedState = () => {
 const persistCards = (cardsA: Card[], cardsB: Card[]) => {
   if (typeof window === "undefined") return;
   try {
-    const payload = JSON.stringify({ cardsA, cardsB });
+    const payload = JSON.stringify({ version: 1, cardsA, cardsB } satisfies PersistedCardsPayload);
     const chunks: string[] = [];
     for (let index = 0; index < payload.length; index += CARDS_CHUNK_SIZE) {
       chunks.push(payload.slice(index, index + CARDS_CHUNK_SIZE));
@@ -541,7 +579,8 @@ const buildPersistPayload = (state: AppState): PersistedState => ({
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
     rulersPlacement: state.rulersPlacement,
-    editModeEnabled: state.editModeEnabled
+    editModeEnabled: state.editModeEnabled,
+    activeTemplate: state.activeTemplate
   }
 });
 
@@ -556,6 +595,7 @@ const persistState = (state: AppState) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state)));
+    persistCards(state.cardsA, state.cardsB);
     setStorageWarning(null);
   } catch (error) {
     console.error("Persist failed: storage quota exceeded", error);

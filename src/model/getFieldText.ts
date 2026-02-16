@@ -1,70 +1,127 @@
 import type { Card } from "./cardSchema";
 
-function safeGet<T>(v: unknown): T | undefined {
-  return v as T | undefined;
-}
+// Convert a card + fieldId into the text that should be rendered inside a box.
+// This MUST be resilient: the app supports multiple import schemas and legacy
+// flat fields (tr_1_ru, syn_1_de, ex_1_de, ...) plus newer array-based fields
+// (tr[], synonyms[], examples[], recommendations[]).
 
-// Legacy field-ids still appear in many saved box templates (e.g. forms_p3, ex_1_de).
-// The current Card model stores these as structured arrays/objects.
-// This adapter keeps old templates working without polluting Card with flat properties.
+const joinNonEmpty = (lines: Array<string | undefined | null>) => lines.filter((v) => typeof v === "string" && v.trim()).join("\n");
+
+const getLegacyTranslations = (card: Card) =>
+  joinNonEmpty([
+    card.tr_1_ru,
+    card.tr_2_ru,
+    card.tr_3_ru,
+    card.tr_4_ru,
+  ]);
+
+const getLegacySynonyms = (card: Card) =>
+  joinNonEmpty([
+    card.syn_1_de ? `${card.syn_1_de}${card.syn_1_ru ? " — " + card.syn_1_ru : ""}` : "",
+    card.syn_2_de ? `${card.syn_2_de}${card.syn_2_ru ? " — " + card.syn_2_ru : ""}` : "",
+    card.syn_3_de ? `${card.syn_3_de}${card.syn_3_ru ? " — " + card.syn_3_ru : ""}` : "",
+  ]);
+
+const getLegacyExamples = (card: Card) =>
+  joinNonEmpty([
+    card.ex_1_de ? `${card.ex_1_de}${card.ex_1_ru ? " — " + card.ex_1_ru : ""}` : "",
+    card.ex_2_de ? `${card.ex_2_de}${card.ex_2_ru ? " — " + card.ex_2_ru : ""}` : "",
+    card.ex_3_de ? `${card.ex_3_de}${card.ex_3_ru ? " — " + card.ex_3_ru : ""}` : "",
+    card.ex_4_de ? `${card.ex_4_de}${card.ex_4_ru ? " — " + card.ex_4_ru : ""}` : "",
+    card.ex_5_de ? `${card.ex_5_de}${card.ex_5_ru ? " — " + card.ex_5_ru : ""}` : "",
+  ]);
+
+const getLegacyForms = (card: Card) =>
+  joinNonEmpty([
+    card.forms_p3,
+    card.forms_prat,
+    card.forms_p2,
+    card.forms_aux,
+  ]);
+
 export function getFieldText(card: Card, fieldId: string): string {
-  // 1) Direct field access (works for modern fields like "inf", "meta", "freq", etc.)
-  const direct = (card as unknown as Record<string, unknown>)[fieldId];
-  if (direct != null) {
-    if (typeof direct === "string") return direct;
-    if (typeof direct === "number" || typeof direct === "boolean") return String(direct);
-    if (Array.isArray(direct)) return direct.join(", ");
+  // Newer (array-based) shapes might exist on the object at runtime, even if not
+  // represented in the current Card type.
+  const anyCard = card as any;
+
+  switch (fieldId) {
+    case "inf":
+    case "hero_inf":
+      return card.inf ?? "";
+
+    case "tr":
+    case "translation":
+    case "translations":
+    case "hero_translations": {
+      const arr = Array.isArray(anyCard.tr) ? (anyCard.tr as any[]) : null;
+      if (arr?.length) return joinNonEmpty(arr.map((x) => (typeof x?.value === "string" ? x.value : "")));
+      return getLegacyTranslations(card);
+    }
+
+    case "forms":
+      // Show 3 forms + auxiliary in a compact list.
+      return getLegacyForms(card);
+
+    case "syn":
+    case "synonyms": {
+      const arr = Array.isArray(anyCard.synonyms) ? (anyCard.synonyms as any[]) : null;
+      if (arr?.length) {
+        return joinNonEmpty(
+          arr.map((s) => {
+            const de = typeof s?.de === "string" ? s.de : "";
+            const ru = typeof s?.ru === "string" ? s.ru : "";
+            return de ? `${de}${ru ? " — " + ru : ""}` : ru;
+          })
+        );
+      }
+      return getLegacySynonyms(card);
+    }
+
+    case "examples": {
+      const arr = Array.isArray(anyCard.examples) ? (anyCard.examples as any[]) : null;
+      if (arr?.length) {
+        return joinNonEmpty(
+          arr.map((e) => {
+            const de = typeof e?.de === "string" ? e.de : "";
+            const ru = typeof e?.ru === "string" ? e.ru : "";
+            return de ? `${de}${ru ? " — " + ru : ""}` : ru;
+          })
+        );
+      }
+      return getLegacyExamples(card);
+    }
+
+    case "freq":
+      // Frequency is represented as dots/balls in UI; text is optional.
+      return "";
+
+    case "meta": {
+      const tags = Array.isArray(card.tags) ? card.tags : [];
+      return joinNonEmpty([tags.join(", ")]);
+    }
+
+    case "recommendations":
+    case "rekom":
+    case "rek": {
+      const arr = Array.isArray(anyCard.recommendations) ? (anyCard.recommendations as any[]) : null;
+      if (arr?.length) {
+        return joinNonEmpty(
+          arr.map((r) => {
+            const de = typeof r?.de === "string" ? r.de : "";
+            const ru = typeof r?.ru === "string" ? r.ru : "";
+            return de ? `${de}${ru ? " — " + ru : ""}` : ru;
+          })
+        );
+      }
+      return joinNonEmpty([
+        card.rek_1_de ? `${card.rek_1_de}${card.rek_1_ru ? " — " + card.rek_1_ru : ""}` : "",
+        card.rek_2_de ? `${card.rek_2_de}${card.rek_2_ru ? " — " + card.rek_2_ru : ""}` : "",
+        card.rek_3_de ? `${card.rek_3_de}${card.rek_3_ru ? " — " + card.rek_3_ru : ""}` : "",
+      ]);
+    }
+
+    default:
+      // Unknown/custom text fields
+      return "";
   }
-
-  // 2) Structured legacy aliases
-  // Forms
-  if (fieldId === "forms_p3") return card.forms?.p3 ?? "";
-  if (fieldId === "forms_prat" || fieldId === "forms_prät") return card.forms?.praet ?? "";
-  if (fieldId === "forms_p2") return card.forms?.p2 ?? "";
-  if (fieldId === "forms_aux") return card.forms?.aux ?? "";
-
-  // Translations (RU)
-  // tr_1_ru .. tr_9_ru, optionally with context in tr_1_ctx etc.
-  const trRuMatch = /^tr_(\d+)_ru$/.exec(fieldId);
-  if (trRuMatch) {
-    const idx = Math.max(0, Number(trRuMatch[1]) - 1);
-    const item = card.tr?.[idx];
-    if (!item) return "";
-    const ctx = item.ctx?.trim();
-    return ctx ? `${item.value} (${ctx})` : item.value;
-  }
-
-  // Synonyms: syn_1_de / syn_1_ru
-  const synMatch = /^syn_(\d+)_(de|ru)$/.exec(fieldId);
-  if (synMatch) {
-    const idx = Math.max(0, Number(synMatch[1]) - 1);
-    const lang = synMatch[2] as "de" | "ru";
-    const item = card.synonyms?.[idx];
-    if (!item) return "";
-    return (safeGet<Record<string, string>>(item)?.[lang] ?? "").toString();
-  }
-
-  // Examples: ex_1_de / ex_1_ru / ex_1_tag
-  const exMatch = /^ex_(\d+)_(de|ru|tag)$/.exec(fieldId);
-  if (exMatch) {
-    const idx = Math.max(0, Number(exMatch[1]) - 1);
-    const key = exMatch[2] as "de" | "ru" | "tag";
-    const item = card.examples?.[idx];
-    if (!item) return "";
-    return (safeGet<Record<string, string>>(item)?.[key] ?? "").toString();
-  }
-
-  // Recommendations: rek_1_de / rek_1_ru
-  const rekMatch = /^rek_(\d+)_(de|ru)$/.exec(fieldId);
-  if (rekMatch) {
-    const idx = Math.max(0, Number(rekMatch[1]) - 1);
-    const lang = rekMatch[2] as "de" | "ru";
-    const item = card.recommendations?.[idx];
-    if (!item) return "";
-    return (safeGet<Record<string, string>>(item)?.[lang] ?? "").toString();
-  }
-
-  // 3) Fallback: stringify unknown objects
-  if (direct != null) return String(direct);
-  return "";
 }
