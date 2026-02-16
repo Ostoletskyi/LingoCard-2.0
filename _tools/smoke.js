@@ -57,6 +57,15 @@ const main = async () => {
     process.exitCode = 1;
   }
 
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
   try {
     await runCommand("npm", ["run", "build"]);
     record("Build", "OK");
@@ -71,6 +80,10 @@ const main = async () => {
     "src/state/store.ts",
     "src/ui/EditorCanvas.tsx",
     "src/io/importExport.ts",
+    "src/io/normalizer.ts",
+    "src/normalizer/canonicalTypes.ts",
+    "src/normalizer/ensureTemplate.ts",
+    "src/layout/defaultTemplate.ts",
     "src/pdf/exportPdf.ts",
     "src/ai/lmStudioClient.ts",
     "_tools/backup.js"
