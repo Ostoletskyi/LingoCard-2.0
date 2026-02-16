@@ -18,6 +18,10 @@ export type ImportStrategy = {
   normalize: (raw: unknown) => InternalCard[];
 };
 
+
+const DEBUG_IMPORT =
+  typeof window !== "undefined" && window.localStorage.getItem("DEBUG_IMPORT") === "1";
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -51,6 +55,81 @@ const hashString = (value: string) => {
 const deterministicId = (schema: Exclude<SupportedSchema, "unknown">, index: number, source: unknown) => {
   const sourceHash = hashString(JSON.stringify(source ?? null));
   return `import_${schema}_${index + 1}_${sourceHash}`;
+};
+
+
+const warnInvariant = (message: string, details?: unknown) => {
+  console.warn("[Import][Invariant]", message, details ?? "");
+};
+
+const sanitizeCanonicalBox = (box: CanonicalBox, index: number): CanonicalBox => {
+  const safe: CanonicalBox = {
+    id: String(box.id || `box_${index + 1}`),
+    fieldId: normalizeFieldId(String(box.fieldId || "custom_text")),
+    xMm: Number.isFinite(box.xMm) ? box.xMm : 0,
+    yMm: Number.isFinite(box.yMm) ? box.yMm : 0,
+    wMm: Number.isFinite(box.wMm) && box.wMm > 0 ? box.wMm : 20,
+    hMm: Number.isFinite(box.hMm) && box.hMm > 0 ? box.hMm : 8,
+    ...(typeof box.fontPt === "number" ? { fontPt: box.fontPt } : {}),
+    ...(typeof box.lineHeight === "number" ? { lineHeight: box.lineHeight } : {}),
+    ...(typeof box.paddingMm === "number" ? { paddingMm: box.paddingMm } : {}),
+    ...(box.align ? { align: box.align } : {}),
+    ...(typeof box.autoH === "boolean" ? { autoH: box.autoH } : {}),
+    ...(typeof box.reservedRightMm === "number" ? { reservedRightMm: box.reservedRightMm } : {})
+  };
+  if (safe.wMm <= 0 || safe.hMm <= 0) {
+    warnInvariant("Non-positive box size detected, applying defaults", { id: safe.id });
+    safe.wMm = 20;
+    safe.hMm = 8;
+  }
+  return safe;
+};
+
+const enforceCanonicalInvariants = (card: CanonicalCard): CanonicalCard => {
+  const freq = card.freq == null ? null : Number(card.freq);
+  const safeFreq = freq == null ? null : (freq >= 1 && freq <= 5 ? Math.round(freq) : null);
+  if (freq !== safeFreq) {
+    warnInvariant("freq must be null or 1..5", { id: card.id, freq: card.freq });
+  }
+
+  const safeFormsAux =
+    card.forms.aux === "haben" || card.forms.aux === "sein" || card.forms.aux === ""
+      ? card.forms.aux
+      : "";
+  if (card.forms.aux !== undefined && card.forms.aux !== safeFormsAux) {
+    warnInvariant("forms.aux must be haben|sein|''", { id: card.id, aux: card.forms.aux });
+  }
+
+  return {
+    ...card,
+    id: card.id || crypto.randomUUID(),
+    inf: typeof card.inf === "string" ? card.inf : "",
+    title: typeof card.title === "string" ? card.title : "",
+    freq: safeFreq,
+    tags: Array.isArray(card.tags) ? card.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    tr: Array.isArray(card.tr)
+      ? card.tr
+          .filter((item): item is { value: string; ctx?: string } => Boolean(item && typeof item.value === "string"))
+          .slice(0, 4)
+      : [],
+    forms: {
+      ...(typeof card.forms.p3 === "string" ? { p3: card.forms.p3 } : {}),
+      ...(typeof card.forms.praet === "string" ? { praet: card.forms.praet } : {}),
+      ...(typeof card.forms.p2 === "string" ? { p2: card.forms.p2 } : {}),
+      ...(card.forms.aux !== undefined ? { aux: safeFormsAux } : {})
+    },
+    synonyms: Array.isArray(card.synonyms)
+      ? card.synonyms
+          .filter((item): item is { de: string; ru?: string } => Boolean(item && typeof item.de === "string"))
+          .slice(0, 3)
+      : [],
+    examples: Array.isArray(card.examples)
+      ? card.examples
+          .filter((item): item is { de: string; ru?: string; tag?: string } => Boolean(item && typeof item.de === "string"))
+          .slice(0, 5)
+      : [],
+    boxes: Array.isArray(card.boxes) ? card.boxes.map((box, index) => sanitizeCanonicalBox(box, index)) : []
+  };
 };
 
 const toCanonicalCard = (
@@ -95,45 +174,23 @@ const toCanonicalCard = (
     })
     .filter((entry): entry is { de: string; ru?: string } => Boolean(entry));
 
-  // Examples can be either:
-  // 1) Array: [{de, ru, tag?}, ...]
-  // 2) Object: { praesens: {de, ru}, modal: {...}, praeteritum: {...}, perfekt: {...} }
-  const examplesRaw = (root as Record<string, unknown>).examples ?? (root as Record<string, unknown>).example;
-  const examplesFromArray = Array.isArray(examplesRaw)
-    ? examplesRaw
-        .map((entry) => {
-          if (!isRecord(entry)) return null;
-          const de = pickString(entry, ["de", "text", "source"]);
-          const ru = pickString(entry, ["ru", "translation", "target"]);
-          const tag = pickString(entry, ["tag", "label"]);
-          if (!de && !ru) return null;
-          return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
-        })
-        .filter((entry): entry is { de: string; ru?: string; tag?: string } => entry !== null)
-    : [];
+  const examples = pickArray(root, ["examples", "example"])
+    .map((entry) => {
+      if (!isRecord(entry)) return null;
+      const de = pickString(entry, ["de", "text", "source"]);
+      const ru = pickString(entry, ["ru", "translation", "target"]);
+      const tag = pickString(entry, ["tag", "label"]);
+      if (!de && !ru) return null;
+      return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
+    })
+    .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry));
 
-  const examplesFromObject = isRecord(examplesRaw)
-    ? (["praesens", "modal", "praeteritum", "perfekt"] as const)
-        .map((key) => {
-          const entry = examplesRaw[key];
-          if (!isRecord(entry)) return null;
-          const de = pickString(entry, ["de", "text", "source"]);
-          const ru = pickString(entry, ["ru", "translation", "target"]);
-          if (!de && !ru) return null;
-          return { de, ...(ru ? { ru } : {}), tag: key };
-        })
-        .filter((entry): entry is { de: string; ru?: string; tag?: string } => entry !== null)
-    : [];
-
-  const examples = (examplesFromArray.length ? examplesFromArray : examplesFromObject).slice(0, 5);
-
-  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary", "auxVerb"]);
-  const rawAuxLc = rawAux.toLowerCase();
-  const aux = rawAuxLc === "haben" || rawAuxLc === "sein" ? (rawAuxLc as "haben" | "sein") : "";
+  const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
+  const aux = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
 
   const inf = pickString(root, ["inf", "infinitive", "lemma", "verb", "word", "de"]);
   const title = pickString(root, ["title", "name"]) || inf;
-  const freqRaw = Number((root as any).frequency ?? (root as any).freq);
+  const freqRaw = Number(root.freq);
 
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source),
@@ -143,54 +200,18 @@ const toCanonicalCard = (
     tags: Array.isArray(root.tags) ? root.tags.filter((tag): tag is string => typeof tag === "string") : [],
     tr: trFromArray.length ? trFromArray.slice(0, 4) : trDirect.slice(0, 4),
     forms: {
-      p3: pickString({ ...forms, ...root }, [
-        "forms_p3",
-        "p3",
-        "present3",
-        "praesens3",
-        "praesens_3",
-        "praesens3sg",
-        "present_3s"
-      ]),
-      praet: pickString({ ...forms, ...root }, [
-        "forms_prat",
-        "prat",
-        "praet",
-        "praeteritum",
-        "preterite",
-        "past"
-      ]),
-      p2: pickString({ ...forms, ...root }, [
-        "forms_p2",
-        "p2",
-        "partizip2",
-        "partizip_2",
-        "partizipii",
-        "participle2",
-        "pp"
-      ]),
+      p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3"]),
+      praet: pickString({ ...forms, ...root }, ["forms_prat", "prat", "preterite", "past"]),
+      p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "participle2"]),
       aux
     },
     synonyms: synonyms.slice(0, 3),
-    examples,
+    examples: examples.slice(0, 5),
     boxes: Array.isArray(root.boxes) ? (root.boxes as CanonicalBox[]) : []
   };
 };
 
-const pickCanonicalBox = (box: CanonicalBox): CanonicalBox => ({
-  id: String(box.id || `box_${crypto.randomUUID().slice(0, 8)}`),
-  fieldId: normalizeFieldId(String(box.fieldId || "custom_text")),
-  xMm: Number.isFinite(box.xMm) ? box.xMm : 0,
-  yMm: Number.isFinite(box.yMm) ? box.yMm : 0,
-  wMm: Number.isFinite(box.wMm) ? Math.max(1, box.wMm) : 20,
-  hMm: Number.isFinite(box.hMm) ? Math.max(1, box.hMm) : 8,
-  ...(typeof box.fontPt === "number" ? { fontPt: box.fontPt } : {}),
-  ...(typeof box.lineHeight === "number" ? { lineHeight: box.lineHeight } : {}),
-  ...(typeof box.paddingMm === "number" ? { paddingMm: box.paddingMm } : {}),
-  ...(box.align ? { align: box.align } : {}),
-  ...(typeof box.autoH === "boolean" ? { autoH: box.autoH } : {}),
-  ...(typeof box.reservedRightMm === "number" ? { reservedRightMm: box.reservedRightMm } : {})
-});
+const pickCanonicalBox = (box: CanonicalBox, index: number): CanonicalBox => sanitizeCanonicalBox(box, index);
 
 const canonicalBoxToInternalBox = (box: CanonicalBox, index: number): Box => ({
   id: box.id,
@@ -222,7 +243,7 @@ const canonicalToInternalCard = (
 ): InternalCard => {
   const canonical = ensureTemplateBoxes({
     ...canonicalRaw,
-    boxes: (canonicalRaw.boxes ?? []).map((box) => pickCanonicalBox(box))
+    boxes: (canonicalRaw.boxes ?? []).map((box, boxIndex) => pickCanonicalBox(box, boxIndex))
   });
 
   const internal = normalizeCard({
@@ -292,7 +313,7 @@ const canonicalToInternalCard = (
     })
   };
 
-  if (index === 0) {
+  if (DEBUG_IMPORT && index === 0) {
     console.log("[Import] canonical sample", canonical);
     console.log("[Import] internal sample", enforced);
     console.log("Mapped card:", enforced);
@@ -308,7 +329,7 @@ const canonicalToInternalCard = (
 };
 
 const normalizeEntry = (item: unknown, schema: Exclude<SupportedSchema, "unknown">, index: number): InternalCard => {
-  const canonical = toCanonicalCard(item, schema, index);
+  const canonical = enforceCanonicalInvariants(toCanonicalCard(item, schema, index));
   return canonicalToInternalCard(canonical, schema, index);
 };
 
@@ -349,18 +370,18 @@ const buildUnknownSchemaError = (raw: unknown) => {
 };
 
 export const normalizeImportedJson = (raw: unknown): InternalCard[] => {
-  console.log("Import stage A (detect schema)");
+  if (DEBUG_IMPORT) console.log("Import stage A (detect schema)");
   const detectedSchema = detectSchema(raw);
-  console.log("Import schema:", detectedSchema);
+  if (DEBUG_IMPORT) console.log("Import schema:", detectedSchema);
   const strategy = strategies.find((item) => item.match(raw));
   if (!strategy || detectedSchema === "unknown") {
     throw buildUnknownSchemaError(raw);
   }
 
-  console.log("Import stage B (map to canonical)");
+  if (DEBUG_IMPORT) console.log("Import stage B (map to canonical)");
   const normalized = strategy.normalize(raw);
 
-  console.log("Import stage C (fill defaults)");
-  console.log("Normalized cards:", normalized.length);
+  if (DEBUG_IMPORT) console.log("Import stage C (fill defaults)");
+  if (DEBUG_IMPORT) console.log("Normalized cards:", normalized.length);
   return normalized;
 };

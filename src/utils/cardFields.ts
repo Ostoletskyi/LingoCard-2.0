@@ -184,9 +184,5 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     warnedMissingFields.add(normalizedFieldId);
     console.warn("Missing field:", normalizedFieldId);
   }
-  if (!warnedMissingFields.has(normalizedFieldId)) {
-    warnedMissingFields.add(normalizedFieldId);
-    console.warn("Missing field:", normalizedFieldId);
-  }
   return { text: placeholder, isPlaceholder: true };
 };
