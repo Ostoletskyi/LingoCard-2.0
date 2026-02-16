@@ -23,5 +23,6 @@ export type CanonicalCard = {
   forms: { p3?: string; praet?: string; p2?: string; aux?: "haben" | "sein" | "" };
   synonyms: Array<{ de: string; ru?: string }>;
   examples: Array<{ de: string; ru?: string; tag?: string }>;
+  recommendations: Array<{ de: string; ru?: string }>;
   boxes: CanonicalBox[];
 };

@@ -128,6 +128,11 @@ const enforceCanonicalInvariants = (card: CanonicalCard): CanonicalCard => {
           .filter((item): item is { de: string; ru?: string; tag?: string } => Boolean(item && typeof item.de === "string"))
           .slice(0, 5)
       : [],
+    recommendations: Array.isArray(card.recommendations)
+      ? card.recommendations
+          .filter((item): item is { de: string; ru?: string } => Boolean(item && typeof item.de === "string"))
+          .slice(0, 5)
+      : [],
     boxes: Array.isArray(card.boxes) ? card.boxes.map((box, index) => sanitizeCanonicalBox(box, index)) : []
   };
 };
@@ -184,6 +189,22 @@ const toCanonicalCard = (
       return { de, ...(ru ? { ru } : {}), ...(tag ? { tag } : {}) };
     })
     .filter((entry): entry is { de: string; ru?: string; tag?: string } => Boolean(entry));
+  const recommendationsFromArray = pickArray(root, ["recommendations", "rektion", "rek"]) 
+    .map((entry) => {
+      if (!isRecord(entry)) return null;
+      const de = pickString(entry, ["de", "text", "source"]);
+      const ru = pickString(entry, ["ru", "translation", "target"]);
+      if (!de && !ru) return null;
+      return { de, ...(ru ? { ru } : {}) };
+    })
+    .filter((entry): entry is { de: string; ru?: string } => Boolean(entry));
+
+  const recommendationsDirect = [1,2,3,4,5]
+    .map((idx) => ({
+      de: pickString(root, [`rek_${idx}_de`]),
+      ru: pickString(root, [`rek_${idx}_ru`])
+    }))
+    .filter((entry) => Boolean(entry.de || entry.ru));
 
   const rawAux = pickString({ ...forms, ...root }, ["forms_aux", "aux", "auxiliary"]);
   const aux = rawAux === "haben" || rawAux === "sein" ? rawAux : "";
@@ -207,6 +228,7 @@ const toCanonicalCard = (
     },
     synonyms: synonyms.slice(0, 3),
     examples: examples.slice(0, 5),
+    recommendations: (recommendationsFromArray.length ? recommendationsFromArray : recommendationsDirect).slice(0, 5),
     boxes: Array.isArray(root.boxes) ? (root.boxes as CanonicalBox[]) : []
   };
 };
@@ -285,6 +307,16 @@ const canonicalToInternalCard = (
     ex_5_de: canonical.examples[4]?.de ?? "",
     ex_5_ru: canonical.examples[4]?.ru ?? "",
     ex_5_tag: canonical.examples[4]?.tag ?? "",
+    rek_1_de: canonical.recommendations[0]?.de ?? "",
+    rek_1_ru: canonical.recommendations[0]?.ru ?? "",
+    rek_2_de: canonical.recommendations[1]?.de ?? "",
+    rek_2_ru: canonical.recommendations[1]?.ru ?? "",
+    rek_3_de: canonical.recommendations[2]?.de ?? "",
+    rek_3_ru: canonical.recommendations[2]?.ru ?? "",
+    rek_4_de: canonical.recommendations[3]?.de ?? "",
+    rek_4_ru: canonical.recommendations[3]?.ru ?? "",
+    rek_5_de: canonical.recommendations[4]?.de ?? "",
+    rek_5_ru: canonical.recommendations[4]?.ru ?? "",
     translations: canonical.tr,
     forms: canonical.forms,
     synonyms: canonical.synonyms,
