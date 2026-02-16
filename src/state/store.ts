@@ -41,6 +41,18 @@ export type ChangeLogEntry = {
   action: string;
 };
 
+type AnyPersistedState = { version?: unknown; state?: unknown };
+
+const migratePersistedState = (raw: AnyPersistedState): PersistedState | null => {
+  if (raw?.version === 1 && raw.state && typeof raw.state === "object") {
+    return raw as PersistedState;
+  }
+  if (typeof raw?.version === "number") {
+    console.warn("[Persist][Migration] Unsupported persisted version", raw.version);
+  }
+  return null;
+};
+
 type PersistedState = {
   version: 1;
   state: {
@@ -461,8 +473,8 @@ const loadPersistedState = () => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedState;
-    if (parsed?.version !== 1 || !parsed.state) return null;
+    const parsed = migratePersistedState(JSON.parse(raw) as AnyPersistedState);
+    if (!parsed) return null;
     return sanitizePersistedState(parsed.state, loadPersistedCards());
   } catch {
     return null;

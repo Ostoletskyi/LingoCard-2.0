@@ -14,6 +14,7 @@ export type CanonicalBox = {
 };
 
 export type CanonicalCard = {
+  canonicalVersion: 1;
   id: string;
   title: string;
   inf: string;

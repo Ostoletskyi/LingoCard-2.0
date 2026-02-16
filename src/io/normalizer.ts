@@ -22,6 +22,15 @@ export type ImportStrategy = {
 const DEBUG_IMPORT =
   typeof window !== "undefined" && window.localStorage.getItem("DEBUG_IMPORT") === "1";
 
+const BOX_LIMITS = {
+  xMm: { min: 0, max: 400 },
+  yMm: { min: 0, max: 400 },
+  wMm: { min: 1, max: 400 },
+  hMm: { min: 1, max: 400 }
+} as const;
+
+const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -63,13 +72,18 @@ const warnInvariant = (message: string, details?: unknown) => {
 };
 
 const sanitizeCanonicalBox = (box: CanonicalBox, index: number): CanonicalBox => {
+  const rawX = Number.isFinite(box.xMm) ? box.xMm : 0;
+  const rawY = Number.isFinite(box.yMm) ? box.yMm : 0;
+  const rawW = Number.isFinite(box.wMm) && box.wMm > 0 ? box.wMm : 20;
+  const rawH = Number.isFinite(box.hMm) && box.hMm > 0 ? box.hMm : 8;
+
   const safe: CanonicalBox = {
     id: String(box.id || `box_${index + 1}`),
     fieldId: normalizeFieldId(String(box.fieldId || "custom_text")),
-    xMm: Number.isFinite(box.xMm) ? box.xMm : 0,
-    yMm: Number.isFinite(box.yMm) ? box.yMm : 0,
-    wMm: Number.isFinite(box.wMm) && box.wMm > 0 ? box.wMm : 20,
-    hMm: Number.isFinite(box.hMm) && box.hMm > 0 ? box.hMm : 8,
+    xMm: clampNumber(rawX, BOX_LIMITS.xMm.min, BOX_LIMITS.xMm.max),
+    yMm: clampNumber(rawY, BOX_LIMITS.yMm.min, BOX_LIMITS.yMm.max),
+    wMm: clampNumber(rawW, BOX_LIMITS.wMm.min, BOX_LIMITS.wMm.max),
+    hMm: clampNumber(rawH, BOX_LIMITS.hMm.min, BOX_LIMITS.hMm.max),
     ...(typeof box.fontPt === "number" ? { fontPt: box.fontPt } : {}),
     ...(typeof box.lineHeight === "number" ? { lineHeight: box.lineHeight } : {}),
     ...(typeof box.paddingMm === "number" ? { paddingMm: box.paddingMm } : {}),
@@ -77,11 +91,11 @@ const sanitizeCanonicalBox = (box: CanonicalBox, index: number): CanonicalBox =>
     ...(typeof box.autoH === "boolean" ? { autoH: box.autoH } : {}),
     ...(typeof box.reservedRightMm === "number" ? { reservedRightMm: box.reservedRightMm } : {})
   };
-  if (safe.wMm <= 0 || safe.hMm <= 0) {
-    warnInvariant("Non-positive box size detected, applying defaults", { id: safe.id });
-    safe.wMm = 20;
-    safe.hMm = 8;
+
+  if (safe.xMm !== rawX || safe.yMm !== rawY || safe.wMm !== rawW || safe.hMm !== rawH) {
+    warnInvariant("Box geometry out of bounds, clamped", { id: safe.id, raw: { xMm: rawX, yMm: rawY, wMm: rawW, hMm: rawH }, safe });
   }
+
   return safe;
 };
 
@@ -102,6 +116,7 @@ const enforceCanonicalInvariants = (card: CanonicalCard): CanonicalCard => {
 
   return {
     ...card,
+    canonicalVersion: 1,
     id: card.id || crypto.randomUUID(),
     inf: typeof card.inf === "string" ? card.inf : "",
     title: typeof card.title === "string" ? card.title : "",
@@ -218,6 +233,7 @@ const toCanonicalCard = (
   const freqRaw = Number(root.freq);
 
   return {
+    canonicalVersion: 1,
     id: typeof source.id === "string" && source.id.trim() ? source.id : deterministicId(schema, index, source),
     title,
     inf,
