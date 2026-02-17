@@ -5,6 +5,8 @@ import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
 import { MM_PER_INCH, mmToPdf } from "../utils/mmPx";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
+import { measureWrappedLines } from "../layout/textMeasure";
+import { normalizeFieldId } from "../utils/fieldAlias";
 
 export type PdfExportOptions = {
   cardsPerRow?: number;
@@ -16,34 +18,45 @@ const CANVAS_DPI = 300;
 
 const mmToCanvasPx = (mm: number) => Math.round((mm / MM_PER_INCH) * CANVAS_DPI);
 
-const wrapText = (
+const resolveReservedRightPx = (fieldId: string, box: { reservedRightPx?: number }) => {
+  if (typeof box.reservedRightPx === "number" && Number.isFinite(box.reservedRightPx)) {
+    return Math.max(0, box.reservedRightPx);
+  }
+  return normalizeFieldId(fieldId) === "freq" ? 24 : 0;
+};
+
+
+const FREQ_DOT_COLORS: Record<number, string> = {
+  1: "rgb(59 130 246)",
+  2: "rgb(239 68 68)",
+  3: "rgb(249 115 22)",
+  4: "rgb(234 179 8)",
+  5: "rgb(34 197 94)"
+};
+
+const drawFrequencyDots = (
   ctx: CanvasRenderingContext2D,
-  value: string,
-  maxWidthPx: number
-): string[] => {
-  const source = value.replace(/\r\n/g, "\n").split("\n");
-  const lines: string[] = [];
-  source.forEach((row) => {
-    if (!row) {
-      lines.push("");
-      return;
-    }
-    const words = row.split(/\s+/);
-    let current = "";
-    words.forEach((word) => {
-      const candidate = current ? `${current} ${word}` : word;
-      if (ctx.measureText(candidate).width <= maxWidthPx) {
-        current = candidate;
-        return;
-      }
-      if (current) {
-        lines.push(current);
-      }
-      current = word;
-    });
-    if (current) lines.push(current);
-  });
-  return lines;
+  card: Card,
+  box: { xMm: number; yMm: number; wMm: number; style: { paddingMm: number } },
+  boxY: number,
+  boxH: number
+) => {
+  const dots = Math.max(0, Math.min(5, Math.round(card.freq || 0)));
+  if (!dots) return;
+
+  const color = FREQ_DOT_COLORS[dots] ?? "rgb(34 197 94)";
+  const radius = Math.max(2, mmToCanvasPx(0.7));
+  const gap = Math.max(2, mmToCanvasPx(0.7));
+  const startX = mmToCanvasPx(box.xMm) + mmToCanvasPx(box.style.paddingMm) + radius;
+  const centerY = boxY + Math.min(boxH / 2, mmToCanvasPx(box.style.paddingMm) + radius + 1);
+
+  for (let index = 0; index < dots; index += 1) {
+    const centerX = startX + index * (radius * 2 + gap);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
 };
 
 const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: string, staticText?: string) => {
@@ -114,7 +127,9 @@ export const exportCardsToPdf = (
       const boxY = mmToCanvasPx(box.yMm);
       const boxW = Math.max(1, mmToCanvasPx(box.wMm));
       const boxH = Math.max(1, mmToCanvasPx(box.hMm));
-      const maxWidth = Math.max(1, boxW - paddingPx * 2);
+      const isFrequencyBox = normalizeFieldId(box.fieldId) === "freq";
+      const reservedRightPx = resolveReservedRightPx(box.fieldId, box as { reservedRightPx?: number });
+      const maxWidth = Math.max(1, boxW - paddingPx * 2 - reservedRightPx);
       const text = resolveBoxText(card, box.fieldId, box.textMode, box.text, box.staticText);
 
       ctx.font = `${box.style.fontWeight === "bold" ? "700" : "400"} ${fontPx}px "DejaVu Sans", "Noto Sans", "Arial", sans-serif`;
@@ -127,7 +142,12 @@ export const exportCardsToPdf = (
         ctx.strokeRect(boxX, boxY, boxW, boxH);
       }
 
-      const lines = wrapText(ctx, text, maxWidth);
+      if (isFrequencyBox) {
+        drawFrequencyDots(ctx, card, box, boxY, boxH);
+        return;
+      }
+
+      const lines = measureWrappedLines(text, ctx.font, maxWidth, ctx);
       const lineHeightPx = fontPx * box.style.lineHeight;
       lines.forEach((line, lineIndex) => {
         const textY = boxY + paddingPx + lineIndex * lineHeightPx;
