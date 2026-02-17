@@ -71,6 +71,14 @@ export const CardListPanel = ({ side }: Props) => {
   const firstSelectionButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstExportButtonRef = useRef<HTMLButtonElement | null>(null);
 
+  const cardsBeaconClass = cardsPanelCollapsed
+    ? side === "A"
+      ? "lc-cardsBeacon lc-cardsBeacon--left-collapsed"
+      : "lc-cardsBeacon lc-cardsBeacon--right-collapsed"
+    : side === "A"
+      ? "lc-cardsBeacon lc-cardsBeacon--left-expanded"
+      : "lc-cardsBeacon lc-cardsBeacon--right-expanded";
+
   const toggleSection = (section: SidebarSection) => {
     setOpenSection((prev) => (prev === section ? prev : section));
   };
@@ -341,7 +349,7 @@ export const CardListPanel = ({ side }: Props) => {
             <button
               type="button"
               onClick={() => setCardsPanelCollapsed((prev) => !prev)}
-              className="inline-flex items-center gap-2 text-lg font-semibold text-slate-800 dark:text-slate-100"
+              className={`inline-flex items-center gap-2 rounded-md px-2 py-0.5 text-lg font-semibold text-slate-800 dark:text-slate-100 ${cardsBeaconClass}`}
               aria-expanded={!cardsPanelCollapsed}
             >
               Карточки
