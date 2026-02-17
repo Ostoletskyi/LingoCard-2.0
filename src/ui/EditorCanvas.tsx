@@ -172,9 +172,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const dragActionRef = useRef<string | null>(null);
-  const dragRafRef = useRef<number | null>(null);
-  const pendingDragUpdateRef = useRef<{ boxId: string; update: Partial<Box>; reason: string } | null>(null);
-  const lastDragCommitAtRef = useRef(0);
+  const dragPreviewRafRef = useRef<number | null>(null);
+  const pendingDragBoxRef = useRef<Box | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
 
   const card = useMemo(() => {
@@ -222,20 +221,26 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason, { track: false });
   };
 
-  const scheduleActiveBoxUpdate = (boxId: string, update: Partial<Box>, reason: string) => {
-    pendingDragUpdateRef.current = { boxId, update, reason };
-    if (dragRafRef.current != null) return;
-    dragRafRef.current = window.requestAnimationFrame((timestamp) => {
-      dragRafRef.current = null;
-      if (timestamp - lastDragCommitAtRef.current < 40) {
-        scheduleActiveBoxUpdate(boxId, update, reason);
-        return;
-      }
-      lastDragCommitAtRef.current = timestamp;
-      const payload = pendingDragUpdateRef.current;
-      pendingDragUpdateRef.current = null;
-      if (!payload) return;
-      updateActiveBox(payload.boxId, payload.update, payload.reason);
+  const flushDragPreview = () => {
+    if (dragPreviewRafRef.current != null) {
+      window.cancelAnimationFrame(dragPreviewRafRef.current);
+      dragPreviewRafRef.current = null;
+    }
+    const pending = pendingDragBoxRef.current;
+    pendingDragBoxRef.current = null;
+    if (!pending) return;
+    setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
+  };
+
+  const scheduleDragPreview = (nextBox: Box) => {
+    pendingDragBoxRef.current = nextBox;
+    if (dragPreviewRafRef.current != null) return;
+    dragPreviewRafRef.current = window.requestAnimationFrame(() => {
+      dragPreviewRafRef.current = null;
+      const pending = pendingDragBoxRef.current;
+      pendingDragBoxRef.current = null;
+      if (!pending) return;
+      setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
     });
   };
 
@@ -302,7 +307,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const nextYRaw = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
       const nextX = Math.min(Math.max(0, nextXRaw), Math.max(0, layout.widthMm - dragState.startBox.wMm));
       const nextY = Math.min(Math.max(0, nextYRaw), Math.max(0, layout.heightMm - dragState.startBox.hMm));
-      setDragState((prev) => prev ? { ...prev, hasApplied: true, currentBox: { ...prev.currentBox, xMm: nextX, yMm: nextY } } : prev);
+      scheduleDragPreview({ ...dragState.currentBox, xMm: nextX, yMm: nextY });
       return;
     }
 
@@ -342,10 +347,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
     nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
 
-    setDragState((prev) => prev ? { ...prev, hasApplied: true, currentBox: { ...prev.currentBox, xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH } } : prev);
+    scheduleDragPreview({ ...dragState.currentBox, xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
   };
 
   const handlePointerUp = () => {
+    flushDragPreview();
     if (dragState?.hasApplied) {
       const next = dragState.currentBox;
       updateActiveBox(
@@ -360,6 +366,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     dragActionRef.current = null;
     setDragState(null);
   };
+
+  useEffect(() => () => {
+    if (dragPreviewRafRef.current != null) {
+      window.cancelAnimationFrame(dragPreviewRafRef.current);
+      dragPreviewRafRef.current = null;
+    }
+    pendingDragBoxRef.current = null;
+  }, []);
 
   const handleBeginEdit = (box: Box) => {
     if (!editModeEnabled || !card) return;
