@@ -1,7 +1,9 @@
+// _tools/smoke.js
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { pathToFileURL } from "node:url";
+import { spawn } from "node:child_process";
 import { runCommand, projectRoot, ensureDir } from "./utils.js";
 
 const reportDir = path.join(projectRoot, "_reports");
@@ -14,13 +16,225 @@ const record = (label, status, details = "") => {
 };
 
 const checkFiles = (files) => {
-  files.forEach((file) => {
-    const exists = fs.existsSync(path.join(projectRoot, file));
+  for (const file of files) {
+    const abs = path.join(projectRoot, file);
+    const exists = fs.existsSync(abs);
     record(`File ${file}`, exists ? "OK" : "MISSING");
-    if (!exists) {
-      process.exitCode = 1;
-    }
-  });
+    if (!exists) process.exitCode = 1;
+  }
+};
+
+const relImport = (fromDir, absFile) => {
+  // Make a TS/JS import specifier that works on Windows too.
+  let rel = path.relative(fromDir, absFile).replace(/\\/g, "/");
+  if (!rel.startsWith(".")) rel = "./" + rel;
+  return rel;
+};
+
+const runRuntimeContracts = async () => {
+  const tmpDir = path.join(projectRoot, "_tmp", "smoke-runtime");
+  ensureDir(tmpDir);
+
+  const entryPath = path.join(tmpDir, "runtime-contract-entry.ts");
+  const bundlePath = path.join(tmpDir, "runtime-contract-entry.mjs");
+
+  const impNormalizer = relImport(tmpDir, path.join(projectRoot, "src/io/normalizer.ts"));
+  const impTemplate = relImport(tmpDir, path.join(projectRoot, "src/layout/defaultTemplate.ts"));
+  const impFields = relImport(tmpDir, path.join(projectRoot, "src/utils/cardFields.ts"));
+  const impCard = relImport(tmpDir, path.join(projectRoot, "src/model/cardSchema.ts"));
+
+  // NOTE:
+  // - We keep assertions small but meaningful.
+  // - This should catch: "import returns empty", "field getters break", "template ids mismatch".
+  fs.writeFileSync(
+    entryPath,
+    `import { normalizeImportedJson } from "${impNormalizer}";
+import { DEFAULT_TEMPLATE_BOXES } from "${impTemplate}";
+import { getFieldText } from "${impFields}";
+import { normalizeCard } from "${impCard}";
+
+const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
+
+const fixtures = [
+  { cards: [{ id: "a1", inf: "machen", translations: [{ value: "делать" }] }] },
+  { verbs: [{ infinitive: "gehen", translations: [{ ru: "идти" }], forms: { p3: "geht" } }] },
+  [{ id: "arr-1", inf: "sein", tr_1_ru: "быть" }],
+  { cards: [{ id: "bad-1", inf: 123, forms: { aux: "invalid" }, boxes: [{ id: "b", fieldId: "inf", wMm: -20, hMm: 0 }] }] }
+];
+
+const referenceCardPayload = [{
+  id: "ablehnen",
+  frequency: 5,
+  infinitive: "ablehnen",
+  translations: ["отклонять", "отказываться", "не принимать"],
+  forms: {
+    praesens_3: "lehnt ab",
+    praeteritum: "lehnte ab",
+    partizip_2: "abgelehnt",
+    auxiliary: "hat"
+  },
+  examples: {
+    praesens: { de: "Ich lehne das Angebot ab.", ru: "Я отклоняю предложение." },
+    modal: { de: "Man kann ablehnen.", ru: "Можно отклонить." },
+    praeteritum: { de: "Er lehnte ab.", ru: "Он отказал." },
+    perfekt: { de: "Sie hat abgelehnt.", ru: "Она отказала." }
+  },
+  synonyms: [
+    { word: "zurückweisen", translation: "отклонять" },
+    { word: "verweigern", translation: "отказывать" }
+  ],
+  prefixes: ["отделяемые: ab-"]
+}];
+
+for (const [i, fx] of fixtures.entries()) {
+  const cards = normalizeImportedJson(fx);
+  assert(Array.isArray(cards) && cards.length > 0, \`fixture \${i} produced no cards\`);
+  const c = cards[0];
+  assert(typeof c.id === "string" && c.id.length > 0, \`fixture \${i} missing id\`);
+  assert(typeof c.inf === "string", \`fixture \${i} missing inf\`);
+  assert(typeof c.title === "string", \`fixture \${i} missing title\`);
+  assert(Array.isArray(c.boxes) && c.boxes.length > 0, \`fixture \${i} missing boxes\`);
+  assert(typeof c.freq === "number" && c.freq >= 0 && c.freq <= 5, \`fixture \${i} invalid freq\`);
+}
+
+const [ref] = normalizeImportedJson(referenceCardPayload);
+assert(ref.inf === "ablehnen", "reference schema: inf mapping failed");
+assert(ref.freq === 5, "reference schema: frequency mapping failed");
+assert(ref.forms_p3 === "lehnt ab", "reference schema: forms.praesens_3 mapping failed");
+assert(ref.forms_prat === "lehnte ab", "reference schema: forms.praeteritum mapping failed");
+assert(ref.forms_p2 === "abgelehnt", "reference schema: forms.partizip_2 mapping failed");
+assert(ref.forms_aux === "haben", "reference schema: forms.auxiliary=hat -> haben normalization failed");
+assert(ref.ex_1_de && ref.ex_1_ru, "reference schema: examples object mapping failed");
+assert(Array.isArray(ref.tags) && ref.tags.some(t => String(t).includes("ab-")), "reference schema: prefixes->tags mapping failed");
+
+const sample = normalizeCard({ inf: "testen", tr_1_ru: "тест", forms_p3: "testet", ex_1_de: "Ich teste." });
+for (const box of DEFAULT_TEMPLATE_BOXES) {
+  const r = getFieldText(sample, box.fieldId);
+  assert(r && typeof r.text === "string", \`getFieldText invalid for \${box.fieldId}\`);
+}
+`
+  );
+
+  try {
+    const esbuild = await import("esbuild");
+    await esbuild.build({
+      entryPoints: [entryPath],
+      outfile: bundlePath,
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      target: "node18",
+      logLevel: "silent",
+    });
+
+    await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`);
+    record("Runtime contracts", "OK");
+  } catch (e) {
+    throw e;
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+};
+
+
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
+
+const runRuntimeContracts = async () => {
+  const tmpDir = path.join(projectRoot, "_tmp", "smoke-runtime");
+  ensureDir(tmpDir);
+
+  const entryPath = path.join(tmpDir, "runtime-contract-entry.ts");
+  const bundlePath = path.join(tmpDir, "runtime-contract-entry.mjs");
+
+  fs.writeFileSync(
+    entryPath,
+    `import { normalizeImportedJson } from "${projectRoot}/src/io/normalizer.ts";
+import { DEFAULT_TEMPLATE_BOXES } from "${projectRoot}/src/layout/defaultTemplate.ts";
+import { getFieldText } from "${projectRoot}/src/utils/cardFields.ts";
+import { normalizeCard } from "${projectRoot}/src/model/cardSchema.ts";
+
+const assert = (condition: unknown, message: string) => {
+  if (!condition) throw new Error(message);
+};
+
+const fixtures = [
+  { cards: [{ id: "a1", inf: "machen", translations: [{ value: "делать" }] }] },
+  { verbs: [{ infinitive: "gehen", translations: [{ ru: "идти" }], forms: { p3: "geht" } }] },
+  [{ id: "arr-1", inf: "sein", tr_1_ru: "быть" }],
+  { cards: [{ id: "bad-1", inf: 123, forms: { aux: "invalid" }, boxes: [{ id: "b", fieldId: "inf", wMm: -20, hMm: 0 }] }] }
+];
+
+const referenceCardPayload = [{
+  id: "ablehnen",
+  frequency: 5,
+  infinitive: "ablehnen",
+  translations: ["отклонять", "отказываться", "не принимать"],
+  forms: {
+    praesens_3: "lehnt ab",
+    praeteritum: "lehnte ab",
+    partizip_2: "abgelehnt",
+    auxiliary: "hat"
+  },
+  examples: {
+    praesens: { de: "Ich lehne das Angebot ab.", ru: "Я отклоняю предложение." },
+    modal: { de: "Man kann ablehnen.", ru: "Можно отклонить." },
+    praeteritum: { de: "Er lehnte ab.", ru: "Он отказал." },
+    perfekt: { de: "Sie hat abgelehnt.", ru: "Она отказала." }
+  },
+  synonyms: [
+    { word: "zurückweisen", translation: "отклонять" },
+    { word: "verweigern", translation: "отказывать" }
+  ],
+  prefixes: ["отделяемые: ab-"]
+}];
+
+for (const [index, fixture] of fixtures.entries()) {
+  const cards = normalizeImportedJson(fixture);
+  assert(Array.isArray(cards) && cards.length > 0, \`fixture \${index} produced no cards\`);
+  const card = cards[0];
+  assert(typeof card.id === "string" && card.id.length > 0, \`fixture \${index} missing id\`);
+  assert(typeof card.inf === "string", \`fixture \${index} missing inf\`);
+  assert(typeof card.title === "string", \`fixture \${index} missing title\`);
+  assert(Array.isArray(card.boxes) && card.boxes.length > 0, \`fixture \${index} missing boxes\`);
+  assert(typeof card.freq === "number" && card.freq >= 0 && card.freq <= 5, \`fixture \${index} invalid freq\`);
+}
+
+const [referenceCard] = normalizeImportedJson(referenceCardPayload);
+assert(referenceCard.inf === "ablehnen", "reference schema: inf mapping failed");
+assert(referenceCard.freq === 5, "reference schema: frequency mapping failed");
+assert(referenceCard.forms_p3 === "lehnt ab", "reference schema: forms.praesens_3 mapping failed");
+assert(referenceCard.forms_prat === "lehnte ab", "reference schema: forms.praeteritum mapping failed");
+assert(referenceCard.forms_p2 === "abgelehnt", "reference schema: forms.partizip_2 mapping failed");
+assert(referenceCard.forms_aux === "haben", "reference schema: forms.auxiliary=hat normalization failed");
+assert(referenceCard.ex_1_de.length > 0 && referenceCard.ex_1_ru.length > 0, "reference schema: examples object mapping failed");
+assert(referenceCard.tags.some((tag) => tag.includes("ab-")), "reference schema: prefixes->tags mapping failed");
+
+const sampleCard = normalizeCard({ inf: "testen", tr_1_ru: "тест", forms_p3: "testet", ex_1_de: "Ich teste." });
+for (const box of DEFAULT_TEMPLATE_BOXES) {
+  const result = getFieldText(sampleCard, box.fieldId);
+  assert(typeof result.text === "string", \`getFieldText invalid for \${box.fieldId}\`);
+}
+`
+  );
+
+  try {
+    const esbuild = await import("esbuild");
+    await esbuild.build({
+      entryPoints: [entryPath],
+      outfile: bundlePath,
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      logLevel: "silent"
+    });
+
+    await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`);
+    record("Runtime contracts", "OK");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 };
 
 
@@ -134,7 +348,7 @@ const checkDevServer = () =>
         .get("http://127.0.0.1:5173", (res) => {
           const ok = res.statusCode && res.statusCode >= 200 && res.statusCode < 400;
           record("Dev server", ok ? "OK" : `FAIL (${res.statusCode})`);
-          resolve(ok);
+          resolve(Boolean(ok));
         })
         .on("error", () => {
           retries += 1;
@@ -150,12 +364,38 @@ const checkDevServer = () =>
     attempt();
   });
 
+const spawnDevServer = () => {
+  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+  return spawn(npmCmd, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
+    cwd: projectRoot,
+    stdio: "ignore",
+    shell: false,
+  });
+};
+
 const main = async () => {
   try {
     await runCommand("npm", ["run", "tsc"]);
     record("TypeScript", "OK");
   } catch (error) {
-    record("TypeScript", "FAIL", error.message);
+    record("TypeScript", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
     process.exitCode = 1;
   }
 
@@ -172,7 +412,21 @@ const main = async () => {
     await runCommand("npm", ["run", "build"]);
     record("Build", "OK");
   } catch (error) {
-    record("Build", "FAIL", error.message);
+    record("Build", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 
@@ -195,28 +449,15 @@ const main = async () => {
     "src/layout/defaultTemplate.ts",
     "src/pdf/exportPdf.ts",
     "src/ai/lmStudioClient.ts",
-    "_tools/backup.js"
+    "_tools/backup.js",
   ]);
 
-  let devServer;
-  try {
-    devServer = await import("node:child_process");
-  } catch {
-    record("Dev server", "SKIP", "Cannot import child_process");
-  }
+  // Dev server probe (optional, but useful).
+  const serverProcess = spawnDevServer();
+  const ok = await checkDevServer();
+  serverProcess.kill();
 
-  if (devServer) {
-    const serverProcess = devServer.spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
-      cwd: projectRoot,
-      stdio: "ignore",
-      shell: true
-    });
-    const ok = await checkDevServer();
-    serverProcess.kill();
-    if (!ok) {
-      process.exitCode = 1;
-    }
-  }
+  if (!ok) process.exitCode = 1;
 
   fs.writeFileSync(reportPath, `# Smoke Report\n\n${reportLines.join("\n")}\n`);
   console.log(`Smoke report saved to ${reportPath}`);
