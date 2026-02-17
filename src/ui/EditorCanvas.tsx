@@ -172,6 +172,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const dragActionRef = useRef<string | null>(null);
+  const dragRafRef = useRef<number | null>(null);
+  const pendingDragUpdateRef = useRef<{ boxId: string; update: Partial<Box>; reason: string } | null>(null);
+  const lastDragCommitAtRef = useRef(0);
   const isDarkTheme = document.documentElement.classList.contains("dark");
 
   const card = useMemo(() => {
@@ -217,6 +220,23 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
 
     const nextBoxes = card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box));
     updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason, { track: false });
+  };
+
+  const scheduleActiveBoxUpdate = (boxId: string, update: Partial<Box>, reason: string) => {
+    pendingDragUpdateRef.current = { boxId, update, reason };
+    if (dragRafRef.current != null) return;
+    dragRafRef.current = window.requestAnimationFrame((timestamp) => {
+      dragRafRef.current = null;
+      if (timestamp - lastDragCommitAtRef.current < 40) {
+        scheduleActiveBoxUpdate(boxId, update, reason);
+        return;
+      }
+      lastDragCommitAtRef.current = timestamp;
+      const payload = pendingDragUpdateRef.current;
+      pendingDragUpdateRef.current = null;
+      if (!payload) return;
+      updateActiveBox(payload.boxId, payload.update, payload.reason);
+    });
   };
 
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
