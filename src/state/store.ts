@@ -79,6 +79,7 @@ type PersistedState = {
     gridIntensity: "low" | "medium" | "high";
     showOnlyCmLines: boolean;
     debugOverlays: boolean;
+    showBlockMetrics: boolean;
     rulersPlacement: "outside" | "inside";
     editModeEnabled: boolean;
     activeTemplate: LayoutTemplate | null;
@@ -100,6 +101,7 @@ export type AppState = AppStateSnapshot &
     gridIntensity: "low" | "medium" | "high";
     showOnlyCmLines: boolean;
     debugOverlays: boolean;
+    showBlockMetrics: boolean;
     rulersPlacement: "outside" | "inside";
     isExporting: boolean;
     exportStartedAt: number | null;
@@ -131,6 +133,7 @@ export type AppState = AppStateSnapshot &
     setGridIntensity: (value: "low" | "medium" | "high") => void;
     toggleOnlyCmLines: () => void;
     toggleDebugOverlays: () => void;
+    toggleBlockMetrics: () => void;
     setRulersPlacement: (value: "outside" | "inside") => void;
     startExport: (label: string) => void;
     finishExport: () => void;
@@ -391,6 +394,7 @@ const createBaseState = () => ({
   gridIntensity: "low" as const,
   showOnlyCmLines: false,
   debugOverlays: false,
+  showBlockMetrics: false,
   rulersPlacement: "outside" as const,
   historyBookmarks: [] as HistoryBookmark[],
   changeLog: [] as ChangeLogEntry[],
@@ -485,6 +489,7 @@ const sanitizePersistedState = (raw: PersistedState["state"], persistedCards: Pe
         : base.gridIntensity,
     showOnlyCmLines: typeof raw.showOnlyCmLines === "boolean" ? raw.showOnlyCmLines : base.showOnlyCmLines,
     debugOverlays: typeof raw.debugOverlays === "boolean" ? raw.debugOverlays : base.debugOverlays,
+    showBlockMetrics: typeof raw.showBlockMetrics === "boolean" ? raw.showBlockMetrics : base.showBlockMetrics,
     rulersPlacement: (raw.rulersPlacement === "inside" ? "inside" : "outside") as "inside" | "outside",
     historyBookmarks: [],
     changeLog: [],
@@ -618,6 +623,7 @@ const buildPersistPayload = (state: AppState): PersistedState => ({
     gridIntensity: state.gridIntensity,
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
+    showBlockMetrics: state.showBlockMetrics,
     rulersPlacement: state.rulersPlacement,
     editModeEnabled: state.editModeEnabled,
     activeTemplate: state.activeTemplate ? safeClone(state.activeTemplate) : null
@@ -679,6 +685,7 @@ export const useAppStore = create<AppState>()(
     gridIntensity: initialState.gridIntensity,
     showOnlyCmLines: initialState.showOnlyCmLines,
     debugOverlays: initialState.debugOverlays,
+    showBlockMetrics: initialState.showBlockMetrics,
     rulersPlacement: initialState.rulersPlacement,
     historyBookmarks: initialState.historyBookmarks ?? [],
     changeLog: initialState.changeLog ?? [],
@@ -843,6 +850,10 @@ export const useAppStore = create<AppState>()(
       trackStateEvent(state, get(), "toggleDebugOverlays");
       state.debugOverlays = !state.debugOverlays;
     }),
+    toggleBlockMetrics: () => set((state) => {
+      trackStateEvent(state, get(), "toggleBlockMetrics", { undoable: false });
+      state.showBlockMetrics = !state.showBlockMetrics;
+    }),
     setRulersPlacement: (value) => set((state) => {
       trackStateEvent(state, get(), `setRulersPlacement:${value}`);
       state.rulersPlacement = value;
@@ -1004,6 +1015,7 @@ export const useAppStore = create<AppState>()(
       state.gridIntensity = next.gridIntensity;
       state.showOnlyCmLines = next.showOnlyCmLines;
       state.debugOverlays = next.debugOverlays;
+      state.showBlockMetrics = next.showBlockMetrics;
       state.rulersPlacement = next.rulersPlacement;
       state.past = [];
       state.future = [];

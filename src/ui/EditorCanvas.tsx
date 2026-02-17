@@ -124,6 +124,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     gridIntensity,
     showOnlyCmLines,
     debugOverlays,
+    showBlockMetrics,
     rulersPlacement,
     selectBox,
     updateCardSilent,
@@ -147,6 +148,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     gridIntensity: state.gridIntensity,
     showOnlyCmLines: state.showOnlyCmLines,
     debugOverlays: state.debugOverlays,
+    showBlockMetrics: state.showBlockMetrics,
     rulersPlacement: state.rulersPlacement,
     selectBox: state.selectBox,
     updateCardSilent: state.updateCardSilent,
@@ -887,7 +889,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       {freqValidationError}
                     </span>
                   )}
-                  {renderMode === "editor" && debugOverlays && (
+                  {renderMode === "editor" && showBlockMetrics && (
                     <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[9px] text-slate-500 shadow-sm dark:bg-slate-900/80 dark:text-slate-300">
                       {box.fieldId}
                     </span>
