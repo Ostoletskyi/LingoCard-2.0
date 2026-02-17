@@ -272,7 +272,7 @@ export const CardListPanel = ({ side }: Props) => {
     }, 600);
   };
 
-  const handlePdfExport = (mode: "current" | "selected" | "all") => {
+  const handlePdfExport = async (mode: "current" | "selected" | "all") => {
     const list = cards;
     let exportCards = list;
     let suffix = "all";
@@ -290,12 +290,15 @@ export const CardListPanel = ({ side }: Props) => {
     }
     const fileName = `LingoCard_${side}_${suffix}.pdf`;
     startExport("Экспорт PDF");
-    exportCardsToPdf(exportCards, layout, {
-      cardsPerRow: 1,
-      cardsPerColumn: 1,
-      marginMm: 0
-    }, fileName);
-    finishExport();
+    try {
+      await exportCardsToPdf(exportCards, layout, {
+        cardsPerRow: 1,
+        cardsPerColumn: 1,
+        marginMm: 0
+      }, fileName);
+    } finally {
+      finishExport();
+    }
   };
 
   const downloadImportLog = () => {

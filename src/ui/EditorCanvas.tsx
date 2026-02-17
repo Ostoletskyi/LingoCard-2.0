@@ -173,6 +173,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const dragActionRef = useRef<string | null>(null);
   const dragRafRef = useRef<number | null>(null);
   const pendingDragUpdateRef = useRef<{ boxId: string; update: Partial<Box>; reason: string } | null>(null);
+  const lastDragCommitAtRef = useRef(0);
   const isDarkTheme = document.documentElement.classList.contains("dark");
 
   const card = useMemo(() => {
@@ -219,8 +220,13 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const scheduleActiveBoxUpdate = (boxId: string, update: Partial<Box>, reason: string) => {
     pendingDragUpdateRef.current = { boxId, update, reason };
     if (dragRafRef.current != null) return;
-    dragRafRef.current = window.requestAnimationFrame(() => {
+    dragRafRef.current = window.requestAnimationFrame((timestamp) => {
       dragRafRef.current = null;
+      if (timestamp - lastDragCommitAtRef.current < 28) {
+        scheduleActiveBoxUpdate(boxId, update, reason);
+        return;
+      }
+      lastDragCommitAtRef.current = timestamp;
       const payload = pendingDragUpdateRef.current;
       pendingDragUpdateRef.current = null;
       if (!payload) return;

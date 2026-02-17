@@ -14,9 +14,10 @@ export type PdfExportOptions = {
   marginMm?: number;
 };
 
-const CANVAS_DPI = 300;
+const BASE_CANVAS_DPI = 220;
+const BULK_CANVAS_DPI = 160;
 
-const mmToCanvasPx = (mm: number) => Math.round((mm / MM_PER_INCH) * CANVAS_DPI);
+const makeMmToCanvasPx = (dpi: number) => (mm: number) => Math.round((mm / MM_PER_INCH) * dpi);
 
 const resolveReservedRightPx = (fieldId: string, box: { reservedRightPx?: number }) => {
   if (typeof box.reservedRightPx === "number" && Number.isFinite(box.reservedRightPx)) {
@@ -24,7 +25,6 @@ const resolveReservedRightPx = (fieldId: string, box: { reservedRightPx?: number
   }
   return normalizeFieldId(fieldId) === "freq" ? 24 : 0;
 };
-
 
 const FREQ_DOT_COLORS: Record<number, string> = {
   1: "rgb(59 130 246)",
@@ -37,9 +37,10 @@ const FREQ_DOT_COLORS: Record<number, string> = {
 const drawFrequencyDots = (
   ctx: CanvasRenderingContext2D,
   card: Card,
-  box: { xMm: number; yMm: number; wMm: number; style: { paddingMm: number } },
+  box: { xMm: number; style: { paddingMm: number } },
   boxY: number,
-  boxH: number
+  boxH: number,
+  mmToCanvasPx: (mm: number) => number
 ) => {
   const dots = Math.max(0, Math.min(5, Math.round(card.freq || 0)));
   if (!dots) return;
@@ -69,14 +70,17 @@ const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: s
   return getFieldText(card, fieldId).text;
 };
 
-export const exportCardsToPdf = (
+export const exportCardsToPdf = async (
   cards: Card[],
   layout: Layout,
   options: PdfExportOptions,
   fileName: string = "cards.pdf"
 ) => {
   const { cardsPerRow = 1, cardsPerColumn = 1, marginMm = 0 } = options;
-  logger.info("PDF export start", `cards=${cards.length}, size=${layout.widthMm}x${layout.heightMm}mm, mode=${cardsPerRow}x${cardsPerColumn}, margin=${marginMm}mm, font=DejaVu Sans/Noto Sans fallback`);
+  const dpi = cards.length > 20 ? BULK_CANVAS_DPI : BASE_CANVAS_DPI;
+  const mmToCanvasPx = makeMmToCanvasPx(dpi);
+  logger.info("PDF export start", `cards=${cards.length}, size=${layout.widthMm}x${layout.heightMm}mm, mode=${cardsPerRow}x${cardsPerColumn}, margin=${marginMm}mm, dpi=${dpi}`);
+
   const pdfDebug =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("pdfDebug") === "1";
@@ -98,19 +102,17 @@ export const exportCardsToPdf = (
     return;
   }
 
-  cards.forEach((card, index) => {
+  for (let index = 0; index < cards.length; index += 1) {
+    const card = cards[index]!;
     const localIndex = index % (cardsPerRow * cardsPerColumn);
     if (index > 0 && localIndex === 0) {
       doc.addPage();
     }
+
     const row = Math.floor(localIndex / cardsPerRow);
     const col = localIndex % cardsPerRow;
     const x = marginMm + col * cardWidth;
     const y = marginMm + row * cardHeight;
-
-    if (marginMm > 0) {
-      logger.warn("PDF export uses margin", `${marginMm}mm margin applied`);
-    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#ffffff";
@@ -119,9 +121,10 @@ export const exportCardsToPdf = (
     const activeBoxes = card.boxes?.length
       ? card.boxes
       : buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm);
+
     activeBoxes.forEach((box) => {
       if (box.style.visible === false) return;
-      const fontPx = (box.style.fontSizePt / 72) * CANVAS_DPI;
+      const fontPx = (box.style.fontSizePt / 72) * dpi;
       const paddingPx = mmToCanvasPx(box.style.paddingMm);
       const boxX = mmToCanvasPx(box.xMm);
       const boxY = mmToCanvasPx(box.yMm);
@@ -143,7 +146,7 @@ export const exportCardsToPdf = (
       }
 
       if (isFrequencyBox) {
-        drawFrequencyDots(ctx, card, box, boxY, boxH);
+        drawFrequencyDots(ctx, card, box, boxY, boxH, mmToCanvasPx);
         return;
       }
 
@@ -155,12 +158,8 @@ export const exportCardsToPdf = (
 
         const measured = ctx.measureText(line).width;
         let textX = boxX + paddingPx;
-        if (box.style.align === "center") {
-          textX = boxX + (boxW - measured) / 2;
-        }
-        if (box.style.align === "right") {
-          textX = boxX + boxW - paddingPx - measured;
-        }
+        if (box.style.align === "center") textX = boxX + (boxW - measured) / 2;
+        if (box.style.align === "right") textX = boxX + boxW - paddingPx - measured;
         ctx.fillText(line, textX, textY);
       });
     });
@@ -173,7 +172,11 @@ export const exportCardsToPdf = (
 
     const image = canvas.toDataURL("image/png");
     doc.addImage(image, "PNG", mmToPdf(x), mmToPdf(y), mmToPdf(cardWidth), mmToPdf(cardHeight));
-  });
+
+    if (index > 0 && index % 4 === 0) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
 
   logger.info("PDF export done", `file=${fileName}, pages=${doc.getNumberOfPages()}`);
   doc.save(fileName);

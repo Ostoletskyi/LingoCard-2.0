@@ -1157,6 +1157,6 @@ if (typeof window !== "undefined") {
     }
     persistTimer = window.setTimeout(() => {
       persistState(state);
-    }, 150);
+    }, 600);
   });
 }
