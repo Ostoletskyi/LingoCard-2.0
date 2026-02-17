@@ -24,6 +24,7 @@ type DragState = {
   startX: number;
   startY: number;
   startBox: Box;
+  currentBox: Box;
   mode: DragMode;
   hasApplied: boolean;
 };
@@ -199,7 +200,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     return buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm);
   }, [card, hasCardBoxes, layout.widthMm, layout.heightMm]);
   const activeBoxes = useMemo(() => (hasCardBoxes ? (card?.boxes ?? []) : generatedFallbackBoxes), [hasCardBoxes, card?.boxes, generatedFallbackBoxes]);
-  const visibleBoxes = useMemo(() => activeBoxes.filter((box) => box.style.visible !== false), [activeBoxes]);
+  const dragPreviewBoxes = useMemo(() => {
+    if (!dragState) return activeBoxes;
+    return activeBoxes.map((box) => (box.id === dragState.boxId ? dragState.currentBox : box));
+  }, [activeBoxes, dragState]);
+  const visibleBoxes = useMemo(() => dragPreviewBoxes.filter((box) => box.style.visible !== false), [dragPreviewBoxes]);
   const canEditLayoutGeometry = hasCardBoxes;
 
   const updateActiveBox = (boxId: string, update: Partial<Box>, reason: string) => {
@@ -259,6 +264,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       startX: event.clientX,
       startY: event.clientY,
       startBox: structuredClone(box),
+      currentBox: structuredClone(box),
       mode,
       hasApplied: false
     });
@@ -291,16 +297,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const deltaXMm = pxToMm(deltaX, basePxPerMm * zoomScale);
     const deltaYMm = pxToMm(deltaY, basePxPerMm * zoomScale);
 
-    if (!dragState.hasApplied) {
-      setDragState((prev) => (prev ? { ...prev, hasApplied: true } : prev));
-    }
-
     if (dragState.mode.type === "move") {
       const nextXRaw = applySnap(dragState.startBox.xMm + deltaXMm, snapEnabled);
       const nextYRaw = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
       const nextX = Math.min(Math.max(0, nextXRaw), Math.max(0, layout.widthMm - dragState.startBox.wMm));
       const nextY = Math.min(Math.max(0, nextYRaw), Math.max(0, layout.heightMm - dragState.startBox.hMm));
-      scheduleActiveBoxUpdate(dragState.boxId, { xMm: nextX, yMm: nextY }, `boxMove:${dragState.boxId}`);
+      setDragState((prev) => prev ? { ...prev, hasApplied: true, currentBox: { ...prev.currentBox, xMm: nextX, yMm: nextY } } : prev);
       return;
     }
 
@@ -340,25 +342,20 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
     nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
 
-    scheduleActiveBoxUpdate(
-      dragState.boxId,
-      { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH },
-      `boxResize:${dragState.boxId}`
-    );
+    setDragState((prev) => prev ? { ...prev, hasApplied: true, currentBox: { ...prev.currentBox, xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH } } : prev);
   };
 
   const handlePointerUp = () => {
-    if (dragRafRef.current != null) {
-      window.cancelAnimationFrame(dragRafRef.current);
-      dragRafRef.current = null;
-    }
-    const pending = pendingDragUpdateRef.current;
-    pendingDragUpdateRef.current = null;
-    if (pending) {
-      updateActiveBox(pending.boxId, pending.update, pending.reason);
-    }
-    if (dragState?.hasApplied && dragActionRef.current) {
-      recordEvent(dragActionRef.current);
+    if (dragState?.hasApplied) {
+      const next = dragState.currentBox;
+      updateActiveBox(
+        dragState.boxId,
+        { xMm: next.xMm, yMm: next.yMm, wMm: next.wMm, hMm: next.hMm },
+        dragState.mode.type === "move" ? `boxMove:${dragState.boxId}` : `boxResize:${dragState.boxId}`
+      );
+      if (dragActionRef.current) {
+        recordEvent(dragActionRef.current);
+      }
     }
     dragActionRef.current = null;
     setDragState(null);
