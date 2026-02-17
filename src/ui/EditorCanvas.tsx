@@ -171,6 +171,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const dragActionRef = useRef<string | null>(null);
+  const dragRafRef = useRef<number | null>(null);
+  const pendingDragUpdateRef = useRef<{ boxId: string; update: Partial<Box>; reason: string } | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
 
   const card = useMemo(() => {
@@ -214,6 +216,18 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason, { track: false });
   };
 
+  const scheduleActiveBoxUpdate = (boxId: string, update: Partial<Box>, reason: string) => {
+    pendingDragUpdateRef.current = { boxId, update, reason };
+    if (dragRafRef.current != null) return;
+    dragRafRef.current = window.requestAnimationFrame(() => {
+      dragRafRef.current = null;
+      const payload = pendingDragUpdateRef.current;
+      pendingDragUpdateRef.current = null;
+      if (!payload) return;
+      updateActiveBox(payload.boxId, payload.update, payload.reason);
+    });
+  };
+
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
     if (!editModeEnabled) return;
     if (editingBoxId) return;
@@ -249,7 +263,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       dragActionRef.current = null;
       setDragState(null);
     }
-    if (cardRef.current) {
+    if (!dragState && cardRef.current) {
       const rect = cardRef.current.getBoundingClientRect();
       const x = (event.clientX - rect.left)  / (basePxPerMm * zoomScale);
       const y = (event.clientY - rect.top)  / (basePxPerMm * zoomScale);
@@ -280,7 +294,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const nextYRaw = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
       const nextX = Math.min(Math.max(0, nextXRaw), Math.max(0, layout.widthMm - dragState.startBox.wMm));
       const nextY = Math.min(Math.max(0, nextYRaw), Math.max(0, layout.heightMm - dragState.startBox.hMm));
-      updateActiveBox(dragState.boxId, { xMm: nextX, yMm: nextY }, `boxMove:${dragState.boxId}`);
+      scheduleActiveBoxUpdate(dragState.boxId, { xMm: nextX, yMm: nextY }, `boxMove:${dragState.boxId}`);
       return;
     }
 
@@ -320,7 +334,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
     nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
 
-    updateActiveBox(
+    scheduleActiveBoxUpdate(
       dragState.boxId,
       { xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH },
       `boxResize:${dragState.boxId}`
@@ -328,6 +342,15 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   };
 
   const handlePointerUp = () => {
+    if (dragRafRef.current != null) {
+      window.cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+    }
+    const pending = pendingDragUpdateRef.current;
+    pendingDragUpdateRef.current = null;
+    if (pending) {
+      updateActiveBox(pending.boxId, pending.update, pending.reason);
+    }
     if (dragState?.hasApplied && dragActionRef.current) {
       recordEvent(dragActionRef.current);
     }
