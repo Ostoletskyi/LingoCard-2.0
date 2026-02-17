@@ -220,7 +220,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     updateBoxAcrossColumn({ side: selectedSide, boxId, update, reason });
   };
 
-  const flushDragPreview = () => {
+  const flushPendingDragPreview = () => {
     if (dragPreviewRafRef.current != null) {
       window.cancelAnimationFrame(dragPreviewRafRef.current);
       dragPreviewRafRef.current = null;
@@ -231,30 +231,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
   };
 
-  const scheduleDragPreview = (nextBox: Box) => {
-    pendingDragBoxRef.current = nextBox;
-    if (dragPreviewRafRef.current != null) return;
-    dragPreviewRafRef.current = window.requestAnimationFrame(() => {
-      dragPreviewRafRef.current = null;
-      const pending = pendingDragBoxRef.current;
-      pendingDragBoxRef.current = null;
-      if (!pending) return;
-      setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
-    });
-  };
-
-  const flushDragPreview = () => {
-    if (dragPreviewRafRef.current != null) {
-      window.cancelAnimationFrame(dragPreviewRafRef.current);
-      dragPreviewRafRef.current = null;
-    }
-    const pending = pendingDragBoxRef.current;
-    pendingDragBoxRef.current = null;
-    if (!pending) return;
-    setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
-  };
-
-  const scheduleDragPreview = (nextBox: Box) => {
+  const queueDragPreviewUpdate = (nextBox: Box) => {
     pendingDragBoxRef.current = nextBox;
     if (dragPreviewRafRef.current != null) return;
     dragPreviewRafRef.current = window.requestAnimationFrame(() => {
@@ -331,7 +308,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const nextYRaw = applySnap(dragState.startBox.yMm + deltaYMm, snapEnabled);
       const nextX = Math.min(Math.max(0, nextXRaw), Math.max(0, layout.widthMm - dragState.startBox.wMm));
       const nextY = Math.min(Math.max(0, nextYRaw), Math.max(0, layout.heightMm - dragState.startBox.hMm));
-      scheduleDragPreview({ ...dragState.currentBox, xMm: nextX, yMm: nextY });
+      queueDragPreviewUpdate({ ...dragState.currentBox, xMm: nextX, yMm: nextY });
       return;
     }
 
@@ -371,11 +348,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     nextW = Math.max(MIN_BOX_SIZE_MM, nextW);
     nextH = Math.max(MIN_BOX_SIZE_MM, nextH);
 
-    scheduleDragPreview({ ...dragState.currentBox, xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
+    queueDragPreviewUpdate({ ...dragState.currentBox, xMm: nextX, yMm: nextY, wMm: nextW, hMm: nextH });
   };
 
   const handlePointerUp = () => {
-    flushDragPreview();
+    flushPendingDragPreview();
     if (dragState?.hasApplied) {
       const next = dragState.currentBox;
       updateActiveBox(
