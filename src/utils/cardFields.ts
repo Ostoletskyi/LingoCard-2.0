@@ -12,6 +12,7 @@ const fieldLabels: Record<string, string> = {
   forms_prat: "Präteritum",
   forms_p2: "Partizip II",
   forms_aux: "Aux (haben/sein)",
+  forms_service: "Сервисная форма",
   tr_1_ru: "Перевод RU",
   tr_1_ctx: "Контекст RU",
   tr_2_ru: "Перевод RU",
@@ -105,13 +106,14 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     return { text: fromFlat || "Переводы…", isPlaceholder: fromFlat.length === 0 };
   }
   if (normalizedFieldId === "forms") {
+    const fromService = card.forms_service?.trim();
+    if (fromService) {
+      return { text: fromService, isPlaceholder: false };
+    }
     const fromAgg = card.forms
-      ? [
-          card.forms.p3 ? `1. P3: ${card.forms.p3}` : "",
-          card.forms.praet ? `2. Prät: ${card.forms.praet}` : "",
-          card.forms.p2 ? `3. P2: ${card.forms.p2}` : "",
-          card.forms.aux ? `4. Aux: ${card.forms.aux}` : ""
-        ].filter(Boolean).join("\n")
+      ? [card.forms.p3, card.forms.praet, card.forms.perfektFull || card.forms.p2]
+          .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .join(" / ")
       : "";
     if (fromAgg) {
       return { text: fromAgg, isPlaceholder: false };
@@ -139,10 +141,7 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
   }
   if (normalizedFieldId === "synonyms") {
     const fromAgg = (card.synonyms ?? [])
-      .map((item, idx) => {
-        const line = `${item.de}${item.de && item.ru ? " — " : ""}${item.ru ?? ""}`.trim();
-        return line ? `${idx + 1}. ${line}` : "";
-      })
+      .map((item) => `${item.de}${item.de && item.ru ? " — " : ""}${item.ru ?? ""}`.trim())
       .filter(Boolean)
       .join("\n");
     if (fromAgg) {
@@ -167,15 +166,16 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
         return de || ru ? `${de}${de && ru ? " — " : ""}${ru}` : "";
       })
       .filter(Boolean)
-      .map((line, idx) => `${idx + 1}. ${line}`)
       .join("\n");
     return { text: text || "Рекомендации…", isPlaceholder: text.length === 0 };
   }
   if (normalizedFieldId === "examples") {
     const fromAgg = (card.examples ?? [])
-      .map((item, idx) => {
-        const line = `${item.de}${item.de && item.ru ? " | " : ""}${item.ru ?? ""}`.trim();
-        return line ? `${idx + 1}. ${line}` : "";
+      .map((item) => {
+        const head = item.tag ? `[${item.tag}] ` : "";
+        const de = item.de?.trim() ?? "";
+        const ru = item.ru?.trim() ?? "";
+        return [head + de, ru ? `— ${ru}` : ""].filter(Boolean).join("\n");
       })
       .filter(Boolean)
       .join("\n");
@@ -184,13 +184,14 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     }
     const text = [1, 2, 3, 4, 5]
       .map((i) => {
-        const de = card[`ex_${i}_de` as keyof Card] as string;
-        const ru = card[`ex_${i}_ru` as keyof Card] as string;
-        return de || ru ? `${de}${de && ru ? " | " : ""}${ru}` : "";
+        const de = (card[`ex_${i}_de` as keyof Card] as string)?.trim();
+        const ru = (card[`ex_${i}_ru` as keyof Card] as string)?.trim();
+        const tag = (card[`ex_${i}_tag` as keyof Card] as string)?.trim();
+        if (!de && !ru) return "";
+        return [`${tag ? `[${tag}] ` : ""}${de ?? ""}`.trim(), ru ? `— ${ru}` : ""].filter(Boolean).join("\n");
       })
       .filter(Boolean)
-      .map((line, idx) => `${idx + 1}. ${line}`)
-      .join("\n");
+      .join("\n\n");
     return { text: text || "Примеры…", isPlaceholder: text.length === 0 };
   }
   if (normalizedFieldId === "custom_text") {

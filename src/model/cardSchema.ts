@@ -26,7 +26,8 @@ const formsSchema = {
   forms_p3: z.string(),
   forms_prat: z.string(),
   forms_p2: z.string(),
-  forms_aux: z.enum(["haben", "sein", ""])
+  forms_aux: z.enum(["haben", "sein", ""]),
+  forms_service: z.string()
 };
 
 const synonymSchema = {
@@ -81,7 +82,9 @@ const aggregateSchema = {
     p3: z.string().optional(),
     praet: z.string().optional(),
     p2: z.string().optional(),
-    aux: z.enum(["haben", "sein", ""]).optional()
+    aux: z.enum(["haben", "sein", ""]).optional(),
+    service: z.string().optional(),
+    perfektFull: z.string().optional()
   }).optional(),
   synonyms: z.array(
     z.object({
@@ -133,6 +136,7 @@ export const emptyCard: Card = {
   forms_prat: "",
   forms_p2: "",
   forms_aux: "",
+  forms_service: "",
   syn_1_de: "",
   syn_1_ru: "",
   syn_2_de: "",
@@ -236,7 +240,9 @@ export const normalizeCard = (input: Partial<Card>): Card => {
       ...(typeof input.forms.p3 === "string" ? { p3: input.forms.p3 } : {}),
       ...(typeof input.forms.praet === "string" ? { praet: input.forms.praet } : {}),
       ...(typeof input.forms.p2 === "string" ? { p2: input.forms.p2 } : {}),
-      ...(input.forms.aux === "haben" || input.forms.aux === "sein" || input.forms.aux === "" ? { aux: input.forms.aux } : {})
+      ...(input.forms.aux === "haben" || input.forms.aux === "sein" || input.forms.aux === "" ? { aux: input.forms.aux } : {}),
+      ...(typeof (input.forms as Record<string, unknown>)?.service === "string" ? { service: (input.forms as Record<string, string>).service } : {}),
+      ...(typeof (input.forms as Record<string, unknown>)?.perfektFull === "string" ? { perfektFull: (input.forms as Record<string, string>).perfektFull } : {})
     } : {},
     synonyms: Array.isArray(input.synonyms) ? input.synonyms.map((item) => ({ de: toString(item?.de), ...(typeof item?.ru === "string" ? { ru: item.ru } : {}) })) : [],
     examples: Array.isArray(input.examples) ? input.examples.map((item) => ({ de: toString(item?.de), ...(typeof item?.ru === "string" ? { ru: item.ru } : {}), ...(typeof item?.tag === "string" ? { tag: item.tag } : {}) })) : [],

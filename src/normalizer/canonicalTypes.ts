@@ -21,7 +21,7 @@ export type CanonicalCard = {
   freq: number | null;
   tags: string[];
   tr: Array<{ value: string; ctx?: string }>;
-  forms: { p3?: string; praet?: string; p2?: string; aux?: "haben" | "sein" | "" };
+  forms: { p3?: string; praet?: string; p2?: string; aux?: "haben" | "sein" | ""; service?: string; perfektFull?: string };
   synonyms: Array<{ de: string; ru?: string }>;
   examples: Array<{ de: string; ru?: string; tag?: string }>;
   recommendations: Array<{ de: string; ru?: string }>;

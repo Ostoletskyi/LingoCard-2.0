@@ -33,6 +33,15 @@ const FIELD_ALIASES: Record<string, string> = {
   synonyms: "synonyms",
   ex: "examples",
   examples: "examples",
+
+  recommendation: "recommendations",
+  recommendations: "recommendations",
+  rektion: "recommendations",
+  collocations: "recommendations",
+  prefix: "meta",
+  prefixes: "meta",
+  trennbar: "meta",
+  meta_info: "meta",
 };
 
 export const normalizeFieldId = (input: string) => {

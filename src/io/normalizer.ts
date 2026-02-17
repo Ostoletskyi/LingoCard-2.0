@@ -157,7 +157,9 @@ const enforceCanonicalInvariants = (card: CanonicalCard): CanonicalCard => {
       ...(typeof card.forms.p3 === "string" ? { p3: card.forms.p3 } : {}),
       ...(typeof card.forms.praet === "string" ? { praet: card.forms.praet } : {}),
       ...(typeof card.forms.p2 === "string" ? { p2: card.forms.p2 } : {}),
-      ...(card.forms.aux !== undefined ? { aux: safeFormsAux } : {})
+      ...(card.forms.aux !== undefined ? { aux: safeFormsAux } : {}),
+      ...(typeof card.forms.service === "string" ? { service: card.forms.service } : {}),
+      ...(typeof card.forms.perfektFull === "string" ? { perfektFull: card.forms.perfektFull } : {})
     },
     synonyms: Array.isArray(card.synonyms)
       ? card.synonyms
@@ -289,7 +291,9 @@ const toCanonicalCard = (
       p3: pickString({ ...forms, ...root }, ["forms_p3", "p3", "present3", "praesens3", "praesens_3"]),
       praet: pickString({ ...forms, ...root }, ["forms_prat", "forms_praet", "prat", "praet", "praeteritum", "präteritum", "preterite", "past"]),
       p2: pickString({ ...forms, ...root }, ["forms_p2", "p2", "partizip2", "partizip_2", "participle2"]),
-      aux
+      aux,
+      service: pickString({ ...forms, ...root }, ["forms_service", "service", "times_service"]),
+      perfektFull: pickString({ ...forms, ...root }, ["forms_perfekt_full", "perfekt_full", "perfect_full"])
     },
     synonyms: synonyms.slice(0, 3),
     examples: examples.slice(0, 5),
@@ -351,6 +355,11 @@ const canonicalToInternalCard = (
     forms_prat: canonical.forms.praet ?? "",
     forms_p2: canonical.forms.p2 ?? "",
     forms_aux: canonical.forms.aux ?? "",
+    forms_service:
+      canonical.forms.service ??
+      [canonical.forms.p3, canonical.forms.praet, canonical.forms.perfektFull || canonical.forms.p2]
+        .filter((part) => typeof part === "string" && part.trim().length > 0)
+        .join(" / "),
     syn_1_de: canonical.synonyms[0]?.de ?? "",
     syn_1_ru: canonical.synonyms[0]?.ru ?? "",
     syn_2_de: canonical.synonyms[1]?.de ?? "",
