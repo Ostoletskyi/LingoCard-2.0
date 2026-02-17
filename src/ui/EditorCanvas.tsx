@@ -222,7 +222,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (dragRafRef.current != null) return;
     dragRafRef.current = window.requestAnimationFrame((timestamp) => {
       dragRafRef.current = null;
-      if (timestamp - lastDragCommitAtRef.current < 28) {
+      if (timestamp - lastDragCommitAtRef.current < 40) {
         scheduleActiveBoxUpdate(boxId, update, reason);
         return;
       }

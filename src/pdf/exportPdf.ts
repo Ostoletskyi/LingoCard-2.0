@@ -15,7 +15,8 @@ export type PdfExportOptions = {
 };
 
 const BASE_CANVAS_DPI = 220;
-const BULK_CANVAS_DPI = 160;
+const BULK_CANVAS_DPI = 140;
+const XL_BULK_CANVAS_DPI = 120;
 
 const makeMmToCanvasPx = (dpi: number) => (mm: number) => Math.round((mm / MM_PER_INCH) * dpi);
 
@@ -77,8 +78,10 @@ export const exportCardsToPdf = async (
   fileName: string = "cards.pdf"
 ) => {
   const { cardsPerRow = 1, cardsPerColumn = 1, marginMm = 0 } = options;
-  const dpi = cards.length > 20 ? BULK_CANVAS_DPI : BASE_CANVAS_DPI;
+  const dpi = cards.length > 180 ? XL_BULK_CANVAS_DPI : cards.length > 20 ? BULK_CANVAS_DPI : BASE_CANVAS_DPI;
   const mmToCanvasPx = makeMmToCanvasPx(dpi);
+  const useJpeg = cards.length > 40;
+  const imageType = useJpeg ? "JPEG" : "PNG";
   logger.info("PDF export start", `cards=${cards.length}, size=${layout.widthMm}x${layout.heightMm}mm, mode=${cardsPerRow}x${cardsPerColumn}, margin=${marginMm}mm, dpi=${dpi}`);
 
   const pdfDebug =
@@ -88,7 +91,8 @@ export const exportCardsToPdf = async (
   const doc = new jsPDF({
     orientation: layout.widthMm >= layout.heightMm ? "landscape" : "portrait",
     unit: "mm",
-    format: [mmToPdf(layout.widthMm), mmToPdf(layout.heightMm)]
+    format: [mmToPdf(layout.widthMm), mmToPdf(layout.heightMm)],
+    compress: true
   });
 
   const cardWidth = layout.widthMm;
@@ -170,8 +174,8 @@ export const exportCardsToPdf = async (
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
     }
 
-    const image = canvas.toDataURL("image/png");
-    doc.addImage(image, "PNG", mmToPdf(x), mmToPdf(y), mmToPdf(cardWidth), mmToPdf(cardHeight));
+    const image = useJpeg ? canvas.toDataURL("image/jpeg", 0.72) : canvas.toDataURL("image/png");
+    doc.addImage(image, imageType, mmToPdf(x), mmToPdf(y), mmToPdf(cardWidth), mmToPdf(cardHeight), undefined, "FAST");
 
     if (index > 0 && index % 4 === 0) {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
