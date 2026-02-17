@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { current } from "immer";
 import type { Card } from "../model/cardSchema";
 import { defaultLayout, type Layout } from "../model/layoutSchema";
 import { normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 import type { Box } from "../model/layoutSchema";
+import { applyLayoutTemplate, extractLayoutTemplate, type LayoutTemplate } from "../editor/layoutTemplate";
+import { autoResizeCardBoxes } from "../editor/autoBoxSize";
+import { getPxPerMm } from "../utils/mmPx";
 
 export type ListSide = "A" | "B";
 
@@ -37,11 +41,31 @@ export type ChangeLogEntry = {
   action: string;
 };
 
+type AnyPersistedState = { version?: unknown; state?: unknown };
+
+const migratePersistedState = (raw: AnyPersistedState): PersistedState | null => {
+  if (raw?.version === 1 && raw.state && typeof raw.state === "object") {
+    const state = raw.state as Record<string, unknown>;
+    return {
+      version: 1,
+      state: {
+        ...(state as PersistedState["state"]),
+        activeTemplate:
+          state.activeTemplate && typeof state.activeTemplate === "object"
+            ? (state.activeTemplate as LayoutTemplate)
+            : null
+      }
+    };
+  }
+  if (typeof raw?.version === "number") {
+    console.warn("[Persist][Migration] Unsupported persisted version", raw.version);
+  }
+  return null;
+};
+
 type PersistedState = {
   version: 1;
   state: {
-    cardsA: Card[];
-    cardsB: Card[];
     selectedId: string | null;
     selectedSide: ListSide;
     layout: Layout;
@@ -55,10 +79,10 @@ type PersistedState = {
     gridIntensity: "low" | "medium" | "high";
     showOnlyCmLines: boolean;
     debugOverlays: boolean;
+    showBlockMetrics: boolean;
     rulersPlacement: "outside" | "inside";
-    historyBookmarks: HistoryBookmark[];
-    changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
+    activeTemplate: LayoutTemplate | null;
   };
 };
 
@@ -71,6 +95,7 @@ export type AppState = AppStateSnapshot &
     gridIntensity: "low" | "medium" | "high";
     showOnlyCmLines: boolean;
     debugOverlays: boolean;
+    showBlockMetrics: boolean;
     rulersPlacement: "outside" | "inside";
     isExporting: boolean;
     exportStartedAt: number | null;
@@ -82,6 +107,8 @@ export type AppState = AppStateSnapshot &
     historyBookmarks: HistoryBookmark[];
     changeLog: ChangeLogEntry[];
     editModeEnabled: boolean;
+    activeTemplate: LayoutTemplate | null;
+    storageWarning: string | null;
     setZoom: (value: number) => void;
     selectCard: (id: string | null, side: ListSide) => void;
     selectBox: (id: string | null) => void;
@@ -100,6 +127,7 @@ export type AppState = AppStateSnapshot &
     setGridIntensity: (value: "low" | "medium" | "high") => void;
     toggleOnlyCmLines: () => void;
     toggleDebugOverlays: () => void;
+    toggleBlockMetrics: () => void;
     setRulersPlacement: (value: "outside" | "inside") => void;
     startExport: (label: string) => void;
     finishExport: () => void;
@@ -124,12 +152,18 @@ export type AppState = AppStateSnapshot &
     undo: () => void;
     redo: () => void;
     toggleEditMode: () => void;
+    applyCardFormattingToCards: (params: { side: ListSide; sourceCardId: string; mode: "all" | "selected" }) => void;
+    applyAutoHeightToCards: (params: { side: ListSide; mode: "all" | "selected" }) => void;
   };
 
 const HISTORY_LIMIT = 50;
 const BOOKMARK_LIMIT = 50;
 const CHANGE_LOG_LIMIT = 50;
 const STORAGE_KEY = "lc_state_v1";
+const CARDS_META_KEY = "lc_cards_v1_meta";
+const CARDS_CHUNK_KEY_PREFIX = "lc_cards_v1_chunk_";
+const CARDS_CHUNK_SIZE = 180_000;
+const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
 
 const createBoxTemplate = (
   kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple",
@@ -155,6 +189,7 @@ const createBoxTemplate = (
       visible: true
     },
     textMode: "dynamic",
+    autoH: false,
     label: "Блок"
   };
 
@@ -185,6 +220,7 @@ const createBoxTemplate = (
       wMm: 66,
       hMm: 20,
       style: { ...base.style, fontSizePt: 12 },
+      autoH: true,
       label: "Три времени + рекция"
     };
   }
@@ -195,6 +231,7 @@ const createBoxTemplate = (
       wMm: 66,
       hMm: 18,
       style: { ...base.style, fontSizePt: 12 },
+      autoH: true,
       label: "Синонимы"
     };
   }
@@ -205,6 +242,7 @@ const createBoxTemplate = (
       wMm: 92,
       hMm: 30,
       style: { ...base.style, fontSizePt: 12, lineHeight: 1.25 },
+      autoH: true,
       label: "Примеры"
     };
   }
@@ -214,6 +252,7 @@ const createBoxTemplate = (
     wMm: 70,
     hMm: 14,
     textMode: "static",
+    autoH: true,
     staticText: "",
     label: "Простой блок"
   };
@@ -246,6 +285,28 @@ const ensureUniqueCardIds = (cards: Card[]): Card[] => {
 const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number): Card[] =>
   cards.map((card) => (card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm)));
 
+const ensureCardHasBoxes = (card: Card, widthMm: number, heightMm: number): Card =>
+  card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm);
+
+const syncTemplateToSide = (
+  state: AppState,
+  side: ListSide,
+  sourceCard: Card
+) => {
+  const plainSource = safeClone(sourceCard);
+  const template = extractLayoutTemplate(plainSource, {
+    widthMm: state.layout.widthMm,
+    heightMm: state.layout.heightMm
+  });
+  state.activeTemplate = template;
+
+  const list = side === "A" ? state.cardsA : state.cardsB;
+  for (let i = 0; i < list.length; i += 1) {
+    const card = list[i];
+    if (!card || card.id === sourceCard.id) continue;
+    list[i] = autoResizeCardBoxes(applyLayoutTemplate(card, template), getPxPerMm(1));
+  }
+};
 
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
@@ -314,23 +375,67 @@ const createBaseState = () => ({
   gridIntensity: "low" as const,
   showOnlyCmLines: false,
   debugOverlays: false,
+  showBlockMetrics: false,
   rulersPlacement: "outside" as const,
   historyBookmarks: [] as HistoryBookmark[],
   changeLog: [] as ChangeLogEntry[],
-  editModeEnabled: false
+  editModeEnabled: false,
+  activeTemplate: null as LayoutTemplate | null,
+  storageWarning: null as string | null
 });
 
-const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["state"] => {
+const loadPersistedTemplate = (): LayoutTemplate | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LayoutTemplate;
+    if (parsed?.version !== 1 || !Array.isArray(parsed.boxes)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+type PersistedCards = { cardsA: Card[]; cardsB: Card[] };
+
+const loadPersistedCards = (): PersistedCards | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const metaRaw = window.localStorage.getItem(CARDS_META_KEY);
+    if (!metaRaw) return null;
+    const meta = JSON.parse(metaRaw) as { version?: number; chunks?: number };
+    const chunks = Number.isFinite(meta?.chunks) ? Number(meta.chunks) : 0;
+    if (meta?.version !== 1 || chunks <= 0) return null;
+    let payload = "";
+    for (let index = 0; index < chunks; index += 1) {
+      const chunk = window.localStorage.getItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
+      if (!chunk) return null;
+      payload += chunk;
+    }
+    const parsed = JSON.parse(payload) as PersistedCards;
+    return {
+      cardsA: Array.isArray(parsed.cardsA) ? parsed.cardsA : [],
+      cardsB: Array.isArray(parsed.cardsB) ? parsed.cardsB : []
+    };
+  } catch {
+    return null;
+  }
+};
+
+const sanitizePersistedState = (raw: PersistedState["state"], persistedCards: PersistedCards | null) => {
   const base = createBaseState();
-  const cardsAInput = Array.isArray(raw.cardsA) ? raw.cardsA.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsA;
-  const cardsBInput = Array.isArray(raw.cardsB) ? raw.cardsB.map((card) => normalizeCard(card)).filter(Boolean) : base.cardsB;
-  const cardsA = ensureUniqueCardIds(cardsAInput);
-  const cardsB = ensureUniqueCardIds(cardsBInput);
+  const cardsASeed = persistedCards?.cardsA ?? base.cardsA;
+  const cardsBSeed = persistedCards?.cardsB ?? base.cardsB;
+  const cardsA = ensureUniqueCardIds(cardsASeed.map((card) => normalizeCard(card)).filter(Boolean));
+  const cardsB = ensureUniqueCardIds(cardsBSeed.map((card) => normalizeCard(card)).filter(Boolean));
   const selectedId =
     typeof raw.selectedId === "string" && [...cardsA, ...cardsB].some((card) => card.id === raw.selectedId)
       ? raw.selectedId
       : cardsA[0]?.id ?? cardsB[0]?.id ?? null;
-  const selectedSide = raw.selectedSide === "B" ? "B" : "A";
+  const selectedSide: ListSide = raw.selectedSide === "B" ? "B" : "A";
   const widthMm = Number.isFinite(raw.layout?.widthMm) ? raw.layout.widthMm : base.layout.widthMm;
   const heightMm = Number.isFinite(raw.layout?.heightMm) ? raw.layout.heightMm : base.layout.heightMm;
 
@@ -360,19 +465,16 @@ const sanitizePersistedState = (raw: PersistedState["state"]): PersistedState["s
         : base.gridIntensity,
     showOnlyCmLines: typeof raw.showOnlyCmLines === "boolean" ? raw.showOnlyCmLines : base.showOnlyCmLines,
     debugOverlays: typeof raw.debugOverlays === "boolean" ? raw.debugOverlays : base.debugOverlays,
-    rulersPlacement: raw.rulersPlacement === "inside" ? "inside" : "outside",
-    historyBookmarks: Array.isArray(raw.historyBookmarks)
-      ? raw.historyBookmarks
-          .filter((item) => Boolean(item?.id && item?.snapshot && item?.createdAt))
-          .map((item) => ({
-            ...item,
-            action: typeof item.action === "string" && item.action.trim().length > 0 ? item.action : "snapshot"
-          }))
-      : [],
-    changeLog: Array.isArray(raw.changeLog)
-      ? raw.changeLog.filter((item) => Boolean(item?.id && item?.at && item?.action))
-      : [],
-    editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled
+    showBlockMetrics: typeof raw.showBlockMetrics === "boolean" ? raw.showBlockMetrics : base.showBlockMetrics,
+    rulersPlacement: (raw.rulersPlacement === "inside" ? "inside" : "outside") as "inside" | "outside",
+    historyBookmarks: [],
+    changeLog: [],
+    editModeEnabled: typeof raw.editModeEnabled === "boolean" ? raw.editModeEnabled : base.editModeEnabled,
+    activeTemplate:
+      raw.activeTemplate && raw.activeTemplate.version === 1 && Array.isArray(raw.activeTemplate.boxes)
+        ? raw.activeTemplate
+        : base.activeTemplate,
+    storageWarning: null
   };
 };
 
@@ -381,11 +483,33 @@ const loadPersistedState = () => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedState;
-    if (parsed?.version !== 1 || !parsed.state) return null;
-    return sanitizePersistedState(parsed.state);
+    const parsed = migratePersistedState(JSON.parse(raw) as AnyPersistedState);
+    if (!parsed) return null;
+    return sanitizePersistedState(parsed.state, loadPersistedCards());
   } catch {
     return null;
+  }
+};
+
+const persistCards = (cardsA: Card[], cardsB: Card[]) => {
+  if (typeof window === "undefined") return;
+  const payload = JSON.stringify({ cardsA, cardsB });
+  const chunks: string[] = [];
+  for (let index = 0; index < payload.length; index += CARDS_CHUNK_SIZE) {
+    chunks.push(payload.slice(index, index + CARDS_CHUNK_SIZE));
+  }
+
+  const prevMetaRaw = window.localStorage.getItem(CARDS_META_KEY);
+  const prevChunks = prevMetaRaw ? (JSON.parse(prevMetaRaw).chunks as number | undefined) : 0;
+
+  chunks.forEach((chunk, index) => {
+    window.localStorage.setItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`, chunk);
+  });
+  window.localStorage.setItem(CARDS_META_KEY, JSON.stringify({ version: 1, chunks: chunks.length }));
+
+  const prevCount = Number.isFinite(prevChunks) ? Number(prevChunks) : 0;
+  for (let index = chunks.length; index < prevCount; index += 1) {
+    window.localStorage.removeItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
   }
 };
 
@@ -459,38 +583,67 @@ const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.isEditingLayout = false;
 };
 
+const buildPersistPayload = (state: AppState): PersistedState => ({
+  version: 1,
+  state: {
+    selectedId: state.selectedId,
+    selectedSide: state.selectedSide,
+    layout: safeClone(state.layout),
+    selectedBoxId: state.selectedBoxId,
+    selectedCardIdsA: [...state.selectedCardIdsA],
+    selectedCardIdsB: [...state.selectedCardIdsB],
+    zoom: state.zoom,
+    gridEnabled: state.gridEnabled,
+    rulersEnabled: state.rulersEnabled,
+    snapEnabled: state.snapEnabled,
+    gridIntensity: state.gridIntensity,
+    showOnlyCmLines: state.showOnlyCmLines,
+    debugOverlays: state.debugOverlays,
+    showBlockMetrics: state.showBlockMetrics,
+    rulersPlacement: state.rulersPlacement,
+    editModeEnabled: state.editModeEnabled,
+    activeTemplate: state.activeTemplate ? safeClone(state.activeTemplate) : null
+  }
+});
+
+const setStorageWarning = (message: string | null) => {
+  if (typeof window === "undefined") return;
+  const currentWarning = useAppStore.getState().storageWarning;
+  if (currentWarning === message) return;
+  useAppStore.setState({ storageWarning: message });
+};
+
 const persistState = (state: AppState) => {
   if (typeof window === "undefined") return;
-  const payload: PersistedState = {
-    version: 1,
-    state: {
-      cardsA: cloneCards(state.cardsA),
-      cardsB: cloneCards(state.cardsB),
-      selectedId: state.selectedId,
-      selectedSide: state.selectedSide,
-      layout: safeClone(state.layout),
-      selectedBoxId: state.selectedBoxId,
-      selectedCardIdsA: [...state.selectedCardIdsA],
-      selectedCardIdsB: [...state.selectedCardIdsB],
-      zoom: state.zoom,
-      gridEnabled: state.gridEnabled,
-      rulersEnabled: state.rulersEnabled,
-      snapEnabled: state.snapEnabled,
-      gridIntensity: state.gridIntensity,
-      showOnlyCmLines: state.showOnlyCmLines,
-      debugOverlays: state.debugOverlays,
-      rulersPlacement: state.rulersPlacement,
-      historyBookmarks: state.historyBookmarks,
-      changeLog: state.changeLog,
-      editModeEnabled: state.editModeEnabled
-    }
-  };
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  let failed = false;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(buildPersistPayload(state)));
+  } catch (error) {
+    failed = true;
+    console.warn("[Persist][Quota] fallback to compact/chunks", error);
+  }
+
+  try {
+    persistCards(state.cardsA, state.cardsB);
+  } catch (error) {
+    failed = true;
+    console.warn("[Persist][Quota] fallback to compact/chunks", error);
+  }
+
+  if (failed) {
+    setStorageWarning("Storage full: изменения сохраняются только в RAM. Освободите место в браузере.");
+  } else {
+    setStorageWarning(null);
+  }
 };
 
 const persisted = loadPersistedState();
 const baseState = createBaseState();
 const initialState = persisted ? { ...baseState, ...persisted } : baseState;
+const initialTemplate = loadPersistedTemplate();
+if (!initialState.activeTemplate && initialTemplate) {
+  initialState.activeTemplate = initialTemplate;
+}
 
 export const useAppStore = create<AppState>()(
   immer((set, get) => ({
@@ -508,10 +661,13 @@ export const useAppStore = create<AppState>()(
     gridIntensity: initialState.gridIntensity,
     showOnlyCmLines: initialState.showOnlyCmLines,
     debugOverlays: initialState.debugOverlays,
+    showBlockMetrics: initialState.showBlockMetrics,
     rulersPlacement: initialState.rulersPlacement,
     historyBookmarks: initialState.historyBookmarks ?? [],
     changeLog: initialState.changeLog ?? [],
     editModeEnabled: initialState.editModeEnabled,
+    activeTemplate: initialState.activeTemplate,
+    storageWarning: initialState.storageWarning,
     isExporting: false,
     exportStartedAt: null,
     exportLabel: null,
@@ -527,6 +683,13 @@ export const useAppStore = create<AppState>()(
       trackStateEvent(state, get(), `selectCard:${side}:${id ?? "none"}`, { undoable: false });
       state.selectedId = id;
       state.selectedSide = side;
+      if (!id || !state.activeTemplate) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const index = list.findIndex((item) => item.id === id);
+      if (index < 0) return;
+      const card = list[index];
+      if (!card) return;
+      list[index] = autoResizeCardBoxes(applyLayoutTemplate(card, state.activeTemplate), getPxPerMm(1));
     }),
     selectBox: (id) => set((state) => {
       trackStateEvent(state, get(), `selectBox:${id ?? "none"}`, { undoable: false });
@@ -542,7 +705,10 @@ export const useAppStore = create<AppState>()(
         nextId = crypto.randomUUID();
       }
       const normalized = nextId === normalizedBase.id ? normalizedBase : { ...normalizedBase, id: nextId };
-      const finalized = normalized.boxes && normalized.boxes.length ? normalized : applySemanticLayoutToCard(normalized, state.layout.widthMm, state.layout.heightMm);
+      const finalized = autoResizeCardBoxes(
+        ensureCardHasBoxes(normalized, state.layout.widthMm, state.layout.heightMm),
+        getPxPerMm(1)
+      );
       target.push(finalized);
       state.selectedId = finalized.id;
       state.selectedSide = side;
@@ -554,7 +720,10 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
+        if (state.selectedId === card.id && state.selectedSide === side) {
+          syncTemplateToSide(state, side, list[index]);
+        }
       }
     }),
     updateCardSilent: (card, side, reason, options) => set((state) => {
@@ -570,7 +739,10 @@ export const useAppStore = create<AppState>()(
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
-        list[index] = card;
+        list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
+        if (state.selectedId === card.id && state.selectedSide === side) {
+          syncTemplateToSide(state, side, list[index]);
+        }
       }
     }),
     removeCard: (id, side) => set((state) => {
@@ -654,6 +826,10 @@ export const useAppStore = create<AppState>()(
       trackStateEvent(state, get(), "toggleDebugOverlays");
       state.debugOverlays = !state.debugOverlays;
     }),
+    toggleBlockMetrics: () => set((state) => {
+      trackStateEvent(state, get(), "toggleBlockMetrics", { undoable: false });
+      state.showBlockMetrics = !state.showBlockMetrics;
+    }),
     setRulersPlacement: (value) => set((state) => {
       trackStateEvent(state, get(), `setRulersPlacement:${value}`);
       state.rulersPlacement = value;
@@ -713,9 +889,22 @@ export const useAppStore = create<AppState>()(
       } else {
         state.cardsB = next;
       }
+
+      const templateSource =
+        (state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : null) ?? next[0];
+
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+      }
     }),
     adjustColumnFontSizeByField: (side, fieldIds, deltaPt) => set((state) => {
       if (!state.editModeEnabled) return;
+      const pxPerMm = getPxPerMm(1);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const targetSet = new Set(fieldIds);
       if (!targetSet.size) {
@@ -738,7 +927,7 @@ export const useAppStore = create<AppState>()(
         if (!baseCard.boxes?.length) {
           return baseCard;
         }
-        return {
+        const resized = {
           ...baseCard,
           boxes: baseCard.boxes.map((box) => {
             if (!targetSet.has(box.fieldId)) {
@@ -753,6 +942,7 @@ export const useAppStore = create<AppState>()(
             };
           })
         };
+        return autoResizeCardBoxes(resized, pxPerMm);
       });
       if (side === "A") {
         state.cardsA = next;
@@ -813,6 +1003,7 @@ export const useAppStore = create<AppState>()(
       state.gridIntensity = next.gridIntensity;
       state.showOnlyCmLines = next.showOnlyCmLines;
       state.debugOverlays = next.debugOverlays;
+      state.showBlockMetrics = next.showBlockMetrics;
       state.rulersPlacement = next.rulersPlacement;
       state.past = [];
       state.future = [];
@@ -872,6 +1063,64 @@ export const useAppStore = create<AppState>()(
     toggleEditMode: () => set((state) => {
       state.editModeEnabled = !state.editModeEnabled;
       trackStateEvent(state, get(), `toggleEditMode:${state.editModeEnabled ? "on" : "off"}`, { undoable: false });
+    }),
+    applyCardFormattingToCards: ({ side, sourceCardId, mode }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const source = list.find((card) => card.id === sourceCardId);
+      if (!source) return;
+      let template;
+      try {
+        const plainSource = current(source);
+        template = extractLayoutTemplate(plainSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+      } catch (error) {
+        console.error("Template contains non-serializable data", error);
+        return;
+      }
+      state.activeTemplate = template;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+        } catch (error) {
+          console.warn("Failed to persist layout template", error);
+        }
+      }
+
+      const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      const selectedSet = new Set(selected);
+      trackStateEvent(state, get(), `applyCardFormattingToCards:${side}:${mode}`);
+
+      const nextList = list.map((card) => {
+        const shouldApply = mode === "all" ? card.id !== sourceCardId : selectedSet.has(card.id) && card.id !== sourceCardId;
+        if (!shouldApply) return card;
+        return autoResizeCardBoxes(applyLayoutTemplate(card, template), getPxPerMm(1));
+      });
+      if (side === "A") {
+        state.cardsA = nextList;
+      } else {
+        state.cardsB = nextList;
+      }
+    }),
+    applyAutoHeightToCards: ({ side, mode }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const source = side === "A" ? state.cardsA : state.cardsB;
+      const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
+      const selectedSet = new Set(selected);
+      const pxPerMm = getPxPerMm(1);
+      trackStateEvent(state, get(), `applyAutoHeightToCards:${side}:${mode}`);
+      const next = source.map((card) => {
+        const shouldApply = mode === "all" ? true : selectedSet.has(card.id);
+        if (!shouldApply) return card;
+        return autoResizeCardBoxes(card, pxPerMm);
+      });
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
     })
   }))
 );
@@ -884,6 +1133,6 @@ if (typeof window !== "undefined") {
     }
     persistTimer = window.setTimeout(() => {
       persistState(state);
-    }, 150);
+    }, 600);
   });
 }
