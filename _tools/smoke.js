@@ -1,3 +1,4 @@
+// _tools/smoke.js
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
@@ -14,13 +15,12 @@ const record = (label, status, details = "") => {
 };
 
 const checkFiles = (files) => {
-  files.forEach((file) => {
-    const exists = fs.existsSync(path.join(projectRoot, file));
+  for (const file of files) {
+    const abs = path.join(projectRoot, file);
+    const exists = fs.existsSync(abs);
     record(`File ${file}`, exists ? "OK" : "MISSING");
-    if (!exists) {
-      process.exitCode = 1;
-    }
-  });
+    if (!exists) process.exitCode = 1;
+  }
 };
 
 
@@ -134,7 +134,7 @@ const checkDevServer = () =>
         .get("http://127.0.0.1:5173", (res) => {
           const ok = res.statusCode && res.statusCode >= 200 && res.statusCode < 400;
           record("Dev server", ok ? "OK" : `FAIL (${res.statusCode})`);
-          resolve(ok);
+          resolve(Boolean(ok));
         })
         .on("error", () => {
           retries += 1;
@@ -150,12 +150,65 @@ const checkDevServer = () =>
     attempt();
   });
 
+const spawnDevServer = () => {
+  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+  return spawn(npmCmd, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
+    cwd: projectRoot,
+    stdio: "ignore",
+    shell: false,
+  });
+};
+
 const main = async () => {
   try {
     await runCommand("npm", ["run", "tsc"]);
     record("TypeScript", "OK");
   } catch (error) {
-    record("TypeScript", "FAIL", error.message);
+    record("TypeScript", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
     process.exitCode = 1;
   }
 
@@ -172,7 +225,42 @@ const main = async () => {
     await runCommand("npm", ["run", "build"]);
     record("Build", "OK");
   } catch (error) {
-    record("Build", "FAIL", error.message);
+    record("Build", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 
@@ -195,28 +283,15 @@ const main = async () => {
     "src/layout/defaultTemplate.ts",
     "src/pdf/exportPdf.ts",
     "src/ai/lmStudioClient.ts",
-    "_tools/backup.js"
+    "_tools/backup.js",
   ]);
 
-  let devServer;
-  try {
-    devServer = await import("node:child_process");
-  } catch {
-    record("Dev server", "SKIP", "Cannot import child_process");
-  }
+  // Dev server probe (optional, but useful).
+  const serverProcess = spawnDevServer();
+  const ok = await checkDevServer();
+  serverProcess.kill();
 
-  if (devServer) {
-    const serverProcess = devServer.spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
-      cwd: projectRoot,
-      stdio: "ignore",
-      shell: true
-    });
-    const ok = await checkDevServer();
-    serverProcess.kill();
-    if (!ok) {
-      process.exitCode = 1;
-    }
-  }
+  if (!ok) process.exitCode = 1;
 
   fs.writeFileSync(reportPath, `# Smoke Report\n\n${reportLines.join("\n")}\n`);
   console.log(`Smoke report saved to ${reportPath}`);
