@@ -7,7 +7,6 @@ import {
   validateCardsImport,
   type ImportErrorLog
 } from "../io/importExport";
-import { normalizeCard } from "../model/cardSchema";
 import { exportCardsToPdf } from "../pdf/exportPdf";
 
 type Props = {
@@ -312,12 +311,58 @@ export const CardListPanel = ({ side }: Props) => {
   };
 
   const downloadSample = () => {
-    const sample = normalizeCard({
-      inf: "machen",
-      tr_1_ru: "делать",
-      tags: ["praesens"]
-    });
-    const blob = new Blob([JSON.stringify({ cards: [sample] }, null, 2)], {
+    const sample = [
+      {
+        id: "ablehnen",
+        frequency: 5,
+        infinitive: "ablehnen",
+        translations: ["отклонять", "отказываться", "не принимать"],
+        forms: {
+          praesens_3: "lehnt ab",
+          praeteritum: "lehnte ab",
+          partizip_2: "abgelehnt",
+          auxiliary: "hat",
+          service: "ablehnen — lehnt ab — lehnte ab — hat abgelehnt",
+          perfekt_full: "hat abgelehnt"
+        },
+        examples: {
+          praesens: {
+            de: "Ich lehne das Angebot ab, weil es невыгодно.",
+            ru: "Я отказываюсь от предложения, потому что оно невыгодно."
+          },
+          modal: {
+            modalVerb: "können",
+            de: "Man kann ablehnen, ohne unhöflich zu sein.",
+            ru: "Можно отказать, не будучи грубым."
+          },
+          praeteritum: {
+            de: "Er lehnte jede Diskussion ab.",
+            ru: "Он отказался от любой дискуссии."
+          },
+          perfekt: {
+            de: "Die Behörde hat den Antrag abgelehnt.",
+            ru: "Ведомство отклонило заявление."
+          }
+        },
+        synonyms: [
+          { word: "zurückweisen", translation: "отклонять" },
+          { word: "verweigern", translation: "отказывать" },
+          { word: "verwerfen", translation: "отвергать" }
+        ],
+        prefixes: ["отделяемые: ab-"],
+        raw: {
+          freq_raw: "TOP = 5",
+          blockStartRow: 8430,
+          blockEndRow: 8459
+        },
+        quality: {
+          hasAllRequired: true,
+          missing: []
+        }
+      }
+    ];
+
+    const blob = new Blob([JSON.stringify(sample, null, 2)], {
       type: "application/json"
     });
     const link = document.createElement("a");
