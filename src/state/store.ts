@@ -969,14 +969,10 @@ export const useAppStore = create<AppState>()(
         };
         return autoResizeCardBoxes(resized, pxPerMm);
       });
-      if (!changed) return;
       if (side === "A") {
         state.cardsA = next;
       } else {
         state.cardsB = next;
-      }
-      if (reason) {
-        trackStateEvent(state, get(), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
@@ -1031,29 +1027,51 @@ export const useAppStore = create<AppState>()(
       if (!state.editModeEnabled || !state.selectedBoxId) return;
       const selectedBoxId = state.selectedBoxId;
       const list = side === "A" ? state.cardsA : state.cardsB;
-      const sourceCard = list.find((card) => card.id === cardId);
-      const hasSelectedOnSource = Boolean(sourceCard?.boxes?.some((box) => box.id === selectedBoxId));
+      const sourceIndex = list.findIndex((card) => card.id === cardId);
+      if (sourceIndex < 0) return;
+      const sourceCard = list[sourceIndex];
+      if (!sourceCard) return;
+
+      const preparedSource = ensureCardHasBoxes(sourceCard, state.layout.widthMm, state.layout.heightMm);
+      if (!preparedSource.boxes?.length) return;
+      const hasSelectedOnSource = preparedSource.boxes.some((box) => box.id === selectedBoxId);
       if (!hasSelectedOnSource) return;
 
-      let changed = false;
-      const next = list.map((card) => {
-        if (!card.boxes?.length) {
-          return card;
-        }
-        const nextBoxes = card.boxes.filter((box) => box.id !== selectedBoxId);
-        if (nextBoxes.length === card.boxes.length) {
-          return card;
-        }
-        changed = true;
-        return { ...card, boxes: nextBoxes };
+      const nextSource = {
+        ...preparedSource,
+        boxes: preparedSource.boxes.filter((box) => box.id !== selectedBoxId)
+      };
+
+      const template = extractLayoutTemplate(nextSource, {
+        widthMm: state.layout.widthMm,
+        heightMm: state.layout.heightMm
       });
-      if (!changed) return;
+      state.activeTemplate = template;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+        } catch (error) {
+          console.warn("Failed to persist layout template", error);
+        }
+      }
 
       trackStateEvent(state, get(), `removeBox:${side}:${selectedBoxId}:column`);
+      const pxPerMm = getPxPerMm(1);
+      const nextList = list.map((card) => {
+        const base = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
+        if (card.id === cardId) {
+          return autoResizeCardBoxes(nextSource, pxPerMm);
+        }
+        return autoResizeCardBoxes(
+          applyLayoutTemplate(base, template, { preserveContent: true, pruneUntouched: true }),
+          pxPerMm
+        );
+      });
+
       if (side === "A") {
-        state.cardsA = next;
+        state.cardsA = nextList;
       } else {
-        state.cardsB = next;
+        state.cardsB = nextList;
       }
       state.selectedBoxId = null;
     }),

@@ -139,6 +139,7 @@ const buildTemplateBox = (templateBox: LayoutTemplate["boxes"][number], fallback
 
 type ApplyLayoutTemplateOptions = {
   preserveContent?: boolean;
+  pruneUntouched?: boolean;
 };
 
 const patchBoxFormatting = (
@@ -189,7 +190,8 @@ export const applyLayoutTemplate = (card: Card, template: LayoutTemplate, option
   });
 
   const untouched = currentBoxes.filter((_, index) => !usedIndices.has(index));
-  const merged = [...nextTemplateOrdered, ...untouched].map((box, index) => ({ ...box, z: index + 1 }));
+  const mergedSource = options?.pruneUntouched ? nextTemplateOrdered : [...nextTemplateOrdered, ...untouched];
+  const merged = mergedSource.map((box, index) => ({ ...box, z: index + 1 }));
 
   return {
     ...card,
