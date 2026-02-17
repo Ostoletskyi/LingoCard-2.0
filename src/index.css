@@ -92,11 +92,15 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 9999px;
-  background: rgb(249 115 22);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
 
 .dark .lc-freqDot {
-  background: rgb(251 146 60);
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.45);
 }
+
+.lc-freqDot--1 { background: rgb(59 130 246); }
+.lc-freqDot--2 { background: rgb(239 68 68); }
+.lc-freqDot--3 { background: rgb(249 115 22); }
+.lc-freqDot--4 { background: rgb(234 179 8); }
+.lc-freqDot--5 { background: rgb(34 197 94); }

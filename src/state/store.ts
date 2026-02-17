@@ -304,6 +304,25 @@ const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number):
 const ensureCardHasBoxes = (card: Card, widthMm: number, heightMm: number): Card =>
   card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm);
 
+const syncTemplateToSide = (
+  state: AppState,
+  side: ListSide,
+  sourceCard: Card
+) => {
+  const plainSource = safeClone(sourceCard);
+  const template = extractLayoutTemplate(plainSource, {
+    widthMm: state.layout.widthMm,
+    heightMm: state.layout.heightMm
+  });
+  state.activeTemplate = template;
+
+  const list = side === "A" ? state.cardsA : state.cardsB;
+  for (let i = 0; i < list.length; i += 1) {
+    const card = list[i];
+    if (!card || card.id === sourceCard.id) continue;
+    list[i] = autoResizeCardBoxes(applyLayoutTemplate(card, template), getPxPerMm(1));
+  }
+};
 
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
@@ -681,6 +700,13 @@ export const useAppStore = create<AppState>()(
       trackStateEvent(state, get(), `selectCard:${side}:${id ?? "none"}`, { undoable: false });
       state.selectedId = id;
       state.selectedSide = side;
+      if (!id || !state.activeTemplate) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      const index = list.findIndex((item) => item.id === id);
+      if (index < 0) return;
+      const card = list[index];
+      if (!card) return;
+      list[index] = autoResizeCardBoxes(applyLayoutTemplate(card, state.activeTemplate), getPxPerMm(1));
     }),
     selectBox: (id) => set((state) => {
       trackStateEvent(state, get(), `selectBox:${id ?? "none"}`, { undoable: false });
@@ -712,6 +738,9 @@ export const useAppStore = create<AppState>()(
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
         list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
+        if (state.selectedId === card.id && state.selectedSide === side) {
+          syncTemplateToSide(state, side, list[index]);
+        }
       }
     }),
     updateCardSilent: (card, side, reason, options) => set((state) => {
@@ -728,6 +757,9 @@ export const useAppStore = create<AppState>()(
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
         list[index] = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
+        if (state.selectedId === card.id && state.selectedSide === side) {
+          syncTemplateToSide(state, side, list[index]);
+        }
       }
     }),
     removeCard: (id, side) => set((state) => {

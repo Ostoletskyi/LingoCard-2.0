@@ -90,7 +90,7 @@ const renderFreqDots = (freq: number) => {
   const dots = Math.max(0, Math.min(5, Math.round(freq || 0)));
   if (!dots) return "";
   return Array.from({ length: dots }, (_, index) => (
-    <span key={`freq-dot-${index}`} className="lc-freqDot" />
+    <span key={`freq-dot-${index}`} className={`lc-freqDot lc-freqDot--${dots}`} />
   ));
 };
 
