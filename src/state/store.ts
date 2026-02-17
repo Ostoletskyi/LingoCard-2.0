@@ -969,6 +969,23 @@ export const useAppStore = create<AppState>()(
         };
         return autoResizeCardBoxes(resized, pxPerMm);
       });
+      const templateSource =
+        state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : next[0];
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
+          } catch (error) {
+            console.warn("Failed to persist layout template", error);
+          }
+        }
+      }
       if (side === "A") {
         state.cardsA = next;
       } else {
@@ -1232,6 +1249,23 @@ export const useAppStore = create<AppState>()(
         if (!shouldApply) return card;
         return autoResizeCardBoxes(card, pxPerMm);
       });
+      const templateSource =
+        state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : next[0];
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
+          } catch (error) {
+            console.warn("Failed to persist layout template", error);
+          }
+        }
+      }
       if (side === "A") {
         state.cardsA = next;
       } else {
