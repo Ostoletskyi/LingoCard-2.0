@@ -5,6 +5,8 @@ import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
 import { MM_PER_INCH, mmToPdf } from "../utils/mmPx";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
+import { measureWrappedLines } from "../layout/textMeasure";
+import { normalizeFieldId } from "../utils/fieldAlias";
 
 export type PdfExportOptions = {
   cardsPerRow?: number;
@@ -12,38 +14,51 @@ export type PdfExportOptions = {
   marginMm?: number;
 };
 
-const CANVAS_DPI = 300;
+const BASE_CANVAS_DPI = 220;
+const BULK_CANVAS_DPI = 140;
+const XL_BULK_CANVAS_DPI = 120;
 
-const mmToCanvasPx = (mm: number) => Math.round((mm / MM_PER_INCH) * CANVAS_DPI);
+const makeMmToCanvasPx = (dpi: number) => (mm: number) => Math.round((mm / MM_PER_INCH) * dpi);
 
-const wrapText = (
+const resolveReservedRightPx = (fieldId: string, box: { reservedRightPx?: number }) => {
+  if (typeof box.reservedRightPx === "number" && Number.isFinite(box.reservedRightPx)) {
+    return Math.max(0, box.reservedRightPx);
+  }
+  return normalizeFieldId(fieldId) === "freq" ? 24 : 0;
+};
+
+const FREQ_DOT_COLORS: Record<number, string> = {
+  1: "rgb(59 130 246)",
+  2: "rgb(239 68 68)",
+  3: "rgb(249 115 22)",
+  4: "rgb(234 179 8)",
+  5: "rgb(34 197 94)"
+};
+
+const drawFrequencyDots = (
   ctx: CanvasRenderingContext2D,
-  value: string,
-  maxWidthPx: number
-): string[] => {
-  const source = value.replace(/\r\n/g, "\n").split("\n");
-  const lines: string[] = [];
-  source.forEach((row) => {
-    if (!row) {
-      lines.push("");
-      return;
-    }
-    const words = row.split(/\s+/);
-    let current = "";
-    words.forEach((word) => {
-      const candidate = current ? `${current} ${word}` : word;
-      if (ctx.measureText(candidate).width <= maxWidthPx) {
-        current = candidate;
-        return;
-      }
-      if (current) {
-        lines.push(current);
-      }
-      current = word;
-    });
-    if (current) lines.push(current);
-  });
-  return lines;
+  card: Card,
+  box: { xMm: number; style: { paddingMm: number } },
+  boxY: number,
+  boxH: number,
+  mmToCanvasPx: (mm: number) => number
+) => {
+  const dots = Math.max(0, Math.min(5, Math.round(card.freq || 0)));
+  if (!dots) return;
+
+  const color = FREQ_DOT_COLORS[dots] ?? "rgb(34 197 94)";
+  const radius = Math.max(2, mmToCanvasPx(0.7));
+  const gap = Math.max(2, mmToCanvasPx(0.7));
+  const startX = mmToCanvasPx(box.xMm) + mmToCanvasPx(box.style.paddingMm) + radius;
+  const centerY = boxY + Math.min(boxH / 2, mmToCanvasPx(box.style.paddingMm) + radius + 1);
+
+  for (let index = 0; index < dots; index += 1) {
+    const centerX = startX + index * (radius * 2 + gap);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
 };
 
 const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: string, staticText?: string) => {
@@ -56,14 +71,19 @@ const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: s
   return getFieldText(card, fieldId).text;
 };
 
-export const exportCardsToPdf = (
+export const exportCardsToPdf = async (
   cards: Card[],
   layout: Layout,
   options: PdfExportOptions,
   fileName: string = "cards.pdf"
 ) => {
   const { cardsPerRow = 1, cardsPerColumn = 1, marginMm = 0 } = options;
-  logger.info("PDF export start", `cards=${cards.length}, size=${layout.widthMm}x${layout.heightMm}mm, mode=${cardsPerRow}x${cardsPerColumn}, margin=${marginMm}mm, font=DejaVu Sans/Noto Sans fallback`);
+  const dpi = cards.length > 180 ? XL_BULK_CANVAS_DPI : cards.length > 20 ? BULK_CANVAS_DPI : BASE_CANVAS_DPI;
+  const mmToCanvasPx = makeMmToCanvasPx(dpi);
+  const useJpeg = cards.length > 40;
+  const imageType = useJpeg ? "JPEG" : "PNG";
+  logger.info("PDF export start", `cards=${cards.length}, size=${layout.widthMm}x${layout.heightMm}mm, mode=${cardsPerRow}x${cardsPerColumn}, margin=${marginMm}mm, dpi=${dpi}`);
+
   const pdfDebug =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("pdfDebug") === "1";
@@ -71,7 +91,8 @@ export const exportCardsToPdf = (
   const doc = new jsPDF({
     orientation: layout.widthMm >= layout.heightMm ? "landscape" : "portrait",
     unit: "mm",
-    format: [mmToPdf(layout.widthMm), mmToPdf(layout.heightMm)]
+    format: [mmToPdf(layout.widthMm), mmToPdf(layout.heightMm)],
+    compress: true
   });
 
   const cardWidth = layout.widthMm;
@@ -85,19 +106,17 @@ export const exportCardsToPdf = (
     return;
   }
 
-  cards.forEach((card, index) => {
+  for (let index = 0; index < cards.length; index += 1) {
+    const card = cards[index]!;
     const localIndex = index % (cardsPerRow * cardsPerColumn);
     if (index > 0 && localIndex === 0) {
       doc.addPage();
     }
+
     const row = Math.floor(localIndex / cardsPerRow);
     const col = localIndex % cardsPerRow;
     const x = marginMm + col * cardWidth;
     const y = marginMm + row * cardHeight;
-
-    if (marginMm > 0) {
-      logger.warn("PDF export uses margin", `${marginMm}mm margin applied`);
-    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#ffffff";
@@ -106,15 +125,18 @@ export const exportCardsToPdf = (
     const activeBoxes = card.boxes?.length
       ? card.boxes
       : buildSemanticLayoutBoxes(card, layout.widthMm, layout.heightMm);
+
     activeBoxes.forEach((box) => {
       if (box.style.visible === false) return;
-      const fontPx = (box.style.fontSizePt / 72) * CANVAS_DPI;
+      const fontPx = (box.style.fontSizePt / 72) * dpi;
       const paddingPx = mmToCanvasPx(box.style.paddingMm);
       const boxX = mmToCanvasPx(box.xMm);
       const boxY = mmToCanvasPx(box.yMm);
       const boxW = Math.max(1, mmToCanvasPx(box.wMm));
       const boxH = Math.max(1, mmToCanvasPx(box.hMm));
-      const maxWidth = Math.max(1, boxW - paddingPx * 2);
+      const isFrequencyBox = normalizeFieldId(box.fieldId) === "freq";
+      const reservedRightPx = resolveReservedRightPx(box.fieldId, box as { reservedRightPx?: number });
+      const maxWidth = Math.max(1, boxW - paddingPx * 2 - reservedRightPx);
       const text = resolveBoxText(card, box.fieldId, box.textMode, box.text, box.staticText);
 
       ctx.font = `${box.style.fontWeight === "bold" ? "700" : "400"} ${fontPx}px "DejaVu Sans", "Noto Sans", "Arial", sans-serif`;
@@ -127,7 +149,12 @@ export const exportCardsToPdf = (
         ctx.strokeRect(boxX, boxY, boxW, boxH);
       }
 
-      const lines = wrapText(ctx, text, maxWidth);
+      if (isFrequencyBox) {
+        drawFrequencyDots(ctx, card, box, boxY, boxH, mmToCanvasPx);
+        return;
+      }
+
+      const lines = measureWrappedLines(text, ctx.font, maxWidth, ctx);
       const lineHeightPx = fontPx * box.style.lineHeight;
       lines.forEach((line, lineIndex) => {
         const textY = boxY + paddingPx + lineIndex * lineHeightPx;
@@ -135,12 +162,8 @@ export const exportCardsToPdf = (
 
         const measured = ctx.measureText(line).width;
         let textX = boxX + paddingPx;
-        if (box.style.align === "center") {
-          textX = boxX + (boxW - measured) / 2;
-        }
-        if (box.style.align === "right") {
-          textX = boxX + boxW - paddingPx - measured;
-        }
+        if (box.style.align === "center") textX = boxX + (boxW - measured) / 2;
+        if (box.style.align === "right") textX = boxX + boxW - paddingPx - measured;
         ctx.fillText(line, textX, textY);
       });
     });
@@ -151,9 +174,13 @@ export const exportCardsToPdf = (
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
     }
 
-    const image = canvas.toDataURL("image/png");
-    doc.addImage(image, "PNG", mmToPdf(x), mmToPdf(y), mmToPdf(cardWidth), mmToPdf(cardHeight));
-  });
+    const image = useJpeg ? canvas.toDataURL("image/jpeg", 0.72) : canvas.toDataURL("image/png");
+    doc.addImage(image, imageType, mmToPdf(x), mmToPdf(y), mmToPdf(cardWidth), mmToPdf(cardHeight), undefined, "FAST");
+
+    if (index > 0 && index % 4 === 0) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
 
   logger.info("PDF export done", `file=${fileName}, pages=${doc.getNumberOfPages()}`);
   doc.save(fileName);
