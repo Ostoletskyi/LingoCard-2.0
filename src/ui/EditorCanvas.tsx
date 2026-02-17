@@ -248,6 +248,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!editModeEnabled) return;
     if (editingBoxId) return;
     if (box.locked) return;
+    event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     if (event.currentTarget instanceof HTMLElement) {
@@ -297,6 +298,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       }
     }
     if (!dragState) return;
+    event.preventDefault();
     const deltaX = event.clientX - dragState.startX;
     const deltaY = event.clientY - dragState.startY;
     const deltaXMm = pxToMm(deltaX, basePxPerMm * zoomScale);
@@ -760,7 +762,9 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
               width: widthPx,
               height: heightPx,
               left: cardOffsetPx,
-              top: cardOffsetPx
+              top: cardOffsetPx,
+              userSelect: dragState ? "none" : "text",
+              WebkitUserSelect: dragState ? "none" : "text"
             }}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -815,7 +819,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 {card.tags.join(" · ")}
               </div>
             ) : null}
-            {activeBoxes.map((box) => {
+            {dragPreviewBoxes.map((box) => {
               const fieldText = getFieldText(card, box.fieldId);
               const staticValue = box.staticText || box.text || "";
               const dynamicValue = box.text || fieldText.text;
@@ -862,7 +866,10 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                         ? "2px solid rgba(14,165,233,0.16)"
                         : "none",
                     display: box.style.visible === false ? "none" : "block",
-                    overflow: "hidden"
+                    overflow: "hidden",
+                    userSelect: "none",
+                    WebkitUserSelect: "none",
+                    touchAction: "none"
                   }}
                   onPointerDown={(event) => handlePointerDown(event, box, { type: "move" })}
                   onDoubleClick={(event) => {
