@@ -714,7 +714,7 @@ export const useAppStore = create<AppState>()(
       if (index < 0) return;
       const card = list[index];
       if (!card) return;
-      list[index] = autoResizeCardBoxes(applyLayoutTemplate(card, state.activeTemplate), getPxPerMm(1));
+      list[index] = autoResizeCardBoxes(applyLayoutTemplate(card, state.activeTemplate, { preserveContent: true }), getPxPerMm(1));
     }),
     selectBox: (id) => set((state) => {
       trackStateEvent(state, get(), `selectBox:${id ?? "none"}`, { undoable: false });
@@ -998,6 +998,26 @@ export const useAppStore = create<AppState>()(
         };
       });
       if (!changed) return;
+
+      const sourceCandidate =
+        state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : undefined;
+      const templateSource = sourceCandidate ?? next.find((card) => card.boxes?.some((box) => box.id === boxId));
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
+          } catch (error) {
+            console.warn("Failed to persist layout template", error);
+          }
+        }
+      }
+
       if (side === "A") {
         state.cardsA = next;
       } else {
