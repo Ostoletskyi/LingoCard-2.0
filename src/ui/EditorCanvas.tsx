@@ -894,12 +894,12 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       {box.fieldId}
                     </span>
                   )}
-                  {renderMode === "editor" && dragState?.boxId === box.id && (
+                  {renderMode === "editor" && showBlockMetrics && dragState?.boxId === box.id && (
                     <span className="absolute right-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
                       X:{box.xMm.toFixed(1)} Y:{box.yMm.toFixed(1)}
                     </span>
                   )}
-                  {renderMode === "editor" && editModeEnabled && isSelected && (
+                  {renderMode === "editor" && editModeEnabled && showBlockMetrics && isSelected && (
                     <span className="absolute left-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-slate-600 shadow-sm dark:bg-slate-900/80 dark:text-slate-200">
                       {box.wMm.toFixed(1)}×{box.hMm.toFixed(1)} мм
                     </span>

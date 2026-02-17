@@ -25,6 +25,40 @@ const resolveReservedRightPx = (fieldId: string, box: { reservedRightPx?: number
   return normalizeFieldId(fieldId) === "freq" ? 24 : 0;
 };
 
+
+const FREQ_DOT_COLORS: Record<number, string> = {
+  1: "rgb(59 130 246)",
+  2: "rgb(239 68 68)",
+  3: "rgb(249 115 22)",
+  4: "rgb(234 179 8)",
+  5: "rgb(34 197 94)"
+};
+
+const drawFrequencyDots = (
+  ctx: CanvasRenderingContext2D,
+  card: Card,
+  box: { xMm: number; yMm: number; wMm: number; style: { paddingMm: number } },
+  boxY: number,
+  boxH: number
+) => {
+  const dots = Math.max(0, Math.min(5, Math.round(card.freq || 0)));
+  if (!dots) return;
+
+  const color = FREQ_DOT_COLORS[dots] ?? "rgb(34 197 94)";
+  const radius = Math.max(2, mmToCanvasPx(0.7));
+  const gap = Math.max(2, mmToCanvasPx(0.7));
+  const startX = mmToCanvasPx(box.xMm) + mmToCanvasPx(box.style.paddingMm) + radius;
+  const centerY = boxY + Math.min(boxH / 2, mmToCanvasPx(box.style.paddingMm) + radius + 1);
+
+  for (let index = 0; index < dots; index += 1) {
+    const centerX = startX + index * (radius * 2 + gap);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+};
+
 const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: string, staticText?: string) => {
   if (textMode === "static") {
     return staticText || text || "";
@@ -93,6 +127,7 @@ export const exportCardsToPdf = (
       const boxY = mmToCanvasPx(box.yMm);
       const boxW = Math.max(1, mmToCanvasPx(box.wMm));
       const boxH = Math.max(1, mmToCanvasPx(box.hMm));
+      const isFrequencyBox = normalizeFieldId(box.fieldId) === "freq";
       const reservedRightPx = resolveReservedRightPx(box.fieldId, box as { reservedRightPx?: number });
       const maxWidth = Math.max(1, boxW - paddingPx * 2 - reservedRightPx);
       const text = resolveBoxText(card, box.fieldId, box.textMode, box.text, box.staticText);
@@ -105,6 +140,11 @@ export const exportCardsToPdf = (
         ctx.strokeStyle = "rgba(75,85,99,0.75)";
         ctx.lineWidth = 1;
         ctx.strokeRect(boxX, boxY, boxW, boxH);
+      }
+
+      if (isFrequencyBox) {
+        drawFrequencyDots(ctx, card, box, boxY, boxH);
+        return;
       }
 
       const lines = measureWrappedLines(text, ctx.font, maxWidth, ctx);
