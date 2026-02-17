@@ -360,6 +360,29 @@ const assert = (condition: unknown, message: string) => {
   if (!condition) throw new Error(message);
 };
 
+
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
+
+async function runRuntimeContracts() {
+  const tmpDir = path.join(projectRoot, "_tmp", "smoke-runtime");
+  ensureDir(tmpDir);
+
+  const entryPath = path.join(tmpDir, "runtime-contract-entry.ts");
+  const bundlePath = path.join(tmpDir, "runtime-contract-entry.mjs");
+
+  fs.writeFileSync(
+    entryPath,
+    `import { normalizeImportedJson } from "${projectRoot}/src/io/normalizer.ts";
+import { DEFAULT_TEMPLATE_BOXES } from "${projectRoot}/src/layout/defaultTemplate.ts";
+import { getFieldText } from "${projectRoot}/src/utils/cardFields.ts";
+import { normalizeCard } from "${projectRoot}/src/model/cardSchema.ts";
+
+const assert = (condition: unknown, message: string) => {
+  if (!condition) throw new Error(message);
+};
+
 const fixtures = [
   { cards: [{ id: "a1", inf: "machen", translations: [{ value: "делать" }] }] },
   { verbs: [{ infinitive: "gehen", translations: [{ ru: "идти" }], forms: { p3: "geht" } }] },
@@ -517,11 +540,27 @@ const main = async () => {
     process.exitCode = 1;
   }
 
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
   try {
     await runCommand("npm", ["run", "build"]);
     record("Build", "OK");
   } catch (error) {
     record("Build", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 
