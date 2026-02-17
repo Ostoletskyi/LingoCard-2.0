@@ -243,6 +243,29 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     });
   };
 
+  const flushDragPreview = () => {
+    if (dragPreviewRafRef.current != null) {
+      window.cancelAnimationFrame(dragPreviewRafRef.current);
+      dragPreviewRafRef.current = null;
+    }
+    const pending = pendingDragBoxRef.current;
+    pendingDragBoxRef.current = null;
+    if (!pending) return;
+    setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
+  };
+
+  const scheduleDragPreview = (nextBox: Box) => {
+    pendingDragBoxRef.current = nextBox;
+    if (dragPreviewRafRef.current != null) return;
+    dragPreviewRafRef.current = window.requestAnimationFrame(() => {
+      dragPreviewRafRef.current = null;
+      const pending = pendingDragBoxRef.current;
+      pendingDragBoxRef.current = null;
+      if (!pending) return;
+      setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
+    });
+  };
+
   const handlePointerDown = (event: React.PointerEvent, box: Box, mode: DragMode) => {
     if (!editModeEnabled) return;
     if (editingBoxId) return;
