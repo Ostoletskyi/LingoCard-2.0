@@ -5,6 +5,8 @@ import { getFieldText } from "../utils/cardFields";
 import { logger } from "../utils/logger";
 import { MM_PER_INCH, mmToPdf } from "../utils/mmPx";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
+import { measureWrappedLines } from "../layout/textMeasure";
+import { normalizeFieldId } from "../utils/fieldAlias";
 
 export type PdfExportOptions = {
   cardsPerRow?: number;
@@ -16,34 +18,11 @@ const CANVAS_DPI = 300;
 
 const mmToCanvasPx = (mm: number) => Math.round((mm / MM_PER_INCH) * CANVAS_DPI);
 
-const wrapText = (
-  ctx: CanvasRenderingContext2D,
-  value: string,
-  maxWidthPx: number
-): string[] => {
-  const source = value.replace(/\r\n/g, "\n").split("\n");
-  const lines: string[] = [];
-  source.forEach((row) => {
-    if (!row) {
-      lines.push("");
-      return;
-    }
-    const words = row.split(/\s+/);
-    let current = "";
-    words.forEach((word) => {
-      const candidate = current ? `${current} ${word}` : word;
-      if (ctx.measureText(candidate).width <= maxWidthPx) {
-        current = candidate;
-        return;
-      }
-      if (current) {
-        lines.push(current);
-      }
-      current = word;
-    });
-    if (current) lines.push(current);
-  });
-  return lines;
+const resolveReservedRightPx = (fieldId: string, box: { reservedRightPx?: number }) => {
+  if (typeof box.reservedRightPx === "number" && Number.isFinite(box.reservedRightPx)) {
+    return Math.max(0, box.reservedRightPx);
+  }
+  return normalizeFieldId(fieldId) === "freq" ? 24 : 0;
 };
 
 const resolveBoxText = (card: Card, fieldId: string, textMode?: string, text?: string, staticText?: string) => {
@@ -114,7 +93,8 @@ export const exportCardsToPdf = (
       const boxY = mmToCanvasPx(box.yMm);
       const boxW = Math.max(1, mmToCanvasPx(box.wMm));
       const boxH = Math.max(1, mmToCanvasPx(box.hMm));
-      const maxWidth = Math.max(1, boxW - paddingPx * 2);
+      const reservedRightPx = resolveReservedRightPx(box.fieldId, box as { reservedRightPx?: number });
+      const maxWidth = Math.max(1, boxW - paddingPx * 2 - reservedRightPx);
       const text = resolveBoxText(card, box.fieldId, box.textMode, box.text, box.staticText);
 
       ctx.font = `${box.style.fontWeight === "bold" ? "700" : "400"} ${fontPx}px "DejaVu Sans", "Noto Sans", "Arial", sans-serif`;
@@ -127,7 +107,7 @@ export const exportCardsToPdf = (
         ctx.strokeRect(boxX, boxY, boxW, boxH);
       }
 
-      const lines = wrapText(ctx, text, maxWidth);
+      const lines = measureWrappedLines(text, ctx.font, maxWidth, ctx);
       const lineHeightPx = fontPx * box.style.lineHeight;
       lines.forEach((line, lineIndex) => {
         const textY = boxY + paddingPx + lineIndex * lineHeightPx;
