@@ -22,9 +22,12 @@ const fieldLabels: Record<string, string> = {
   forms_rek: "Три времени + рекция",
   synonyms: "Синонимы",
   examples: "Примеры",
+  recommendations: "Рекомендации",
   custom_text: "Простой блок"
 };
 
+
+const warnedMissingFields = new Set<string>();
 export const getFieldLabel = (fieldId: string) => {
   const normalized = normalizeFieldId(fieldId);
   return fieldLabels[normalized] ?? `Поле: ${normalized}`;
@@ -70,6 +73,50 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
       isPlaceholder: card.tags.length === 0
     };
   }
+  if (normalizedFieldId === "hero_inf") {
+    return { text: card.inf || "—", isPlaceholder: !card.inf };
+  }
+  if (normalizedFieldId === "meta") {
+    return {
+      text: card.tags.length ? card.tags.join(", ") : "Теги…",
+      isPlaceholder: card.tags.length === 0
+    };
+  }
+  if (normalizedFieldId === "hero_translations") {
+    const fromAgg = (card.translations ?? [])
+      .map((item, idx) => {
+        const line = `${item.value}${item.ctx ? ` (${item.ctx})` : ""}`.trim();
+        return line ? `${idx + 1}. ${line}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
+    const fromFlat = [1, 2, 3, 4]
+      .map((i) => {
+        const ru = card[`tr_${i}_ru` as keyof Card] as string;
+        const ctx = card[`tr_${i}_ctx` as keyof Card] as string;
+        const line = `${ru}${ctx ? ` (${ctx})` : ""}`.trim();
+        return line ? `${i}. ${line}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    return { text: fromFlat || "Переводы…", isPlaceholder: fromFlat.length === 0 };
+  }
+  if (normalizedFieldId === "forms") {
+    const fromAgg = card.forms
+      ? [
+          card.forms.p3 ? `1. P3: ${card.forms.p3}` : "",
+          card.forms.praet ? `2. Prät: ${card.forms.praet}` : "",
+          card.forms.p2 ? `3. P2: ${card.forms.p2}` : "",
+          card.forms.aux ? `4. Aux: ${card.forms.aux}` : ""
+        ].filter(Boolean).join("\n")
+      : "";
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
+  }
   if (normalizedFieldId === "forms_rek") {
     const forms = [
       card.forms_p3 ? `Präsens: ${card.forms_p3}` : "",
@@ -91,6 +138,16 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     return { text: text || "Три времени и рекция…", isPlaceholder: text.length === 0 };
   }
   if (normalizedFieldId === "synonyms") {
+    const fromAgg = (card.synonyms ?? [])
+      .map((item, idx) => {
+        const line = `${item.de}${item.de && item.ru ? " — " : ""}${item.ru ?? ""}`.trim();
+        return line ? `${idx + 1}. ${line}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
     const text = [1, 2, 3]
       .map((i) => {
         const de = card[`syn_${i}_de` as keyof Card] as string;
@@ -102,7 +159,29 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
       .join("\n");
     return { text: text || "Синонимы…", isPlaceholder: text.length === 0 };
   }
+  if (normalizedFieldId === "recommendations") {
+    const text = [1, 2, 3, 4, 5]
+      .map((i) => {
+        const de = card[`rek_${i}_de` as keyof Card] as string;
+        const ru = card[`rek_${i}_ru` as keyof Card] as string;
+        return de || ru ? `${de}${de && ru ? " — " : ""}${ru}` : "";
+      })
+      .filter(Boolean)
+      .map((line, idx) => `${idx + 1}. ${line}`)
+      .join("\n");
+    return { text: text || "Рекомендации…", isPlaceholder: text.length === 0 };
+  }
   if (normalizedFieldId === "examples") {
+    const fromAgg = (card.examples ?? [])
+      .map((item, idx) => {
+        const line = `${item.de}${item.de && item.ru ? " | " : ""}${item.ru ?? ""}`.trim();
+        return line ? `${idx + 1}. ${line}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
     const text = [1, 2, 3, 4, 5]
       .map((i) => {
         const de = card[`ex_${i}_de` as keyof Card] as string;
@@ -122,6 +201,11 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     if (typeof value === "string" && value.trim().length > 0) {
       return { text: value, isPlaceholder: false };
     }
+    return { text: placeholder, isPlaceholder: true };
+  }
+  if (!warnedMissingFields.has(normalizedFieldId)) {
+    warnedMissingFields.add(normalizedFieldId);
+    console.warn("Missing field:", normalizedFieldId);
   }
   return { text: placeholder, isPlaceholder: true };
 };
