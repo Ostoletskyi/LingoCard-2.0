@@ -913,6 +913,18 @@ export const useAppStore = create<AppState>()(
       } else {
         state.cardsB = next;
       }
+
+      const templateSource =
+        (state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : null) ?? next[0];
+
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+      }
     }),
     adjustColumnFontSizeByField: (side, fieldIds, deltaPt) => set((state) => {
       if (!state.editModeEnabled) return;
