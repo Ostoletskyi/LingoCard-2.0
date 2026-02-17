@@ -35,11 +35,22 @@ type BoxMatchRef = {
 
 type GroupedBoxes = Map<string, BoxMatchRef[]>;
 
-const STATIC_SEMANTIC_FIELDS = new Set(["forms_rek", "synonyms", "examples", "custom_text"]);
+const DYNAMIC_COMPUTED_FIELDS = new Set([
+  "forms",
+  "forms_rek",
+  "synonyms",
+  "examples",
+  "recommendations",
+  "hero_inf",
+  "hero_translations",
+  "meta",
+  "tags",
+  "freq"
+]);
 
-const isRealCardField = (fieldId: string) => {
+const isDynamicField = (fieldId: string) => {
   const normalized = normalizeFieldId(fieldId);
-  return normalized in emptyCard && !STATIC_SEMANTIC_FIELDS.has(normalized);
+  return normalized in emptyCard || DYNAMIC_COMPUTED_FIELDS.has(normalized);
 };
 
 const getRoleToken = (box: Box) => box.type || box.label_i18n || box.label || "";
@@ -103,7 +114,7 @@ export const extractLayoutTemplate = (card: Card, cardSize: { widthMm: number; h
 
 const buildTemplateBox = (templateBox: LayoutTemplate["boxes"][number], fallbackId: string): Box => {
   const normalizedFieldId = normalizeFieldId(templateBox.fieldId);
-  const realField = isRealCardField(normalizedFieldId);
+  const dynamicField = isDynamicField(normalizedFieldId);
   return {
     id: fallbackId,
     fieldId: normalizedFieldId,
@@ -115,7 +126,7 @@ const buildTemplateBox = (templateBox: LayoutTemplate["boxes"][number], fallback
     style: toPlainStyle(templateBox.style),
     rotateDeg: templateBox.rotateDeg,
     locked: templateBox.locked,
-    textMode: realField ? "dynamic" : templateBox.textMode,
+    textMode: dynamicField ? "dynamic" : templateBox.textMode,
     autoH: templateBox.autoH,
     minH: templateBox.minH,
     maxH: templateBox.maxH,
@@ -126,12 +137,20 @@ const buildTemplateBox = (templateBox: LayoutTemplate["boxes"][number], fallback
   };
 };
 
-const patchBoxFormatting = (current: Box, templateBox: LayoutTemplate["boxes"][number]): Box => {
-  const normalizedFieldId = normalizeFieldId(current.fieldId);
-  const realField = isRealCardField(normalizedFieldId);
+type ApplyLayoutTemplateOptions = {
+  preserveContent?: boolean;
+};
+
+const patchBoxFormatting = (
+  current: Box,
+  templateBox: LayoutTemplate["boxes"][number],
+  options?: ApplyLayoutTemplateOptions
+): Box => {
+  const nextFieldId = options?.preserveContent ? current.fieldId : normalizeFieldId(templateBox.fieldId);
+  const dynamicField = isDynamicField(nextFieldId);
   return {
     ...current,
-    fieldId: normalizeFieldId(templateBox.fieldId),
+    fieldId: nextFieldId,
     xMm: templateBox.xMm,
     yMm: templateBox.yMm,
     wMm: templateBox.wMm,
@@ -140,7 +159,7 @@ const patchBoxFormatting = (current: Box, templateBox: LayoutTemplate["boxes"][n
     style: toPlainStyle(templateBox.style),
     rotateDeg: templateBox.rotateDeg,
     locked: templateBox.locked,
-    textMode: realField ? "dynamic" : templateBox.textMode,
+    textMode: options?.preserveContent ? current.textMode : dynamicField ? "dynamic" : templateBox.textMode,
     autoH: templateBox.autoH ?? current.autoH,
     minH: templateBox.minH ?? current.minH,
     maxH: templateBox.maxH ?? current.maxH,
@@ -151,7 +170,7 @@ const patchBoxFormatting = (current: Box, templateBox: LayoutTemplate["boxes"][n
   };
 };
 
-export const applyLayoutTemplate = (card: Card, template: LayoutTemplate): Card => {
+export const applyLayoutTemplate = (card: Card, template: LayoutTemplate, options?: ApplyLayoutTemplateOptions): Card => {
   const currentBoxes = card.boxes ?? [];
   const groups = groupBoxes(currentBoxes);
   const usedIndices = new Set<number>();
@@ -163,7 +182,7 @@ export const applyLayoutTemplate = (card: Card, template: LayoutTemplate): Card 
     const candidate = candidates.find((item) => !usedIndices.has(item.index));
     if (candidate) {
       usedIndices.add(candidate.index);
-      return patchBoxFormatting(candidate.box, tpl);
+      return patchBoxFormatting(candidate.box, tpl, options);
     }
     const fallbackId = `${normalizeFieldId(tpl.fieldId)}_${crypto.randomUUID().slice(0, 8)}`;
     return buildTemplateBox(tpl, fallbackId);

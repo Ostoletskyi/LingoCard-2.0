@@ -284,11 +284,27 @@ const main = async () => {
     process.exitCode = 1;
   }
 
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
   try {
     await runCommand("npm", ["run", "build"]);
     record("Build", "OK");
   } catch (error) {
     record("Build", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 

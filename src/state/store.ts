@@ -969,10 +969,14 @@ export const useAppStore = create<AppState>()(
         };
         return autoResizeCardBoxes(resized, pxPerMm);
       });
+      if (!changed) return;
       if (side === "A") {
         state.cardsA = next;
       } else {
         state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, get(), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
@@ -1170,7 +1174,7 @@ export const useAppStore = create<AppState>()(
       const nextList = list.map((card) => {
         const shouldApply = mode === "all" ? card.id !== sourceCardId : selectedSet.has(card.id) && card.id !== sourceCardId;
         if (!shouldApply) return card;
-        return autoResizeCardBoxes(applyLayoutTemplate(card, template), getPxPerMm(1));
+        return autoResizeCardBoxes(applyLayoutTemplate(card, template, { preserveContent: true }), getPxPerMm(1));
       });
       if (side === "A") {
         state.cardsA = nextList;
