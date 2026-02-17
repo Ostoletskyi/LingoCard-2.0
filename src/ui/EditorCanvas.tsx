@@ -203,9 +203,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!canEditLayoutGeometry || !card || !card.boxes || card.boxes.length === 0) {
       return;
     }
-    const nextBoxes = card.boxes.map((box) =>
-      box.id === boxId ? { ...box, ...update } : box
-    );
+
+    const currentBox = card.boxes.find((box) => box.id === boxId);
+    if (!currentBox) return;
+
+    const hasChanges = Object.entries(update).some(([key, value]) => currentBox[key as keyof Box] !== value);
+    if (!hasChanges) return;
+
+    const nextBoxes = card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box));
     updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason, { track: false });
   };
 
@@ -249,9 +254,15 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
       const x = (event.clientX - rect.left)  / (basePxPerMm * zoomScale);
       const y = (event.clientY - rect.top)  / (basePxPerMm * zoomScale);
       if (x >= 0 && y >= 0 && x <= layout.widthMm && y <= layout.heightMm) {
-        setCursorMm({ x, y });
+        const rounded = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+        setCursorMm((prev) => {
+          if (prev && prev.x === rounded.x && prev.y === rounded.y) {
+            return prev;
+          }
+          return rounded;
+        });
       } else {
-        setCursorMm(null);
+        setCursorMm((prev) => (prev ? null : prev));
       }
     }
     if (!dragState) return;
