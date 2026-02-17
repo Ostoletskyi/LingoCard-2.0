@@ -29,6 +29,22 @@ const fieldLabels: Record<string, string> = {
 
 
 const warnedMissingFields = new Set<string>();
+
+const collectTranslationValues = (card: Card): string[] => {
+  const fromAgg = (card.translations ?? [])
+    .map((item) => `${item.value}${item.ctx ? ` (${item.ctx})` : ""}`.trim())
+    .filter(Boolean);
+  if (fromAgg.length) return fromAgg;
+
+  return [1, 2, 3, 4]
+    .map((i) => {
+      const ru = (card[`tr_${i}_ru` as keyof Card] as string | undefined)?.trim() ?? "";
+      const ctx = (card[`tr_${i}_ctx` as keyof Card] as string | undefined)?.trim() ?? "";
+      if (!ru && !ctx) return "";
+      return `${ru}${ctx ? ` (${ctx})` : ""}`.trim();
+    })
+    .filter(Boolean);
+};
 export const getFieldLabel = (fieldId: string) => {
   const normalized = normalizeFieldId(fieldId);
   return fieldLabels[normalized] ?? `Поле: ${normalized}`;
@@ -84,26 +100,14 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     };
   }
   if (normalizedFieldId === "hero_translations") {
-    const fromAgg = (card.translations ?? [])
-      .map((item, idx) => {
-        const line = `${item.value}${item.ctx ? ` (${item.ctx})` : ""}`.trim();
-        return line ? `${idx + 1}. ${line}` : "";
-      })
-      .filter(Boolean)
-      .join("\n");
-    if (fromAgg) {
-      return { text: fromAgg, isPlaceholder: false };
-    }
-    const fromFlat = [1, 2, 3, 4]
-      .map((i) => {
-        const ru = card[`tr_${i}_ru` as keyof Card] as string;
-        const ctx = card[`tr_${i}_ctx` as keyof Card] as string;
-        const line = `${ru}${ctx ? ` (${ctx})` : ""}`.trim();
-        return line ? `${i}. ${line}` : "";
-      })
-      .filter(Boolean)
-      .join("\n");
-    return { text: fromFlat || "Переводы…", isPlaceholder: fromFlat.length === 0 };
+    const values = collectTranslationValues(card);
+    const text = values.join(", ");
+    return { text: text || "Переводы…", isPlaceholder: text.length === 0 };
+  }
+  if (normalizedFieldId === "tr_1_ru") {
+    const values = collectTranslationValues(card);
+    const text = values.join(", ");
+    return { text: text || "Перевод…", isPlaceholder: text.length === 0 };
   }
   if (normalizedFieldId === "forms") {
     const fromService = card.forms_service?.trim();

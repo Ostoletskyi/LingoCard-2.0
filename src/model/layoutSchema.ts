@@ -66,13 +66,13 @@ export const defaultLayout: Layout = {
       }
     },
     {
-      id: "tr_1_ru",
+      id: "hero_translations",
       xMm: 8,
       yMm: 22,
       wMm: 120,
       hMm: 8,
       z: 1,
-      fieldId: "tr_1_ru",
+      fieldId: "hero_translations",
       style: {
         fontSizePt: 12,
         fontWeight: "normal",

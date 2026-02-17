@@ -297,7 +297,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
     makeBox({
       id: "hero_translations",
       semanticKey: "hero_translations",
-      fieldId: "tr_1_ru",
+      fieldId: "hero_translations",
       text: trText,
       zone: zones.heroTranslations,
       baseFontPt: 10,
@@ -305,7 +305,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 12,
       lineHeight: 1.2,
       label: "Переводы",
-      textMode: "static",
+      textMode: "dynamic",
       autoH: true
     })
   );
