@@ -128,11 +128,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     showBlockMetrics,
     rulersPlacement,
     selectBox,
-    updateCardSilent,
     pushHistory,
     adjustColumnFontSizeByField,
     setZoom,
     removeSelectedBoxFromCard,
+    updateBoxAcrossColumn,
     recordEvent,
     editModeEnabled
   } = useAppStore((state) => ({
@@ -152,11 +152,11 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     showBlockMetrics: state.showBlockMetrics,
     rulersPlacement: state.rulersPlacement,
     selectBox: state.selectBox,
-    updateCardSilent: state.updateCardSilent,
     pushHistory: state.pushHistory,
     adjustColumnFontSizeByField: state.adjustColumnFontSizeByField,
     setZoom: state.setZoom,
     removeSelectedBoxFromCard: state.removeSelectedBoxFromCard,
+    updateBoxAcrossColumn: state.updateBoxAcrossColumn,
     recordEvent: state.recordEvent,
     editModeEnabled: state.editModeEnabled
   }));
@@ -207,7 +207,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const canEditLayoutGeometry = hasCardBoxes;
 
   const updateActiveBox = (boxId: string, update: Partial<Box>, reason: string) => {
-    if (!canEditLayoutGeometry || !card || !card.boxes || card.boxes.length === 0) {
+    if (!canEditLayoutGeometry || !card?.boxes?.length) {
       return;
     }
 
@@ -217,8 +217,30 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     const hasChanges = Object.entries(update).some(([key, value]) => currentBox[key as keyof Box] !== value);
     if (!hasChanges) return;
 
-    const nextBoxes = card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box));
-    updateCardSilent({ ...card, boxes: nextBoxes }, selectedSide, reason, { track: false });
+    updateBoxAcrossColumn({ side: selectedSide, boxId, update, reason });
+  };
+
+  const flushDragPreview = () => {
+    if (dragPreviewRafRef.current != null) {
+      window.cancelAnimationFrame(dragPreviewRafRef.current);
+      dragPreviewRafRef.current = null;
+    }
+    const pending = pendingDragBoxRef.current;
+    pendingDragBoxRef.current = null;
+    if (!pending) return;
+    setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
+  };
+
+  const scheduleDragPreview = (nextBox: Box) => {
+    pendingDragBoxRef.current = nextBox;
+    if (dragPreviewRafRef.current != null) return;
+    dragPreviewRafRef.current = window.requestAnimationFrame(() => {
+      dragPreviewRafRef.current = null;
+      const pending = pendingDragBoxRef.current;
+      pendingDragBoxRef.current = null;
+      if (!pending) return;
+      setDragState((prev) => (prev ? { ...prev, hasApplied: true, currentBox: pending } : prev));
+    });
   };
 
   const flushDragPreview = () => {

@@ -150,6 +150,7 @@ export type AppState = AppStateSnapshot &
     adjustColumnFontSizeByField: (side: ListSide, fieldIds: string[], deltaPt: number) => void;
     addBlockToCard: (side: ListSide, cardId: string, kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple") => void;
     removeSelectedBoxFromCard: (side: ListSide, cardId: string) => void;
+    updateBoxAcrossColumn: (params: { side: ListSide; boxId: string; update: Partial<Box>; reason?: string }) => void;
     recordEvent: (action: string) => void;
     resetState: () => void;
     pushHistory: () => void;
@@ -974,6 +975,38 @@ export const useAppStore = create<AppState>()(
         state.cardsB = next;
       }
     }),
+    updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      let changed = false;
+      const next = list.map((card) => {
+        if (!card.boxes?.length) {
+          return card;
+        }
+        const target = card.boxes.find((box) => box.id === boxId);
+        if (!target) {
+          return card;
+        }
+        const hasChanges = Object.entries(update).some(([key, value]) => target[key as keyof Box] !== value);
+        if (!hasChanges) {
+          return card;
+        }
+        changed = true;
+        return {
+          ...card,
+          boxes: card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box))
+        };
+      });
+      if (!changed) return;
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, get(), reason);
+      }
+    }),
     addBlockToCard: (side, cardId, kind) => set((state) => {
       if (!state.editModeEnabled) return;
       trackStateEvent(state, get(), `addBlockToCard:${side}:${kind}`);
@@ -992,15 +1025,32 @@ export const useAppStore = create<AppState>()(
     }),
     removeSelectedBoxFromCard: (side, cardId) => set((state) => {
       if (!state.editModeEnabled || !state.selectedBoxId) return;
-      trackStateEvent(state, get(), `removeBox:${side}:${state.selectedBoxId}`);
+      const selectedBoxId = state.selectedBoxId;
       const list = side === "A" ? state.cardsA : state.cardsB;
-      const index = list.findIndex((card) => card.id === cardId);
-      if (index < 0) return;
-      const current = list[index];
-      if (!current?.boxes?.length) return;
-      const nextBoxes = current.boxes.filter((box) => box.id !== state.selectedBoxId);
-      if (nextBoxes.length === current.boxes.length) return;
-      list[index] = { ...current, boxes: nextBoxes };
+      const sourceCard = list.find((card) => card.id === cardId);
+      const hasSelectedOnSource = Boolean(sourceCard?.boxes?.some((box) => box.id === selectedBoxId));
+      if (!hasSelectedOnSource) return;
+
+      let changed = false;
+      const next = list.map((card) => {
+        if (!card.boxes?.length) {
+          return card;
+        }
+        const nextBoxes = card.boxes.filter((box) => box.id !== selectedBoxId);
+        if (nextBoxes.length === card.boxes.length) {
+          return card;
+        }
+        changed = true;
+        return { ...card, boxes: nextBoxes };
+      });
+      if (!changed) return;
+
+      trackStateEvent(state, get(), `removeBox:${side}:${selectedBoxId}:column`);
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
       state.selectedBoxId = null;
     }),
     recordEvent: (action) => set((state) => {
