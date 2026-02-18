@@ -819,7 +819,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
             <img
               src={badgeDataUri}
               alt="verb badge"
-              className="pointer-events-none absolute right-2 top-2 z-20 rounded-md border border-slate-300/60 bg-white/70 p-0.5 shadow-sm dark:border-slate-600/70 dark:bg-slate-900/65"
+              className="pointer-events-none absolute right-2 top-2 z-20 opacity-90"
               style={{ width: mmToPx(10, basePxPerMm), height: mmToPx(10, basePxPerMm) }}
             />
             {renderMode === "editor" && card?.tags?.length ? (

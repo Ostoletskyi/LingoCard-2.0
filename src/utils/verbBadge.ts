@@ -1,66 +1,168 @@
-const normalizeVerb = (value: string) =>
-  value
+const DIGRAPHS = ["sch", "ch", "ei", "ie", "au", "eu", "äu"] as const;
+
+type BaseShape = "ring" | "square" | "triangle" | "diamond";
+type SuffixMarker = "" | "en" | "ern" | "eln" | "ieren";
+type SoundToken = "V" | "H" | "S";
+
+const normalizeGerman = (value: string) =>
+  (value || "")
     .toLowerCase()
+    .replace(/ß/g, "ss")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zäöüß]/g, "")
-    .trim();
+    .replace(/[^a-zäöü]/g, "");
 
-const hashString = (value: string) => {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
+const baseShapeFromFirstLetter = (word: string): BaseShape => {
+  const first = word[0] || "a";
+  if (first >= "a" && first <= "f") return "ring";
+  if (first >= "g" && first <= "l") return "square";
+  if (first >= "m" && first <= "r") return "triangle";
+  return "diamond";
 };
 
-const trigramScore = (word: string) => {
-  const grams = new Map<string, number>();
-  for (let i = 0; i < Math.max(1, word.length - 2); i += 1) {
-    const gram = word.slice(i, i + 3) || word;
-    grams.set(gram, (grams.get(gram) ?? 0) + 1);
-  }
-  let acc = 0;
-  grams.forEach((count, gram) => {
-    acc += hashString(gram) * count;
-  });
-  return acc >>> 0;
+const suffixMarker = (word: string): SuffixMarker => {
+  if (word.endsWith("ieren")) return "ieren";
+  if (word.endsWith("eln")) return "eln";
+  if (word.endsWith("ern")) return "ern";
+  if (word.endsWith("en")) return "en";
+  return "";
 };
 
-export const buildVerbBadgeSvg = (infinitive: string) => {
-  const word = normalizeVerb(infinitive) || "verb";
-  const base = hashString(word);
-  const structure = trigramScore(word);
-  const hue = base % 360;
-  const hue2 = (hue + (structure % 90) + 30) % 360;
-  const sat = 58 + (word.length % 22);
-  const light = 56 + (structure % 14);
-  const shift = (structure % 18) - 9;
+const tokenizeGerman = (word: string): string[] => {
+  const out: string[] = [];
+  let index = 0;
+  while (index < word.length) {
+    const digraph = DIGRAPHS.find((part) => word.startsWith(part, index));
+    if (digraph) {
+      out.push(digraph);
+      index += digraph.length;
+      continue;
+    }
+    out.push(word[index]!);
+    index += 1;
+  }
+  return out;
+};
 
-  const bg = `hsl(${hue} ${sat}% ${light}%)`;
-  const fg = `hsl(${hue2} ${Math.max(42, sat - 10)}% ${Math.max(30, light - 22)}%)`;
-  const ring = `hsl(${(hue + 180) % 360} 45% 34%)`;
-
-  const points = Array.from({ length: 4 }, (_, i) => {
-    const seed = hashString(`${word}:${i}`);
-    return {
-      x: 12 + (seed % 76),
-      y: 12 + ((seed >>> 8) % 76)
-    };
+const tokensToPattern = (tokens: string[]): SoundToken[] => {
+  const vowels = new Set(["a", "e", "i", "o", "u", "ä", "ö", "ü", "ei", "ie", "au", "eu", "äu"]);
+  const hard = new Set(["k", "t", "p", "g", "d", "b", "z"]);
+  return tokens.map((token) => {
+    if (vowels.has(token)) return "V";
+    if (hard.has(token)) return "H";
+    return "S";
   });
+};
 
-  const [p0, p1, p2, p3] = points;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="verb-badge">
-  <rect x="2" y="2" width="96" height="96" rx="16" fill="${bg}" stroke="${ring}" stroke-width="4" />
-  <circle cx="${50 + shift}" cy="${34 + shift / 2}" r="20" fill="${fg}" fill-opacity="0.82" />
-  <path d="M16 ${74 - shift} Q50 ${48 + shift}, 84 ${74 - shift}" fill="none" stroke="${ring}" stroke-width="7" stroke-linecap="round" />
-  <circle cx="${p0?.x ?? 50}" cy="${p0?.y ?? 50}" r="4" fill="${ring}" fill-opacity="0.55" />
-  <circle cx="${p1?.x ?? 50}" cy="${p1?.y ?? 50}" r="3" fill="${ring}" fill-opacity="0.45" />
-  <circle cx="${p2?.x ?? 50}" cy="${p2?.y ?? 50}" r="2.5" fill="${ring}" fill-opacity="0.4" />
-  <circle cx="${p3?.x ?? 50}" cy="${p3?.y ?? 50}" r="2" fill="${ring}" fill-opacity="0.35" />
-</svg>`;
+const circlePath = (cx: number, cy: number, r: number) =>
+  `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`;
+
+const roundedRectPath = (x: number, y: number, w: number, h: number, r: number) => {
+  const x2 = x + w;
+  const y2 = y + h;
+  return `M ${x + r} ${y} L ${x2 - r} ${y} Q ${x2} ${y} ${x2} ${y + r} L ${x2} ${y2 - r} Q ${x2} ${y2} ${x2 - r} ${y2} L ${x + r} ${y2} Q ${x} ${y2} ${x} ${y2 - r} L ${x} ${y + r} Q ${x} ${y} ${x + r} ${y} Z`;
+};
+
+const arcPath = (cx: number, cy: number, r: number, a0: number, a1: number) => {
+  const x0 = cx + Math.cos(a0) * r;
+  const y0 = cy + Math.sin(a0) * r;
+  const x1 = cx + Math.cos(a1) * r;
+  const y1 = cy + Math.sin(a1) * r;
+  const largeArc = a1 - a0 > Math.PI ? 1 : 0;
+  return `M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 1 ${x1} ${y1}`;
+};
+
+const buildBasePath = (shape: BaseShape, cx: number, cy: number, r: number) => {
+  if (shape === "ring") {
+    return circlePath(cx, cy, r);
+  }
+  if (shape === "square") {
+    return roundedRectPath(cx - r, cy - r, r * 2, r * 2, r * 0.22);
+  }
+  if (shape === "triangle") {
+    const p1 = [cx, cy - r];
+    const p2 = [cx - r * 0.95, cy + r * 0.85];
+    const p3 = [cx + r * 0.95, cy + r * 0.85];
+    return `M ${p1[0]} ${p1[1]} L ${p2[0]} ${p2[1]} L ${p3[0]} ${p3[1]} Z`;
+  }
+  const p1 = [cx, cy - r];
+  const p2 = [cx + r, cy];
+  const p3 = [cx, cy + r];
+  const p4 = [cx - r, cy];
+  return `M ${p1[0]} ${p1[1]} L ${p2[0]} ${p2[1]} L ${p3[0]} ${p3[1]} L ${p4[0]} ${p4[1]} Z`;
+};
+
+const buildInnerMarks = (pattern: SoundToken[], cx: number, cy: number, r: number, stroke: number) => {
+  const count = Math.min(pattern.length, 7);
+  const step = (Math.PI * 2) / 7;
+  let out = "";
+
+  for (let i = 0; i < count; i += 1) {
+    const angle = -Math.PI / 2 + i * step;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    const token = pattern[i];
+
+    if (token === "V") {
+      out += `<circle cx="${x}" cy="${y}" r="${r * 0.1}" fill="none" stroke="#111827" stroke-width="${stroke * 0.9}"/>`;
+      continue;
+    }
+
+    if (token === "H") {
+      const dx = Math.cos(angle) * r * 0.18;
+      const dy = Math.sin(angle) * r * 0.18;
+      out += `<path d="M ${x - dx} ${y - dy} L ${x} ${y} L ${x + dy} ${y - dx}" fill="none" stroke="#111827" stroke-width="${stroke * 0.9}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      continue;
+    }
+
+    out += `<path d="${arcPath(x, y, r * 0.16, angle - 0.9, angle + 0.9)}" fill="none" stroke="#111827" stroke-width="${stroke * 0.9}" stroke-linecap="round"/>`;
+  }
+
+  return out;
+};
+
+const buildSuffixMarks = (suffix: SuffixMarker, cx: number, cy: number, r: number, stroke: number) => {
+  if (!suffix) return "";
+  const y = cy + r * 0.98;
+  const x = cx;
+  const len = r * 0.55;
+  let svg = `<path d="M ${x - len / 2} ${y} L ${x + len / 2} ${y}" fill="none" stroke="#111827" stroke-width="${stroke}" stroke-linecap="round"/>`;
+
+  if (suffix === "ern") {
+    svg += `<circle cx="${x}" cy="${y + r * 0.18}" r="${r * 0.06}" fill="#111827"/>`;
+  } else if (suffix === "eln") {
+    svg += `<circle cx="${x - r * 0.1}" cy="${y + r * 0.18}" r="${r * 0.06}" fill="#111827"/>`;
+    svg += `<circle cx="${x + r * 0.1}" cy="${y + r * 0.18}" r="${r * 0.06}" fill="#111827"/>`;
+  } else if (suffix === "ieren") {
+    svg += `<path d="M ${x - len / 2} ${y + r * 0.16} L ${x + len / 2} ${y + r * 0.16}" fill="none" stroke="#111827" stroke-width="${stroke}" stroke-linecap="round"/>`;
+  }
+
+  return svg;
+};
+
+export const makeVerbGlyphSVG = (infinitive: string, sizePx = 26) => {
+  const width = sizePx;
+  const height = sizePx;
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.min(width, height) * 0.42;
+  const stroke = 2.2;
+
+  const normalized = normalizeGerman(infinitive);
+  const shape = baseShapeFromFirstLetter(normalized);
+  const suffix = suffixMarker(normalized);
+  const pattern = tokensToPattern(tokenizeGerman(normalized));
+
+  const basePath = buildBasePath(shape, cx, cy, radius);
+  const inner = buildInnerMarks(pattern, cx, cy, radius * 0.78, stroke);
+  const marks = buildSuffixMarks(suffix, cx, cy, radius, stroke);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <path d="${basePath}" fill="none" stroke="#111827" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round"/>
+  ${inner}
+  ${marks}
+</svg>`.trim();
 };
 
 export const buildVerbBadgeDataUri = (infinitive: string) =>
-  `data:image/svg+xml;utf8,${encodeURIComponent(buildVerbBadgeSvg(infinitive))}`;
+  `data:image/svg+xml;utf8,${encodeURIComponent(makeVerbGlyphSVG(infinitive, 26))}`;
