@@ -11,6 +11,61 @@ $log = New-LogPath -ProjectRoot $root -Prefix 'env_autosetup'
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$script:ProgressValue = 0
+
+function Show-CyberBanner {
+    Clear-Host
+    Write-Host '════════════════════════════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host '        LingoCard :: AUTO ENV BOOTSTRAP :: CINE MODE       ' -ForegroundColor Cyan
+    Write-Host '════════════════════════════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host "Project: $root" -ForegroundColor DarkGray
+    Write-Host "Log:     $log" -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Write-HackerLine {
+    param([string]$Tag)
+
+    $alphabet = '01ABCDEFabcdef<>#@*[]{}'
+    $chars = for ($i = 0; $i -lt 52; $i++) { $alphabet[(Get-Random -Minimum 0 -Maximum $alphabet.Length)] }
+    $stream = -join $chars
+    Write-Host ("[{0}] {1}" -f $Tag, $stream) -ForegroundColor DarkGray
+}
+
+function Show-HackerPulse {
+    param(
+        [string]$Label,
+        [int]$StartPercent,
+        [int]$EndPercent,
+        [int]$Ticks = 10
+    )
+
+    if ($Ticks -lt 1) { $Ticks = 1 }
+    $range = [Math]::Max(1, ($EndPercent - $StartPercent))
+
+    for ($i = 0; $i -lt $Ticks; $i++) {
+        $pct = [Math]::Min(100, $StartPercent + [Math]::Floor(($range * ($i + 1)) / $Ticks))
+        Write-Progress -Activity 'Auto environment setup' -Status $Label -PercentComplete $pct
+
+        if ($i % 3 -eq 0) {
+            Write-HackerLine -Tag $Label
+        }
+
+        Start-Sleep -Milliseconds 80
+    }
+
+    $script:ProgressValue = [Math]::Max($script:ProgressValue, $EndPercent)
+}
+
+function Complete-Stage {
+    param([string]$Label, [int]$Percent)
+
+    $script:ProgressValue = [Math]::Max($script:ProgressValue, $Percent)
+    Write-Progress -Activity 'Auto environment setup' -Status "$Label :: done" -PercentComplete $script:ProgressValue
+    Write-Host ("[{0,3}%] {1}" -f $script:ProgressValue, $Label) -ForegroundColor Green
+    Write-Log -LogPath $log -Message ("INFO stage_complete {0} {1}" -f $script:ProgressValue, $Label)
+}
+
 function Test-IsAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -18,9 +73,12 @@ function Test-IsAdmin {
 }
 
 function Ensure-AdminSession {
-    if (Test-IsAdmin) { return }
+    if (Test-IsAdmin) {
+        Complete-Stage -Label 'Admin check' -Percent 5
+        return
+    }
 
-    Write-Host 'Autoconfig requires Administrator privileges. Elevating...'
+    Write-Host 'Admin rights required. Elevating...' -ForegroundColor Yellow
     Write-Log -LogPath $log -Message 'INFO elevation_requested'
 
     $args = @(
@@ -39,12 +97,12 @@ function Ensure-AdminSession {
 
 function Ensure-Chocolatey {
     if (Get-Command choco -ErrorAction SilentlyContinue) {
-        Write-Host 'Chocolatey found.'
+        Complete-Stage -Label 'Chocolatey detected' -Percent 20
         Write-Log -LogPath $log -Message 'INFO choco_exists'
         return
     }
 
-    Write-Host 'Installing Chocolatey...'
+    Show-HackerPulse -Label 'Installing Chocolatey' -StartPercent 8 -EndPercent 18 -Ticks 12
     Write-Log -LogPath $log -Message 'INFO choco_install_start'
 
     Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -62,22 +120,33 @@ function Ensure-Chocolatey {
         throw 'Chocolatey installation failed.'
     }
 
+    Complete-Stage -Label 'Chocolatey installed' -Percent 24
     Write-Log -LogPath $log -Message 'INFO choco_install_done'
 }
 
 function Install-ChocoPackages {
     param([string[]]$Packages)
 
-    foreach ($pkg in $Packages) {
-        Write-Host "Installing/upgrading $pkg ..."
-        Write-Log -LogPath $log -Message "INFO install_start $pkg"
+    $base = 28
+    $top = 82
+    $count = [Math]::Max(1, $Packages.Count)
+
+    for ($i = 0; $i -lt $Packages.Count; $i++) {
+        $pkg = $Packages[$i]
+        $stageStart = $base + [Math]::Floor((($top - $base) * $i) / $count)
+        $stageEnd = $base + [Math]::Floor((($top - $base) * ($i + 1)) / $count)
+
+        Show-HackerPulse -Label ("Preparing package {0}" -f $pkg) -StartPercent $stageStart -EndPercent ([Math]::Min($stageEnd - 2, 95)) -Ticks 8
+        Write-Host ("Installing/upgrading {0} ..." -f $pkg) -ForegroundColor Cyan
+        Write-Log -LogPath $log -Message ("INFO install_start {0}" -f $pkg)
 
         choco upgrade $pkg --yes --no-progress --limit-output --accept-license | Out-Host
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to install package: $pkg"
         }
 
-        Write-Log -LogPath $log -Message "INFO install_done $pkg"
+        Complete-Stage -Label ("Package ready: {0}" -f $pkg) -Percent $stageEnd
+        Write-Log -LogPath $log -Message ("INFO install_done {0}" -f $pkg)
     }
 }
 
@@ -102,6 +171,7 @@ function Refresh-PathHint {
 }
 
 function Assert-InstalledTools {
+    Show-HackerPulse -Label 'Verifying toolchain' -StartPercent 84 -EndPercent 92 -Ticks 10
     Refresh-PathHint
 
     $checks = @(
@@ -114,14 +184,22 @@ function Assert-InstalledTools {
     foreach ($check in $checks) {
         Assert-Command $check.Name
         $version = & $check.Cmd
-        Write-Host ("{0}: {1}" -f $check.Name, $version)
+        Write-Host ("{0}: {1}" -f $check.Name, $version) -ForegroundColor Gray
         Write-Log -LogPath $log -Message ("INFO verify {0} {1}" -f $check.Name, $version)
     }
+
+    Complete-Stage -Label 'Verification complete' -Percent 96
 }
 
 try {
+    Show-CyberBanner
+    Show-HackerPulse -Label 'Boot sequence' -StartPercent 0 -EndPercent 4 -Ticks 7
+
     if (-not $Elevated) {
         Ensure-AdminSession
+    }
+    else {
+        Complete-Stage -Label 'Elevated session active' -Percent 6
     }
 
     Ensure-Chocolatey
@@ -135,12 +213,20 @@ try {
     Install-ChocoPackages -Packages $requiredPackages
     Assert-InstalledTools
 
-    Write-Host 'Автонастройка окружения завершена успешно.' -ForegroundColor Green
+    Show-HackerPulse -Label 'Finalizing' -StartPercent 96 -EndPercent 100 -Ticks 8
+    Write-Progress -Activity 'Auto environment setup' -Completed
+
+    Write-Host ''
+    Write-Host '✅ Автонастройка окружения завершена успешно.' -ForegroundColor Green
+    Write-Host 'Система готова для работы с LingoCard.' -ForegroundColor Cyan
+
     Write-Log -LogPath $log -Message 'SUCCESS env_autosetup'
     exit 0
 }
 catch {
-    Write-Host 'Автонастройка окружения завершилась с ошибкой.' -ForegroundColor Red
+    Write-Progress -Activity 'Auto environment setup' -Completed
+    Write-Host ''
+    Write-Host '❌ Автонастройка окружения завершилась с ошибкой.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-Log -LogPath $log -Message "ERROR env_autosetup $($_.Exception.Message)"
     exit 1
