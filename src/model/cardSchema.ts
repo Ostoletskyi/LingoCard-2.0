@@ -3,6 +3,7 @@ import { BoxSchema, type Box } from "./layoutSchema";
 import { normalizeFieldId } from "../utils/fieldAlias";
 
 export const FrequencySchema = z.union([
+  z.literal(0),
   z.literal(1),
   z.literal(2),
   z.literal(3),
@@ -25,7 +26,8 @@ const formsSchema = {
   forms_p3: z.string(),
   forms_prat: z.string(),
   forms_p2: z.string(),
-  forms_aux: z.enum(["haben", "sein", ""])
+  forms_aux: z.enum(["haben", "sein", ""]),
+  forms_service: z.string()
 };
 
 const synonymSchema = {
@@ -68,10 +70,41 @@ const rektionSchema = {
   rek_5_ru: z.string()
 };
 
+
+const aggregateSchema = {
+  translations: z.array(
+    z.object({
+      value: z.string(),
+      ctx: z.string().optional()
+    })
+  ).optional(),
+  forms: z.object({
+    p3: z.string().optional(),
+    praet: z.string().optional(),
+    p2: z.string().optional(),
+    aux: z.enum(["haben", "sein", ""]).optional(),
+    service: z.string().optional(),
+    perfektFull: z.string().optional()
+  }).optional(),
+  synonyms: z.array(
+    z.object({
+      de: z.string(),
+      ru: z.string().optional()
+    })
+  ).optional(),
+  examples: z.array(
+    z.object({
+      de: z.string(),
+      ru: z.string().optional(),
+      tag: z.string().optional()
+    })
+  ).optional()
+};
 export const CardSchema = z.object({
   id: z.string(),
   inf: z.string(),
   title: z.string().optional(),
+  meta: z.record(z.unknown()).optional(),
   freq: FrequencySchema,
   tags: z.array(z.string()),
   ...translationSchema,
@@ -79,6 +112,7 @@ export const CardSchema = z.object({
   ...synonymSchema,
   ...examplesSchema,
   ...rektionSchema,
+  ...aggregateSchema,
   boxes: z.array(BoxSchema).optional()
 });
 
@@ -88,7 +122,7 @@ export const emptyCard: Card = {
   id: "",
   inf: "",
   title: "",
-  freq: 3,
+  freq: 0,
   tags: [],
   tr_1_ru: "",
   tr_1_ctx: "",
@@ -102,6 +136,7 @@ export const emptyCard: Card = {
   forms_prat: "",
   forms_p2: "",
   forms_aux: "",
+  forms_service: "",
   syn_1_de: "",
   syn_1_ru: "",
   syn_2_de: "",
@@ -180,6 +215,13 @@ const normalizeImportedBoxes = (boxes: unknown): Box[] => {
         source.textMode === "static" || source.textMode === "dynamic"
           ? source.textMode
           : undefined,
+      autoH: typeof source.autoH === "boolean" ? source.autoH : undefined,
+      minH: typeof source.minH === "number" && Number.isFinite(source.minH) ? source.minH : undefined,
+      maxH: typeof source.maxH === "number" && Number.isFinite(source.maxH) ? source.maxH : undefined,
+      reservedRightPx:
+        typeof source.reservedRightPx === "number" && Number.isFinite(source.reservedRightPx)
+          ? source.reservedRightPx
+          : undefined,
       label: toString(source.label),
       label_i18n: toString(source.label_i18n),
       type: toString(source.type)
@@ -193,13 +235,24 @@ export const normalizeCard = (input: Partial<Card>): Card => {
     ...emptyCard,
     ...input,
     tags: input.tags ?? [],
+    translations: Array.isArray(input.translations) ? input.translations.map((item) => ({ value: toString(item?.value), ...(typeof item?.ctx === "string" ? { ctx: item.ctx } : {}) })) : [],
+    forms: input.forms ? {
+      ...(typeof input.forms.p3 === "string" ? { p3: input.forms.p3 } : {}),
+      ...(typeof input.forms.praet === "string" ? { praet: input.forms.praet } : {}),
+      ...(typeof input.forms.p2 === "string" ? { p2: input.forms.p2 } : {}),
+      ...(input.forms.aux === "haben" || input.forms.aux === "sein" || input.forms.aux === "" ? { aux: input.forms.aux } : {}),
+      ...(typeof (input.forms as Record<string, unknown>)?.service === "string" ? { service: (input.forms as Record<string, string>).service } : {}),
+      ...(typeof (input.forms as Record<string, unknown>)?.perfektFull === "string" ? { perfektFull: (input.forms as Record<string, string>).perfektFull } : {})
+    } : {},
+    synonyms: Array.isArray(input.synonyms) ? input.synonyms.map((item) => ({ de: toString(item?.de), ...(typeof item?.ru === "string" ? { ru: item.ru } : {}) })) : [],
+    examples: Array.isArray(input.examples) ? input.examples.map((item) => ({ de: toString(item?.de), ...(typeof item?.ru === "string" ? { ru: item.ru } : {}), ...(typeof item?.tag === "string" ? { tag: item.tag } : {}) })) : [],
     boxes: normalizeImportedBoxes(input.boxes)
   };
   if (!normalized.id) {
     normalized.id = crypto.randomUUID();
   }
-  if (!normalized.freq) {
-    normalized.freq = 3;
+  if (normalized.freq === undefined || normalized.freq === null) {
+    normalized.freq = 0;
   }
   return normalized;
 };
