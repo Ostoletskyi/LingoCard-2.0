@@ -36,11 +36,11 @@ function Run-Cmd {
     param(
         [string]$Title,
         [string]$Command,
-        [string[]]$Args
+        [string[]]$Arguments
     )
 
-    Log-Info "$Title -> $Command $($Args -join ' ')"
-    & $Command @Args | Out-Host
+    Log-Info "$Title -> $Command $($Arguments -join ' ')"
+    & $Command @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) {
         throw "$Title failed (exit $LASTEXITCODE)."
     }
@@ -50,11 +50,11 @@ function Run-CmdSafe {
     param(
         [string]$Title,
         [string]$Command,
-        [string[]]$Args
+        [string[]]$Arguments
     )
 
     try {
-        Run-Cmd -Title $Title -Command $Command -Args $Args
+        Run-Cmd -Title $Title -Command $Command -Arguments $Arguments
         return $true
     }
     catch {
@@ -82,17 +82,17 @@ try {
     try {
         # Fix dubious ownership proactively
         $repoPath = (Resolve-Path $root).Path
-        Run-CmdSafe -Title 'Git safe.directory' -Command 'git' -Args @('config','--global','--add','safe.directory',$repoPath) | Out-Null
+        Run-CmdSafe -Title 'Git safe.directory' -Command 'git' -Arguments @('config','--global','--add','safe.directory',$repoPath) | Out-Null
 
         # Abort stale rebase session if present
         if ((Test-Path '.git\rebase-merge') -or (Test-Path '.git\rebase-apply')) {
             Log-Warn 'Detected unfinished rebase, attempting automatic abort.'
-            Run-CmdSafe -Title 'git rebase --abort' -Command 'git' -Args @('rebase','--abort') | Out-Null
+            Run-CmdSafe -Title 'git rebase --abort' -Command 'git' -Arguments @('rebase','--abort') | Out-Null
         } else {
             Log-Ok 'No unfinished rebase detected.'
         }
 
-        Run-CmdSafe -Title 'git fetch --all --prune' -Command 'git' -Args @('fetch','--all','--prune') | Out-Null
+        Run-CmdSafe -Title 'git fetch --all --prune' -Command 'git' -Arguments @('fetch','--all','--prune') | Out-Null
 
         $branch = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim()
         if ($branch -eq 'HEAD' -or [string]::IsNullOrWhiteSpace($branch)) {
@@ -102,7 +102,7 @@ try {
         $dirty = (& git status --porcelain)
         if ($dirty) {
             $stashLabel = "toolbox_auto_fix_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss')
-            if (Run-CmdSafe -Title 'git stash push -u' -Command 'git' -Args @('stash','push','-u','-m',$stashLabel)) {
+            if (Run-CmdSafe -Title 'git stash push -u' -Command 'git' -Arguments @('stash','push','-u','-m',$stashLabel)) {
                 $stashCreated = $true
                 Log-Ok 'Local changes were stashed automatically.'
             }
@@ -113,9 +113,9 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($branch) -and $branch -ne 'HEAD') {
             $upstream = (& git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null)
             if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($upstream)) {
-                if (-not (Run-CmdSafe -Title 'git pull --rebase' -Command 'git' -Args @('pull','--rebase'))) {
+                if (-not (Run-CmdSafe -Title 'git pull --rebase' -Command 'git' -Arguments @('pull','--rebase'))) {
                     Log-Warn 'Rebase pull failed. Attempting automatic rollback.'
-                    Run-CmdSafe -Title 'git rebase --abort' -Command 'git' -Args @('rebase','--abort') | Out-Null
+                    Run-CmdSafe -Title 'git rebase --abort' -Command 'git' -Arguments @('rebase','--abort') | Out-Null
                 }
             } else {
                 Log-Warn 'No upstream branch configured. Pull/rebase skipped.'
@@ -124,25 +124,25 @@ try {
 
         if (-not (Test-Path 'node_modules')) {
             Log-Warn 'node_modules missing, running npm install.'
-            Run-CmdSafe -Title 'npm install' -Command 'npm' -Args @('install') | Out-Null
+            Run-CmdSafe -Title 'npm install' -Command 'npm' -Arguments @('install') | Out-Null
         } else {
             Log-Ok 'node_modules found.'
         }
 
-        $preflightOk = Run-CmdSafe -Title 'npm run tools:preflight' -Command 'npm' -Args @('run','tools:preflight')
+        $preflightOk = Run-CmdSafe -Title 'npm run tools:preflight' -Command 'npm' -Arguments @('run','tools:preflight')
         if (-not $preflightOk) {
             Log-Warn 'Preflight failed. Trying npm ci as auto-fix.'
-            if (Run-CmdSafe -Title 'npm ci' -Command 'npm' -Args @('ci')) {
-                $preflightOk = Run-CmdSafe -Title 'npm run tools:preflight (retry)' -Command 'npm' -Args @('run','tools:preflight')
+            if (Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')) {
+                $preflightOk = Run-CmdSafe -Title 'npm run tools:preflight (retry)' -Command 'npm' -Arguments @('run','tools:preflight')
             }
         }
 
         if ($preflightOk) {
-            $smokePassed = Run-CmdSafe -Title 'npm run tools:smoke' -Command 'npm' -Args @('run','tools:smoke')
+            $smokePassed = Run-CmdSafe -Title 'npm run tools:smoke' -Command 'npm' -Arguments @('run','tools:smoke')
             if (-not $smokePassed) {
                 Log-Warn 'Smoke failed. Running npm ci + smoke retry.'
-                if (Run-CmdSafe -Title 'npm ci' -Command 'npm' -Args @('ci')) {
-                    $smokePassed = Run-CmdSafe -Title 'npm run tools:smoke (retry)' -Command 'npm' -Args @('run','tools:smoke')
+                if (Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')) {
+                    $smokePassed = Run-CmdSafe -Title 'npm run tools:smoke (retry)' -Command 'npm' -Arguments @('run','tools:smoke')
                 }
             }
         }
@@ -150,7 +150,7 @@ try {
         if ($smokePassed -and -not [string]::IsNullOrWhiteSpace($branch) -and $branch -ne 'HEAD') {
             $ahead = [int]((& git rev-list --count '@{u}..HEAD' 2>$null).Trim())
             if ($LASTEXITCODE -eq 0 -and $ahead -gt 0) {
-                Run-CmdSafe -Title 'git push' -Command 'git' -Args @('push') | Out-Null
+                Run-CmdSafe -Title 'git push' -Command 'git' -Arguments @('push') | Out-Null
             } else {
                 Log-Ok 'No commits to push or upstream is unavailable.'
             }
@@ -160,7 +160,7 @@ try {
 
         if ($stashCreated) {
             Log-Info 'Restoring stashed local changes.'
-            if (-not (Run-CmdSafe -Title 'git stash pop' -Command 'git' -Args @('stash','pop'))) {
+            if (-not (Run-CmdSafe -Title 'git stash pop' -Command 'git' -Arguments @('stash','pop'))) {
                 Log-Warn "Could not auto-apply stash. Recover manually: git stash list / git stash apply '$stashLabel'"
             }
         }
