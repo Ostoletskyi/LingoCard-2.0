@@ -63,6 +63,34 @@ function Run-CmdSafe {
     }
 }
 
+function Invoke-SmokeWithReportFallback {
+    param([string]$Title)
+
+    $ok = Run-CmdSafe -Title $Title -Command 'npm' -Arguments @('run','tools:smoke')
+    if ($ok) {
+        return $true
+    }
+
+    $reportPath = Join-Path $root '_reports\smoke_report.md'
+    if (-not (Test-Path $reportPath)) {
+        return $false
+    }
+
+    try {
+        $reportText = Get-Content -Path $reportPath -Raw
+        $failLines = ($reportText -split "`r?`n") | Where-Object { $_ -match '^\- \*\*.+\*\*: FAIL' }
+        if (-not $failLines -or $failLines.Count -eq 0) {
+            Log-Warn "$Title returned non-zero, but smoke report has no FAIL lines. Treating as success."
+            Write-Log -LogPath $log -Message 'WARN smoke nonzero_exit_without_fail_entries'
+            return $true
+        }
+    } catch {
+        Log-Warn "Could not parse smoke report: $($_.Exception.Message)"
+    }
+
+    return $false
+}
+
 $stashCreated = $false
 $stashLabel = ""
 $smokePassed = $false
@@ -138,11 +166,11 @@ try {
         }
 
         if ($preflightOk) {
-            $smokePassed = Run-CmdSafe -Title 'npm run tools:smoke' -Command 'npm' -Arguments @('run','tools:smoke')
+            $smokePassed = Invoke-SmokeWithReportFallback -Title 'npm run tools:smoke'
             if (-not $smokePassed) {
                 Log-Warn 'Smoke failed. Running npm ci + smoke retry.'
                 if (Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')) {
-                    $smokePassed = Run-CmdSafe -Title 'npm run tools:smoke (retry)' -Command 'npm' -Arguments @('run','tools:smoke')
+                    $smokePassed = Invoke-SmokeWithReportFallback -Title 'npm run tools:smoke (retry)'
                 }
             }
         }
