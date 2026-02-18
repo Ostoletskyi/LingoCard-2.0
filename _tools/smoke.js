@@ -1,4 +1,6 @@
-// _tools/smoke.js
-// Deprecated entrypoint kept for backwards compatibility.
-// Use: node _tools/smoke.runner.js
-import "./smoke.runner.js";
+import { runSmoke } from "./smoke.core.js";
+
+runSmoke({ robustSpawn: false, blockingDevServerFailure: true }).catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

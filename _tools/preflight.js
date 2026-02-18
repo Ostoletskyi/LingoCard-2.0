@@ -6,8 +6,8 @@ const checks = [];
 
 const pushCheck = (name, ok, details = "") => {
   checks.push({ name, ok, details });
-  const tag = ok ? "[OK]" : "[FAIL]";
-  console.log(`${tag} ${name}${details ? ` - ${details}` : ""}`);
+  const icon = ok ? "[OK]" : "[FAIL]";
+  console.log(`${icon} ${name}${details ? ` - ${details}` : ""}`);
   if (!ok) {
     process.exitCode = 1;
   }
@@ -44,8 +44,8 @@ for (const filePath of requiredFiles) {
   pushCheck(`file ${filePath}`, exists(filePath), exists(filePath) ? "ok" : "missing");
 }
 
-const sourceFiles = fs
-  .readdirSync(path.join(projectRoot, "src"), { recursive: true })
+
+const sourceFiles = fs.readdirSync(path.join(projectRoot, "src"), { recursive: true })
   .filter((p) => typeof p === "string" && /\.(ts|tsx|js|jsx|css)$/.test(p));
 
 for (const rel of sourceFiles) {
@@ -54,7 +54,7 @@ for (const rel of sourceFiles) {
     const content = fs.readFileSync(full, "utf-8");
     const hasMarkers = content.includes("<<<<<<<") || content.includes("=======") || content.includes(">>>>>>>");
     if (hasMarkers) {
-      pushCheck(`merge markers in src/${rel}`, false, "resolve conflict markers");
+      pushCheck(`merge markers in src/${rel}`, false, "resolve rebase conflict markers");
     }
   } catch (error) {
     pushCheck(`scan src/${rel}`, false, error instanceof Error ? error.message : String(error));
@@ -95,11 +95,11 @@ const main = async () => {
   await runExportChecks();
 
   if (!hasNodeModules) {
-    console.log("\n[INFO] For full testing, install dependencies: npm ci (or npm install).\n");
+    console.log("\n[INFO] For complete checks install dependencies: npm ci (or npm install).");
   }
 
   if (process.exitCode && process.exitCode !== 0) {
-    console.error("\n[WARN] Preflight failed: one or more critical checks did not pass.\n");
+    console.error("\n[WARN] Preflight failed: one or more critical checks did not pass.");
   }
 
   console.log("\nPreflight complete.");

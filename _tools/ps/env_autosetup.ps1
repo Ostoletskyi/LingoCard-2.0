@@ -13,17 +13,26 @@ $ErrorActionPreference = 'Stop'
 
 $script:ProgressValue = 0
 
-function Show-Banner {
+function Show-CyberBanner {
     Clear-Host
-    Write-Host '================================================' -ForegroundColor DarkCyan
-    Write-Host '            LingoCard :: ENV AUTO SETUP          ' -ForegroundColor Cyan
-    Write-Host '================================================' -ForegroundColor DarkCyan
-    Write-Host ("Project: {0}" -f $root) -ForegroundColor DarkGray
-    Write-Host ("Log:     {0}" -f $log) -ForegroundColor DarkGray
+    Write-Host '============================================================' -ForegroundColor DarkCyan
+    Write-Host '        LingoCard :: AUTO ENV BOOTSTRAP :: CINE MODE       ' -ForegroundColor Cyan
+    Write-Host '============================================================' -ForegroundColor DarkCyan
+    Write-Host "Project: $root" -ForegroundColor DarkGray
+    Write-Host "Log:     $log" -ForegroundColor DarkGray
     Write-Host ''
 }
 
-function Show-Pulse {
+function Write-HackerLine {
+    param([string]$Tag)
+
+    $alphabet = '01ABCDEFabcdef<>#@*[]{}'
+    $chars = for ($i = 0; $i -lt 52; $i++) { $alphabet[(Get-Random -Minimum 0 -Maximum $alphabet.Length)] }
+    $stream = -join $chars
+    Write-Host ("[{0}] {1}" -f $Tag, $stream) -ForegroundColor DarkGray
+}
+
+function Show-HackerPulse {
     param(
         [string]$Label,
         [int]$StartPercent,
@@ -37,6 +46,11 @@ function Show-Pulse {
     for ($i = 0; $i -lt $Ticks; $i++) {
         $pct = [Math]::Min(100, $StartPercent + [Math]::Floor(($range * ($i + 1)) / $Ticks))
         Write-Progress -Activity 'Auto environment setup' -Status $Label -PercentComplete $pct
+
+        if ($i % 3 -eq 0) {
+            Write-HackerLine -Tag $Label
+        }
+
         Start-Sleep -Milliseconds 80
     }
 
@@ -47,7 +61,7 @@ function Complete-Stage {
     param([string]$Label, [int]$Percent)
 
     $script:ProgressValue = [Math]::Max($script:ProgressValue, $Percent)
-    Write-Progress -Activity 'Auto environment setup' -Status "$Label - done" -PercentComplete $script:ProgressValue
+    Write-Progress -Activity 'Auto environment setup' -Status "$Label :: done" -PercentComplete $script:ProgressValue
     Write-Host ("[{0,3}%] {1}" -f $script:ProgressValue, $Label) -ForegroundColor Green
     Write-Log -LogPath $log -Message ("INFO stage_complete {0} {1}" -f $script:ProgressValue, $Label)
 }
@@ -67,7 +81,7 @@ function Ensure-AdminSession {
     Write-Host 'Admin rights required. Elevating...' -ForegroundColor Yellow
     Write-Log -LogPath $log -Message 'INFO elevation_requested'
 
-    $argsList = @(
+    $args = @(
         '-NoProfile',
         '-ExecutionPolicy', 'Bypass',
         '-File', "`"$PSCommandPath`"",
@@ -75,11 +89,9 @@ function Ensure-AdminSession {
         '-Elevated'
     )
 
-    # IMPORTANT: Start-Process does not set $LASTEXITCODE.
-    # Use -PassThru to capture the elevated process exit code.
-    $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argsList -Wait -PassThru
-    if ($null -ne $p) { exit $p.ExitCode }
-    exit 0
+    $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList ($args -join ' ') -Wait -PassThru
+    $code = if ($null -ne $proc) { $proc.ExitCode } else { 1 }
+    exit $code
 }
 
 function Ensure-Chocolatey {
@@ -89,7 +101,7 @@ function Ensure-Chocolatey {
         return
     }
 
-    Show-Pulse -Label 'Installing Chocolatey' -StartPercent 8 -EndPercent 18 -Ticks 12
+    Show-HackerPulse -Label 'Installing Chocolatey' -StartPercent 8 -EndPercent 18 -Ticks 12
     Write-Log -LogPath $log -Message 'INFO choco_install_start'
 
     Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -123,7 +135,7 @@ function Install-ChocoPackages {
         $stageStart = $base + [Math]::Floor((($top - $base) * $i) / $count)
         $stageEnd = $base + [Math]::Floor((($top - $base) * ($i + 1)) / $count)
 
-        Show-Pulse -Label ("Preparing package {0}" -f $pkg) -StartPercent $stageStart -EndPercent ([Math]::Min($stageEnd - 2, 95)) -Ticks 8
+        Show-HackerPulse -Label ("Preparing package {0}" -f $pkg) -StartPercent $stageStart -EndPercent ([Math]::Min($stageEnd - 2, 95)) -Ticks 8
         Write-Host ("Installing/upgrading {0} ..." -f $pkg) -ForegroundColor Cyan
         Write-Log -LogPath $log -Message ("INFO install_start {0}" -f $pkg)
 
@@ -158,7 +170,7 @@ function Refresh-PathHint {
 }
 
 function Assert-InstalledTools {
-    Show-Pulse -Label 'Verifying toolchain' -StartPercent 84 -EndPercent 92 -Ticks 10
+    Show-HackerPulse -Label 'Verifying toolchain' -StartPercent 84 -EndPercent 92 -Ticks 10
     Refresh-PathHint
 
     $checks = @(
@@ -179,8 +191,8 @@ function Assert-InstalledTools {
 }
 
 try {
-    Show-Banner
-    Show-Pulse -Label 'Boot sequence' -StartPercent 0 -EndPercent 4 -Ticks 7
+    Show-CyberBanner
+    Show-HackerPulse -Label 'Boot sequence' -StartPercent 0 -EndPercent 4 -Ticks 7
 
     if (-not $Elevated) {
         Ensure-AdminSession
@@ -200,11 +212,11 @@ try {
     Install-ChocoPackages -Packages $requiredPackages
     Assert-InstalledTools
 
-    Show-Pulse -Label 'Finalizing' -StartPercent 96 -EndPercent 100 -Ticks 8
+    Show-HackerPulse -Label 'Finalizing' -StartPercent 96 -EndPercent 100 -Ticks 8
     Write-Progress -Activity 'Auto environment setup' -Completed
 
     Write-Host ''
-    Write-Host '[OK] Environment auto-setup completed successfully.' -ForegroundColor Green
+    Write-Host '[OK] Auto environment setup completed successfully.' -ForegroundColor Green
     Write-Host 'System is ready for LingoCard.' -ForegroundColor Cyan
 
     Write-Log -LogPath $log -Message 'SUCCESS env_autosetup'
@@ -213,7 +225,7 @@ try {
 catch {
     Write-Progress -Activity 'Auto environment setup' -Completed
     Write-Host ''
-    Write-Host '[FAIL] Environment auto-setup failed.' -ForegroundColor Red
+    Write-Host '[ERROR] Auto environment setup failed.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-Log -LogPath $log -Message "ERROR env_autosetup $($_.Exception.Message)"
     exit 1

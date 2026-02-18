@@ -8,7 +8,6 @@ import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 import { logger } from "../utils/logger";
-import { buildVerbBadgeDataUri } from "../utils/verbBadge";
 import { autoResizeCardBoxes } from "../editor/autoBoxSize";
 
 const GRID_STEP_MM = 1;
@@ -182,7 +181,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     return selectCardById(selectedId, selectedSide, cardsA, cardsB);
   }, [selectedId, selectedSide, cardsA, cardsB]);
 
-  const badgeDataUri = useMemo(() => buildVerbBadgeDataUri(card?.inf ?? ""), [card?.inf]);
 
   const zoomScale = zoom;
   const basePxPerMm = getPxPerMm(1);
