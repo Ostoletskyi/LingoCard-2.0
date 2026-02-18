@@ -8,6 +8,7 @@ import type { Box } from "../model/layoutSchema";
 import { emptyCard, type Card } from "../model/cardSchema";
 import { buildSemanticLayoutBoxes } from "../editor/semanticLayout";
 import { logger } from "../utils/logger";
+import { buildVerbBadgeDataUri } from "../utils/verbBadge";
 import { autoResizeCardBoxes } from "../editor/autoBoxSize";
 
 const GRID_STEP_MM = 1;
@@ -180,6 +181,8 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!selectedId) return null;
     return selectCardById(selectedId, selectedSide, cardsA, cardsB);
   }, [selectedId, selectedSide, cardsA, cardsB]);
+
+  const badgeDataUri = useMemo(() => buildVerbBadgeDataUri(card?.inf ?? ""), [card?.inf]);
 
   const zoomScale = zoom;
   const basePxPerMm = getPxPerMm(1);
@@ -813,8 +816,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 }}
               />
             )}
+            <img
+              src={badgeDataUri}
+              alt="verb badge"
+              className="pointer-events-none absolute right-2 top-2 z-20 rounded-md border border-slate-300/60 bg-white/70 p-0.5 shadow-sm dark:border-slate-600/70 dark:bg-slate-900/65"
+              style={{ width: mmToPx(10, basePxPerMm), height: mmToPx(10, basePxPerMm) }}
+            />
             {renderMode === "editor" && card?.tags?.length ? (
-              <div className="absolute right-2 top-2 text-[10px] text-slate-300 dark:text-slate-700">
+              <div className="absolute right-2 top-2 text-[10px] text-slate-300 dark:text-slate-700" style={{ transform: `translateY(${mmToPx(10.6, basePxPerMm)}px)` }}>
                 {card.tags.join(" · ")}
               </div>
             ) : null}
@@ -924,7 +933,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                       onPointerDown={(event) => event.stopPropagation()}
                     />
                   ) : normalizeFieldId(box.fieldId) === "freq" ? (
-                    <div className="flex h-full items-center justify-start gap-1.5" aria-label="frequency dots">
+                    <div className="flex h-full items-center justify-start gap-2" aria-label="frequency dots">
                       {renderFreqDots(card?.freq ?? 0)}
                     </div>
                   ) : (

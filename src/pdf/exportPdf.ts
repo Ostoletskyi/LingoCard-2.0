@@ -24,7 +24,7 @@ const resolveReservedRightPx = (fieldId: string, box: { reservedRightPx?: number
   if (typeof box.reservedRightPx === "number" && Number.isFinite(box.reservedRightPx)) {
     return Math.max(0, box.reservedRightPx);
   }
-  return normalizeFieldId(fieldId) === "freq" ? 24 : 0;
+  return normalizeFieldId(fieldId) === "freq" ? 48 : 0;
 };
 
 const FREQ_DOT_COLORS: Record<number, string> = {
@@ -47,8 +47,8 @@ const drawFrequencyDots = (
   if (!dots) return;
 
   const color = FREQ_DOT_COLORS[dots] ?? "rgb(34 197 94)";
-  const radius = Math.max(2, mmToCanvasPx(0.7));
-  const gap = Math.max(2, mmToCanvasPx(0.7));
+  const radius = Math.max(3, mmToCanvasPx(1.4));
+  const gap = Math.max(3, mmToCanvasPx(1.4));
   const startX = mmToCanvasPx(box.xMm) + mmToCanvasPx(box.style.paddingMm) + radius;
   const centerY = boxY + Math.min(boxH / 2, mmToCanvasPx(box.style.paddingMm) + radius + 1);
 

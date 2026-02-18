@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { pathToFileURL } from "node:url";
-import { runCommand, projectRoot, ensureDir } from "./utils.js";
+import { runCommand, projectRoot, ensureDir, resolveCommand } from "./utils.js";
 
 const reportDir = path.join(projectRoot, "_reports");
 ensureDir(reportDir);
@@ -206,16 +206,28 @@ const main = async () => {
   }
 
   if (devServer) {
-    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-    const serverProcess = devServer.spawn(npmCmd, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
-      cwd: projectRoot,
-      stdio: "ignore",
-      shell: false
-    });
-    const ok = await checkDevServer();
-    serverProcess.kill();
-    if (!ok) {
-      record("Dev server", "SKIP", "Health-check failed (non-blocking)");
+    let serverProcess;
+    try {
+      serverProcess = devServer.spawn(resolveCommand("npm"), ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
+        cwd: projectRoot,
+        stdio: "ignore",
+        shell: false
+      });
+
+      serverProcess.on("error", (error) => {
+        record("Dev server", "SKIP", `spawn failed: ${error.code ?? error.message}`);
+      });
+
+      const ok = await checkDevServer();
+      if (!ok) {
+        record("Dev server", "SKIP", "Health-check failed (non-blocking)");
+      }
+    } catch (error) {
+      record("Dev server", "SKIP", `spawn failed: ${error.code ?? error.message}`);
+    } finally {
+      if (serverProcess && !serverProcess.killed) {
+        serverProcess.kill();
+      }
     }
   }
 

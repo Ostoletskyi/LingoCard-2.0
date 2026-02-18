@@ -89,8 +89,8 @@ body {
 }
 
 .lc-freqDot {
-  width: 8px;
-  height: 8px;
+  width: 16px;
+  height: 16px;
   border-radius: 9999px;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
 }

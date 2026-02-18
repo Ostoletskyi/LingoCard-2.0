@@ -272,7 +272,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       label: "Частотность",
       textMode: "dynamic",
       autoH: false,
-      reservedRightPx: 24
+      reservedRightPx: 48
     })
   );
 

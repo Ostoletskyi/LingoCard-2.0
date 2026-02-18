@@ -365,19 +365,19 @@ const makeDemoCard = (id: string): Card =>
     ex_4_de: "Die Behörde hat den Antrag abgelehnt.",
     ex_4_ru: "Ведомство отклонило заявление.",
     ex_4_tag: "perfekt",
-    ex_5_de: "",
-    ex_5_ru: "",
-    ex_5_tag: "",
-    rek_1_de: "",
-    rek_1_ru: "",
-    rek_2_de: "",
-    rek_2_ru: "",
-    rek_3_de: "",
-    rek_3_ru: "",
-    rek_4_de: "",
-    rek_4_ru: "",
-    rek_5_de: "",
-    rek_5_ru: ""
+    ex_5_de: "Die Kommission wollte den Vorschlag zunächst ablehnen.",
+    ex_5_ru: "Комиссия сначала хотела отклонить предложение.",
+    ex_5_tag: "konjunktiv",
+    rek_1_de: "zur Debatte zulassen",
+    rek_1_ru: "допускать к обсуждению",
+    rek_2_de: "konsequent zurückweisen",
+    rek_2_ru: "последовательно отклонять",
+    rek_3_de: "eine Bitte höflich ablehnen",
+    rek_3_ru: "вежливо отказывать в просьбе",
+    rek_4_de: "nicht vorschnell verwerfen",
+    rek_4_ru: "не отвергать поспешно",
+    rek_5_de: "einen Antrag offiziell ablehnen",
+    rek_5_ru: "официально отклонять заявление"
   });
 
 const createBaseState = () => ({
@@ -991,6 +991,58 @@ export const useAppStore = create<AppState>()(
         state.cardsA = next;
       } else {
         state.cardsB = next;
+      }
+    }),
+    updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      let changed = false;
+      const next = list.map((card) => {
+        if (!card.boxes?.length) {
+          return card;
+        }
+        const target = card.boxes.find((box) => box.id === boxId);
+        if (!target) {
+          return card;
+        }
+        const hasChanges = Object.entries(update).some(([key, value]) => target[key as keyof Box] !== value);
+        if (!hasChanges) {
+          return card;
+        }
+        changed = true;
+        return {
+          ...card,
+          boxes: card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box))
+        };
+      });
+      if (!changed) return;
+
+      const sourceCandidate =
+        state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : undefined;
+      const templateSource = sourceCandidate ?? next.find((card) => card.boxes?.some((box) => box.id === boxId));
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
+          } catch (error) {
+            console.warn("Failed to persist layout template", error);
+          }
+        }
+      }
+
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, get(), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
