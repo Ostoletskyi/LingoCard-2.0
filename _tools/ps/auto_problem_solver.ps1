@@ -71,24 +71,27 @@ function Invoke-SmokeWithReportFallback {
         return $true
     }
 
-    $reportPath = Join-Path $root '_reports\smoke_report.md'
-    if (-not (Test-Path $reportPath)) {
+    $reportJsonPath = Join-Path $root '_reports\smoke_report.json'
+    if (-not (Test-Path $reportJsonPath)) {
+        Log-Warn "$Title failed and JSON smoke report was not found."
         return $false
     }
 
     try {
-        $reportText = Get-Content -Path $reportPath -Raw
-        $failLines = ($reportText -split "`r?`n") | Where-Object { $_ -match '^\- \*\*.+\*\*: FAIL' }
-        if (-not $failLines -or $failLines.Count -eq 0) {
-            Log-Warn "$Title returned non-zero, but smoke report has no FAIL lines. Treating as success."
-            Write-Log -LogPath $log -Message 'WARN smoke nonzero_exit_without_fail_entries'
+        $json = Get-Content -Path $reportJsonPath -Raw | ConvertFrom-Json
+        if ($json.overall.pass -eq $true) {
+            Log-Warn "$Title returned non-zero, but JSON smoke report says PASS. Treating as success."
+            Write-Log -LogPath $log -Message 'WARN smoke nonzero_exit_json_pass'
             return $true
         }
-    } catch {
-        Log-Warn "Could not parse smoke report: $($_.Exception.Message)"
-    }
 
-    return $false
+        $jsonCode = if ($json.overall.code -ne $null) { [int]$json.overall.code } else { -1 }
+        Log-Warn "$Title failed. JSON overall.code=$jsonCode"
+        return $false
+    } catch {
+        Log-Warn "Could not parse smoke JSON report: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 $stashCreated = $false

@@ -24,24 +24,27 @@ try {
         npm run tools:smoke | Out-Host
         $smokeExit = $LASTEXITCODE
         if ($smokeExit -ne 0) {
-            $reportPath = Join-Path $root '_reports\smoke_report.md'
-            if (Test-Path $reportPath) {
-                $reportText = Get-Content -Path $reportPath -Raw
-                $failLines = ($reportText -split "`r?`n") | Where-Object { $_ -match '^\- \*\*.+\*\*: FAIL' }
+            $reportJsonPath = Join-Path $root '_reports\smoke_report.json'
+            if (Test-Path $reportJsonPath) {
+                try {
+                    $json = Get-Content -Path $reportJsonPath -Raw | ConvertFrom-Json
+                    if ($json.overall.pass -eq $true) {
+                        Write-Host 'Smoke command returned non-zero, but JSON report says PASS. Treating as success.' -ForegroundColor Yellow
+                        Write-Log -LogPath $log -Message 'WARN smoke nonzero_exit_json_pass'
+                        Write-Host 'Smoke test passed.'
+                        Write-Log -LogPath $log -Message 'SUCCESS smoke'
+                        exit 0
+                    }
 
-                if (-not $failLines -or $failLines.Count -eq 0) {
-                    Write-Host 'Smoke command returned non-zero, but report has no FAIL entries. Treating as success.' -ForegroundColor Yellow
-                    Write-Log -LogPath $log -Message 'WARN smoke nonzero_exit_without_fail_entries'
-                    Write-Host 'Smoke test passed.'
-                    Write-Log -LogPath $log -Message 'SUCCESS smoke'
-                    exit 0
+                    $jsonCode = if ($json.overall.code -ne $null) { [int]$json.overall.code } else { $smokeExit }
+                    throw "Smoke test failed (npm run tools:smoke). JSON overall.code=$jsonCode"
+                } catch {
+                    Write-Log -LogPath $log -Message "WARN smoke json_parse_failed $($_.Exception.Message)"
+                    throw 'Smoke test failed (npm run tools:smoke). Could not parse JSON report.'
                 }
-
-                $summary = ($failLines -join '; ')
-                throw "Smoke test failed (npm run tools:smoke). $summary"
             }
 
-            throw 'Smoke test failed (npm run tools:smoke).'
+            throw 'Smoke test failed (npm run tools:smoke). JSON report not found.'
         }
 
         Write-Host 'Smoke test passed.'

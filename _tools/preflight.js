@@ -1,13 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
-import { projectRoot } from "./utils.js";
+import { projectRoot, ensureDir } from "./utils.js";
+import { createResultCollector, STATUS } from "./resultClassifier.js";
 
 const checks = [];
+const collector = createResultCollector();
 
 const pushCheck = (name, ok, details = "") => {
   checks.push({ name, ok, details });
   const icon = ok ? "[OK]" : "[FAIL]";
   console.log(`${icon} ${name}${details ? ` - ${details}` : ""}`);
+  collector.addStep({
+    label: name,
+    status: ok ? STATUS.OK : STATUS.FAIL,
+    details,
+    blocking: true
+  });
   if (!ok) {
     process.exitCode = 1;
   }
@@ -43,7 +51,6 @@ const requiredFiles = [
 for (const filePath of requiredFiles) {
   pushCheck(`file ${filePath}`, exists(filePath), exists(filePath) ? "ok" : "missing");
 }
-
 
 const sourceFiles = fs.readdirSync(path.join(projectRoot, "src"), { recursive: true })
   .filter((p) => typeof p === "string" && /\.(ts|tsx|js|jsx|css)$/.test(p));
@@ -91,6 +98,23 @@ const runExportChecks = async () => {
   }
 };
 
+const writePreflightReports = () => {
+  const reportDir = path.join(projectRoot, "_reports");
+  ensureDir(reportDir);
+  const summary = collector.getSummary();
+
+  const mdPath = path.join(reportDir, "preflight_report.md");
+  const jsonPath = path.join(reportDir, "preflight_report.json");
+
+  fs.writeFileSync(mdPath, collector.toMarkdown());
+  fs.writeFileSync(jsonPath, JSON.stringify(collector.toJson(), null, 2));
+
+  console.log(`Preflight report saved to ${mdPath}`);
+  console.log(`Preflight report saved to ${jsonPath}`);
+
+  process.exitCode = summary.code;
+};
+
 const main = async () => {
   await runExportChecks();
 
@@ -102,10 +126,12 @@ const main = async () => {
     console.error("\n[WARN] Preflight failed: one or more critical checks did not pass.");
   }
 
+  writePreflightReports();
   console.log("\nPreflight complete.");
 };
 
 main().catch((error) => {
   console.error("Preflight failed:", error);
   process.exitCode = 1;
+  writePreflightReports();
 });

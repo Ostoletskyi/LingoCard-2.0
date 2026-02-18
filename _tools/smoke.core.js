@@ -3,6 +3,7 @@ import path from "node:path";
 import http from "node:http";
 import { pathToFileURL } from "node:url";
 import { runCommand, projectRoot, ensureDir, resolveCommand } from "./utils.js";
+import { createResultCollector, STATUS } from "./resultClassifier.js";
 
 const REQUIRED_FILES = [
   "src/model/cardSchema.ts",
@@ -87,25 +88,16 @@ for (const box of DEFAULT_TEMPLATE_BOXES) {
 }
 `;
 
-const buildReportWriter = () => {
+const createReportWriter = () => {
   const reportDir = path.join(projectRoot, "_reports");
   ensureDir(reportDir);
-  const reportPath = path.join(reportDir, "smoke_report.md");
-  const reportLines = [];
-
-  const record = (label, status, details = "") => {
-    reportLines.push(`- **${label}**: ${status}${details ? ` - ${details}` : ""}`);
+  return {
+    mdPath: path.join(reportDir, "smoke_report.md"),
+    jsonPath: path.join(reportDir, "smoke_report.json")
   };
-
-  const flush = () => {
-    fs.writeFileSync(reportPath, `# Smoke Report\n\n${reportLines.join("\n")}\n`);
-    console.log(`Smoke report saved to ${reportPath}`);
-  };
-
-  return { record, flush };
 };
 
-async function runRuntimeContracts(record) {
+async function runRuntimeContracts(collector) {
   const tmpDir = path.join(projectRoot, "_tmp", "smoke-runtime");
   ensureDir(tmpDir);
 
@@ -127,21 +119,24 @@ async function runRuntimeContracts(record) {
     });
 
     await import(`${pathToFileURL(bundlePath).href}?t=${Date.now()}`);
-    record("Runtime contracts", "OK");
+    collector.addStep({ label: "Runtime contracts", status: STATUS.OK, blocking: true });
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
-const checkFiles = (record) => {
+const checkFiles = (collector) => {
   for (const file of REQUIRED_FILES) {
     const exists = fs.existsSync(path.join(projectRoot, file));
-    record(`File ${file}`, exists ? "OK" : "MISSING");
-    if (!exists) process.exitCode = 1;
+    collector.addStep({
+      label: `File ${file}`,
+      status: exists ? STATUS.OK : STATUS.FAIL,
+      blocking: true
+    });
   }
 };
 
-const checkDevServer = (record, { blockingDevServerFailure }) =>
+const checkDevServer = ({ blockingDevServerFailure }) =>
   new Promise((resolve) => {
     const maxRetries = 10;
     let retries = 0;
@@ -150,14 +145,12 @@ const checkDevServer = (record, { blockingDevServerFailure }) =>
       http
         .get("http://127.0.0.1:5173", (res) => {
           const ok = Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 400);
-          record("Dev server", ok ? "OK" : `FAIL (${res.statusCode})`);
-          resolve(ok);
+          resolve({ ok, statusCode: res.statusCode, blocking: blockingDevServerFailure });
         })
         .on("error", () => {
           retries += 1;
           if (retries >= maxRetries) {
-            record("Dev server", blockingDevServerFailure ? "FAIL" : "SKIP", "No response");
-            resolve(false);
+            resolve({ ok: false, statusCode: null, blocking: blockingDevServerFailure });
             return;
           }
           setTimeout(attempt, 500);
@@ -167,22 +160,31 @@ const checkDevServer = (record, { blockingDevServerFailure }) =>
     attempt();
   });
 
-const runStep = async (record, label, fn) => {
+const runStep = async (collector, label, fn) => {
   try {
     await fn();
-    record(label, "OK");
+    collector.addStep({ label, status: STATUS.OK, blocking: true });
   } catch (error) {
-    record(label, "FAIL", error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    collector.addStep({
+      label,
+      status: STATUS.FAIL,
+      details: error instanceof Error ? error.message : String(error),
+      blocking: true
+    });
   }
 };
 
-async function runDevServerCheck(record, options) {
+async function runDevServerCheck(collector, options) {
   let childProcess;
   try {
     childProcess = await import("node:child_process");
   } catch {
-    record("Dev server", "SKIP", "Cannot import child_process");
+    collector.addStep({
+      label: "Dev server",
+      status: STATUS.SKIP,
+      details: "Cannot import child_process",
+      blocking: false
+    });
     return;
   }
 
@@ -196,17 +198,34 @@ async function runDevServerCheck(record, options) {
     });
 
     serverProcess.on("error", (error) => {
-      record("Dev server", options.blockingDevServerFailure ? "FAIL" : "SKIP", `spawn failed: ${error.code ?? error.message}`);
-      if (options.blockingDevServerFailure) process.exitCode = 1;
+      collector.addStep({
+        label: "Dev server",
+        status: options.blockingDevServerFailure ? STATUS.FAIL : STATUS.SKIP,
+        details: `spawn failed: ${error.code ?? error.message}`,
+        blocking: options.blockingDevServerFailure
+      });
     });
 
-    const ok = await checkDevServer(record, options);
-    if (!ok && options.blockingDevServerFailure) {
-      process.exitCode = 1;
-    }
+    const result = await checkDevServer(options);
+    const status = result.ok ? STATUS.OK : options.blockingDevServerFailure ? STATUS.FAIL : STATUS.SKIP;
+    const details = result.ok
+      ? "health-check passed"
+      : result.statusCode
+        ? `health-check failed (${result.statusCode})`
+        : "No response";
+    collector.addStep({
+      label: "Dev server",
+      status,
+      details,
+      blocking: options.blockingDevServerFailure
+    });
   } catch (error) {
-    record("Dev server", options.blockingDevServerFailure ? "FAIL" : "SKIP", `spawn failed: ${error.code ?? error.message}`);
-    if (options.blockingDevServerFailure) process.exitCode = 1;
+    collector.addStep({
+      label: "Dev server",
+      status: options.blockingDevServerFailure ? STATUS.FAIL : STATUS.SKIP,
+      details: `spawn failed: ${error.code ?? error.message}`,
+      blocking: options.blockingDevServerFailure
+    });
   } finally {
     if (serverProcess && !serverProcess.killed) {
       serverProcess.kill();
@@ -215,26 +234,41 @@ async function runDevServerCheck(record, options) {
 }
 
 export async function runSmoke(options = {}) {
+  process.exitCode = 0;
+
   const {
     robustSpawn = true,
     blockingDevServerFailure = false
   } = options;
 
-  const { record, flush } = buildReportWriter();
+  const collector = createResultCollector();
+  const report = createReportWriter();
 
-  await runStep(record, "TypeScript", () => runCommand("npm", ["run", "tsc"]));
-  await runStep(record, "Preflight", () => runCommand("npm", ["run", "tools:preflight"]));
-  await runStep(record, "Build", () => runCommand("npm", ["run", "build"]));
+  await runStep(collector, "TypeScript", () => runCommand("npm", ["run", "tsc"]));
+  await runStep(collector, "Preflight", () => runCommand("npm", ["run", "tools:preflight"]));
+  await runStep(collector, "Build", () => runCommand("npm", ["run", "build"]));
 
   try {
-    await runRuntimeContracts(record);
+    await runRuntimeContracts(collector);
   } catch (error) {
-    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    collector.addStep({
+      label: "Runtime contracts",
+      status: STATUS.FAIL,
+      details: error instanceof Error ? error.message : String(error),
+      blocking: true
+    });
   }
 
-  checkFiles(record);
-  await runDevServerCheck(record, { robustSpawn, blockingDevServerFailure });
+  checkFiles(collector);
+  await runDevServerCheck(collector, { robustSpawn, blockingDevServerFailure });
 
-  flush();
+  const summary = collector.getSummary();
+
+  fs.writeFileSync(report.mdPath, collector.toMarkdown());
+  fs.writeFileSync(report.jsonPath, JSON.stringify(collector.toJson(), null, 2));
+  console.log(`Smoke report saved to ${report.mdPath}`);
+  console.log(`Smoke report saved to ${report.jsonPath}`);
+
+  process.exitCode = summary.code;
+  return summary.code;
 }
