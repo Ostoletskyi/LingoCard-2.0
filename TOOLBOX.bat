@@ -20,7 +20,7 @@ echo [2] Git - Push project state to remote
 echo [3] Backup menu
 echo [4] Run smoke test
 echo [5] Start local dev server (open browser)
-echo [6] Автонастройка окружения
+echo [6] Auto environment setup
 echo [0] Exit
 echo -----------------------------------------------
 set /p CHOICE=Select option: 

@@ -30,7 +30,7 @@ echo [2] Git    - Push project state to remote
 echo [3] Backup - Create/Restore
 echo [4] Tests  - Run smoke test
 echo [5] Dev    - Start local dev server (and open browser)
-echo [6] Setup  - Автонастройка окружения
+echo [6] Setup  - Auto environment setup
 echo.
 echo [R] Reload screen
 echo [0] Exit
