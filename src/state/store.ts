@@ -7,6 +7,16 @@ import { normalizeCard } from "../model/cardSchema";
 import { applySemanticLayoutToCard } from "../editor/semanticLayout";
 import type { Box } from "../model/layoutSchema";
 import { applyLayoutTemplate, extractLayoutTemplate, type LayoutTemplate } from "../editor/layoutTemplate";
+import {
+  STORAGE_KEY,
+  loadPersistedTemplate,
+  loadPersistedCards,
+  persistCards,
+  persistActiveTemplate,
+  type PersistedCards
+} from "./persistence";
+import { BOOKMARK_LIMIT, trackStateEvent } from "./history";
+import { syncTemplateToSide } from "./templateOps";
 import { autoResizeCardBoxes } from "../editor/autoBoxSize";
 import { getPxPerMm } from "../utils/mmPx";
 
@@ -163,15 +173,6 @@ export type AppState = AppStateSnapshot &
     applyAutoHeightToCards: (params: { side: ListSide; mode: "all" | "selected" }) => void;
   };
 
-const HISTORY_LIMIT = 50;
-const BOOKMARK_LIMIT = 50;
-const CHANGE_LOG_LIMIT = 50;
-const STORAGE_KEY = "lc_state_v1";
-const CARDS_META_KEY = "lc_cards_v1_meta";
-const CARDS_CHUNK_KEY_PREFIX = "lc_cards_v1_chunk_";
-const CARDS_CHUNK_SIZE = 180_000;
-const TEMPLATE_STORAGE_KEY = "lc_layout_template_v1";
-
 const createBoxTemplate = (
   kind: "inf" | "freq" | "forms_rek" | "synonyms" | "examples" | "simple",
   currentBoxes: Box[]
@@ -308,26 +309,6 @@ const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number):
 const ensureCardHasBoxes = (card: Card, widthMm: number, heightMm: number): Card =>
   card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm);
 
-const syncTemplateToSide = (
-  state: AppState,
-  side: ListSide,
-  sourceCard: Card
-) => {
-  const plainSource = safeClone(sourceCard);
-  const template = extractLayoutTemplate(plainSource, {
-    widthMm: state.layout.widthMm,
-    heightMm: state.layout.heightMm
-  });
-  state.activeTemplate = template;
-
-  const list = side === "A" ? state.cardsA : state.cardsB;
-  for (let i = 0; i < list.length; i += 1) {
-    const card = list[i];
-    if (!card || card.id === sourceCard.id) continue;
-    list[i] = autoResizeCardBoxes(applyLayoutTemplate(card, template), getPxPerMm(1));
-  }
-};
-
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
     id,
@@ -404,60 +385,6 @@ const createBaseState = () => ({
   activeTemplate: null as LayoutTemplate | null,
   storageWarning: null as string | null
 });
-
-const loadPersistedTemplate = (): LayoutTemplate | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as LayoutTemplate;
-    if (parsed?.version !== 1 || !Array.isArray(parsed.boxes)) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-};
-
-const persistActiveTemplate = (template: LayoutTemplate | null): void => {
-  if (typeof window === "undefined") return;
-  try {
-    if (!template) {
-      window.localStorage.removeItem(TEMPLATE_STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
-  } catch (error) {
-    console.warn("Failed to persist layout template", error);
-  }
-};
-
-type PersistedCards = { cardsA: Card[]; cardsB: Card[] };
-
-const loadPersistedCards = (): PersistedCards | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const metaRaw = window.localStorage.getItem(CARDS_META_KEY);
-    if (!metaRaw) return null;
-    const meta = JSON.parse(metaRaw) as { version?: number; chunks?: number };
-    const chunks = Number.isFinite(meta?.chunks) ? Number(meta.chunks) : 0;
-    if (meta?.version !== 1 || chunks <= 0) return null;
-    let payload = "";
-    for (let index = 0; index < chunks; index += 1) {
-      const chunk = window.localStorage.getItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
-      if (!chunk) return null;
-      payload += chunk;
-    }
-    const parsed = JSON.parse(payload) as PersistedCards;
-    return {
-      cardsA: Array.isArray(parsed.cardsA) ? parsed.cardsA : [],
-      cardsB: Array.isArray(parsed.cardsB) ? parsed.cardsB : []
-    };
-  } catch {
-    return null;
-  }
-};
 
 const sanitizePersistedState = (raw: PersistedState["state"], persistedCards: PersistedCards | null) => {
   const base = createBaseState();
@@ -562,53 +489,6 @@ const snapshotState = (state: AppState): AppStateSnapshot => ({
   selectedCardIdsA: [...state.selectedCardIdsA],
   selectedCardIdsB: [...state.selectedCardIdsB]
 });
-
-const recordHistory = (state: AppState, current: AppState) => {
-  state.past.push(snapshotState(current));
-  if (state.past.length > HISTORY_LIMIT) {
-    state.past.shift();
-  }
-  state.future = [];
-};
-
-const appendHistoryBookmark = (state: AppState, current: AppState, action: string) => {
-  const createdAt = new Date().toISOString();
-  state.historyBookmarks.push({
-    id: crypto.randomUUID(),
-    createdAt,
-    action,
-    snapshot: snapshotState(current)
-  });
-  if (state.historyBookmarks.length > BOOKMARK_LIMIT) {
-    state.historyBookmarks.shift();
-  }
-};
-
-const appendChange = (state: AppState, action: string) => {
-  state.changeLog.push({
-    id: crypto.randomUUID(),
-    at: new Date().toISOString(),
-    action
-  });
-  if (state.changeLog.length > CHANGE_LOG_LIMIT) {
-    state.changeLog.shift();
-  }
-};
-
-const trackStateEvent = (
-  state: AppState,
-  current: AppState,
-  action: string,
-  options?: { undoable?: boolean }
-) => {
-  const baseline = current;
-  const undoable = options?.undoable ?? true;
-  if (undoable) {
-    recordHistory(state, baseline);
-  }
-  appendChange(state, action);
-  appendHistoryBookmark(state, baseline, action);
-};
 
 const applySnapshot = (state: AppState, snapshot: AppStateSnapshot) => {
   state.cardsA = cloneCards(snapshot.cardsA);
@@ -715,11 +595,11 @@ export const useAppStore = create<AppState>()(
     selectedBoxId: initialState.selectedBoxId,
     isEditingLayout: false,
     setZoom: (value) => set((state) => {
-      trackStateEvent(state, get(), "setZoom");
+      trackStateEvent(state, snapshotState(get()), "setZoom");
       state.zoom = Math.min(2, Math.max(0.25, value));
     }),
     selectCard: (id, side) => set((state) => {
-      trackStateEvent(state, get(), `selectCard:${side}:${id ?? "none"}`, { undoable: false });
+      trackStateEvent(state, snapshotState(get()), `selectCard:${side}:${id ?? "none"}`, { undoable: false });
       state.selectedId = id;
       state.selectedSide = side;
       if (!id || !state.activeTemplate) return;
@@ -731,12 +611,12 @@ export const useAppStore = create<AppState>()(
       list[index] = autoResizeCardBoxes(applyLayoutTemplate(card, state.activeTemplate, { preserveContent: true }), getPxPerMm(1));
     }),
     selectBox: (id) => set((state) => {
-      trackStateEvent(state, get(), `selectBox:${id ?? "none"}`, { undoable: false });
+      trackStateEvent(state, snapshotState(get()), `selectBox:${id ?? "none"}`, { undoable: false });
       state.selectedBoxId = id;
     }),
     addCard: (card, side) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), `addCard:${side}`);
+      trackStateEvent(state, snapshotState(get()), `addCard:${side}`);
       const normalizedBase = normalizeCard(card);
       const target = side === "A" ? state.cardsA : state.cardsB;
       let nextId = normalizedBase.id;
@@ -755,7 +635,7 @@ export const useAppStore = create<AppState>()(
     updateCard: (card, side, reason) => set((state) => {
       const allowReadOnlyCommit = typeof reason === "string" && reason.startsWith("textEdit:");
       if (!state.editModeEnabled && !allowReadOnlyCommit) return;
-      trackStateEvent(state, get(), reason ?? `updateCard:${side}:${card.id}`);
+      trackStateEvent(state, snapshotState(get()), reason ?? `updateCard:${side}:${card.id}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
       if (index >= 0) {
@@ -773,7 +653,7 @@ export const useAppStore = create<AppState>()(
       if (!state.editModeEnabled && !allowReadOnlyCommit) return;
       const track = options?.track ?? true;
       if (track) {
-        trackStateEvent(state, get(), reason ?? `updateCardSilent:${side}:${card.id}`);
+        trackStateEvent(state, snapshotState(get()), reason ?? `updateCardSilent:${side}:${card.id}`);
       }
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === card.id);
@@ -786,7 +666,7 @@ export const useAppStore = create<AppState>()(
     }),
     removeCard: (id, side) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), `removeCard:${side}`);
+      trackStateEvent(state, snapshotState(get()), `removeCard:${side}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((item) => item.id === id);
       if (index >= 0) {
@@ -798,7 +678,7 @@ export const useAppStore = create<AppState>()(
     }),
     moveCard: (id, from) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), `moveCard:${from}`);
+      trackStateEvent(state, snapshotState(get()), `moveCard:${from}`);
       const fromList = from === "A" ? state.cardsA : state.cardsB;
       const toList = from === "A" ? state.cardsB : state.cardsA;
       const index = fromList.findIndex((item) => item.id === id);
@@ -813,18 +693,18 @@ export const useAppStore = create<AppState>()(
     }),
     setLayout: (layout) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), "setLayout");
+      trackStateEvent(state, snapshotState(get()), "setLayout");
       state.layout = layout;
     }),
     setCardSizeMm: (widthMm, heightMm) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), "setCardSizeMm");
+      trackStateEvent(state, snapshotState(get()), "setCardSizeMm");
       state.layout.widthMm = Math.min(400, Math.max(50, widthMm));
       state.layout.heightMm = Math.min(400, Math.max(50, heightMm));
     }),
     updateBox: (boxId, update) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), `updateBox:${boxId}`);
+      trackStateEvent(state, snapshotState(get()), `updateBox:${boxId}`);
       state.isEditingLayout = true;
       const box = state.layout.boxes.find((item) => item.id === boxId);
       if (box) {
@@ -833,60 +713,60 @@ export const useAppStore = create<AppState>()(
     }),
     beginLayoutEdit: () => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), "beginLayoutEdit");
+      trackStateEvent(state, snapshotState(get()), "beginLayoutEdit");
       state.isEditingLayout = true;
     }),
     endLayoutEdit: () => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), "endLayoutEdit");
+      trackStateEvent(state, snapshotState(get()), "endLayoutEdit");
       state.isEditingLayout = false;
     }),
     toggleGrid: () => set((state) => {
-      trackStateEvent(state, get(), "toggleGrid");
+      trackStateEvent(state, snapshotState(get()), "toggleGrid");
       state.gridEnabled = !state.gridEnabled;
     }),
     toggleRulers: () => set((state) => {
-      trackStateEvent(state, get(), "toggleRulers");
+      trackStateEvent(state, snapshotState(get()), "toggleRulers");
       state.rulersEnabled = !state.rulersEnabled;
     }),
     toggleSnap: () => set((state) => {
-      trackStateEvent(state, get(), "toggleSnap");
+      trackStateEvent(state, snapshotState(get()), "toggleSnap");
       state.snapEnabled = !state.snapEnabled;
     }),
     setGridIntensity: (value) => set((state) => {
-      trackStateEvent(state, get(), `setGridIntensity:${value}`);
+      trackStateEvent(state, snapshotState(get()), `setGridIntensity:${value}`);
       state.gridIntensity = value;
     }),
     toggleOnlyCmLines: () => set((state) => {
-      trackStateEvent(state, get(), "toggleOnlyCmLines");
+      trackStateEvent(state, snapshotState(get()), "toggleOnlyCmLines");
       state.showOnlyCmLines = !state.showOnlyCmLines;
     }),
     toggleDebugOverlays: () => set((state) => {
-      trackStateEvent(state, get(), "toggleDebugOverlays");
+      trackStateEvent(state, snapshotState(get()), "toggleDebugOverlays");
       state.debugOverlays = !state.debugOverlays;
     }),
     toggleBlockMetrics: () => set((state) => {
-      trackStateEvent(state, get(), "toggleBlockMetrics", { undoable: false });
+      trackStateEvent(state, snapshotState(get()), "toggleBlockMetrics", { undoable: false });
       state.showBlockMetrics = !state.showBlockMetrics;
     }),
     setRulersPlacement: (value) => set((state) => {
-      trackStateEvent(state, get(), `setRulersPlacement:${value}`);
+      trackStateEvent(state, snapshotState(get()), `setRulersPlacement:${value}`);
       state.rulersPlacement = value;
     }),
     startExport: (label) => set((state) => {
-      trackStateEvent(state, get(), `startExport:${label}`, { undoable: false });
+      trackStateEvent(state, snapshotState(get()), `startExport:${label}`, { undoable: false });
       state.isExporting = true;
       state.exportStartedAt = Date.now();
       state.exportLabel = label;
     }),
     finishExport: () => set((state) => {
-      trackStateEvent(state, get(), "finishExport", { undoable: false });
+      trackStateEvent(state, snapshotState(get()), "finishExport", { undoable: false });
       state.isExporting = false;
       state.exportStartedAt = null;
       state.exportLabel = null;
     }),
     toggleCardSelection: (id, side) => set((state) => {
-      trackStateEvent(state, get(), `toggleCardSelection:${side}:${id}`);
+      trackStateEvent(state, snapshotState(get()), `toggleCardSelection:${side}:${id}`);
       const list = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
       const next = new Set(list);
       if (next.has(id)) {
@@ -901,7 +781,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     selectAllCards: (side) => set((state) => {
-      trackStateEvent(state, get(), `selectAllCards:${side}`);
+      trackStateEvent(state, snapshotState(get()), `selectAllCards:${side}`);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const next = source.map((card) => card.id);
       if (side === "A") {
@@ -911,7 +791,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     clearCardSelection: (side) => set((state) => {
-      trackStateEvent(state, get(), `clearCardSelection:${side}`);
+      trackStateEvent(state, snapshotState(get()), `clearCardSelection:${side}`);
       if (side === "A") {
         state.selectedCardIdsA = [];
       } else {
@@ -920,7 +800,7 @@ export const useAppStore = create<AppState>()(
     }),
     autoLayoutAllCards: (side) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), `autoLayoutAllCards:${side}`);
+      trackStateEvent(state, snapshotState(get()), `autoLayoutAllCards:${side}`);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm));
       if (side === "A") {
@@ -958,7 +838,7 @@ export const useAppStore = create<AppState>()(
       if (!hasAnyTarget) {
         return;
       }
-      trackStateEvent(state, get(), `adjustColumnFontSizeByField:${side}`);
+      trackStateEvent(state, snapshotState(get()), `adjustColumnFontSizeByField:${side}`);
       const next = source.map((card) => {
         const baseCard = card.boxes?.length
           ? card
@@ -1043,64 +923,12 @@ export const useAppStore = create<AppState>()(
         state.cardsB = next;
       }
       if (reason) {
-        trackStateEvent(state, get(), reason);
-      }
-    }),
-    updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
-      if (!state.editModeEnabled) return;
-      const list = side === "A" ? state.cardsA : state.cardsB;
-      let changed = false;
-      const next = list.map((card) => {
-        if (!card.boxes?.length) {
-          return card;
-        }
-        const target = card.boxes.find((box) => box.id === boxId);
-        if (!target) {
-          return card;
-        }
-        const hasChanges = Object.entries(update).some(([key, value]) => target[key as keyof Box] !== value);
-        if (!hasChanges) {
-          return card;
-        }
-        changed = true;
-        return {
-          ...card,
-          boxes: card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box))
-        };
-      });
-      if (!changed) return;
-
-      const sourceCandidate =
-        state.selectedSide === side && state.selectedId
-          ? next.find((card) => card.id === state.selectedId)
-          : undefined;
-      const templateSource = sourceCandidate ?? next.find((card) => card.boxes?.some((box) => box.id === boxId));
-      if (templateSource) {
-        state.activeTemplate = extractLayoutTemplate(templateSource, {
-          widthMm: state.layout.widthMm,
-          heightMm: state.layout.heightMm
-        });
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
-          } catch (error) {
-            console.warn("Failed to persist layout template", error);
-          }
-        }
-      }
-
-      if (side === "A") {
-        state.cardsA = next;
-      } else {
-        state.cardsB = next;
-      }
-      if (reason) {
-        trackStateEvent(state, get(), reason);
+        trackStateEvent(state, snapshotState(get()), reason);
       }
     }),
     addBlockToCard: (side, cardId, kind) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), `addBlockToCard:${side}:${kind}`);
+      trackStateEvent(state, snapshotState(get()), `addBlockToCard:${side}:${kind}`);
       const list = side === "A" ? state.cardsA : state.cardsB;
       const index = list.findIndex((card) => card.id === cardId);
       if (index < 0) return;
@@ -1140,7 +968,7 @@ export const useAppStore = create<AppState>()(
       state.activeTemplate = template;
       persistActiveTemplate(template);
 
-      trackStateEvent(state, get(), `removeBox:${side}:${selectedBoxId}:column`);
+      trackStateEvent(state, snapshotState(get()), `removeBox:${side}:${selectedBoxId}:column`);
       const pxPerMm = getPxPerMm(1);
       const nextList = list.map((card) => {
         const base = ensureCardHasBoxes(card, state.layout.widthMm, state.layout.heightMm);
@@ -1162,7 +990,7 @@ export const useAppStore = create<AppState>()(
     }),
     recordEvent: (action) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), action, { undoable: false });
+      trackStateEvent(state, snapshotState(get()), action, { undoable: false });
     }),
     resetState: () => set((state) => {
       if (typeof window !== "undefined") {
@@ -1195,7 +1023,7 @@ export const useAppStore = create<AppState>()(
     }),
     pushHistory: () => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), "pushHistorySnapshot");
+      trackStateEvent(state, snapshotState(get()), "pushHistorySnapshot");
       const createdAt = new Date().toISOString();
       state.historyBookmarks.push({
         id: crypto.randomUUID(),
@@ -1213,12 +1041,12 @@ export const useAppStore = create<AppState>()(
       if (!target) {
         return;
       }
-      trackStateEvent(state, get(), `jumpToHistoryBookmark:${id}`);
+      trackStateEvent(state, snapshotState(get()), `jumpToHistoryBookmark:${id}`);
       applySnapshot(state, target.snapshot);
     }),
     deleteHistoryBookmark: (id) => set((state) => {
       if (!state.editModeEnabled) return;
-      trackStateEvent(state, get(), `deleteHistoryBookmark:${id}`);
+      trackStateEvent(state, snapshotState(get()), `deleteHistoryBookmark:${id}`);
       const before = state.historyBookmarks.length;
       state.historyBookmarks = state.historyBookmarks.filter((bookmark) => bookmark.id !== id);
       if (state.historyBookmarks.length === before) return;
@@ -1229,7 +1057,8 @@ export const useAppStore = create<AppState>()(
       if (previous) {
         state.future.unshift(snapshotState(get()));
         applySnapshot(state, previous);
-        appendChange(state, "undo");
+        state.changeLog.push({ id: crypto.randomUUID(), at: new Date().toISOString(), action: "undo" });
+        if (state.changeLog.length > 50) state.changeLog.shift();
       }
     }),
     redo: () => set((state) => {
@@ -1238,12 +1067,13 @@ export const useAppStore = create<AppState>()(
       if (next) {
         state.past.push(snapshotState(get()));
         applySnapshot(state, next);
-        appendChange(state, "redo");
+        state.changeLog.push({ id: crypto.randomUUID(), at: new Date().toISOString(), action: "redo" });
+        if (state.changeLog.length > 50) state.changeLog.shift();
       }
     }),
     toggleEditMode: () => set((state) => {
       state.editModeEnabled = !state.editModeEnabled;
-      trackStateEvent(state, get(), `toggleEditMode:${state.editModeEnabled ? "on" : "off"}`, { undoable: false });
+      trackStateEvent(state, snapshotState(get()), `toggleEditMode:${state.editModeEnabled ? "on" : "off"}`, { undoable: false });
     }),
     applyCardFormattingToCards: ({ side, sourceCardId, mode }) => set((state) => {
       if (!state.editModeEnabled) return;
@@ -1266,7 +1096,7 @@ export const useAppStore = create<AppState>()(
 
       const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
       const selectedSet = new Set(selected);
-      trackStateEvent(state, get(), `applyCardFormattingToCards:${side}:${mode}`);
+      trackStateEvent(state, snapshotState(get()), `applyCardFormattingToCards:${side}:${mode}`);
 
       const nextList = list.map((card) => {
         const shouldApply = mode === "all" ? card.id !== sourceCardId : selectedSet.has(card.id) && card.id !== sourceCardId;
@@ -1285,7 +1115,7 @@ export const useAppStore = create<AppState>()(
       const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
       const selectedSet = new Set(selected);
       const pxPerMm = getPxPerMm(1);
-      trackStateEvent(state, get(), `applyAutoHeightToCards:${side}:${mode}`);
+      trackStateEvent(state, snapshotState(get()), `applyAutoHeightToCards:${side}:${mode}`);
       const next = source.map((card) => {
         const shouldApply = mode === "all" ? true : selectedSet.has(card.id);
         if (!shouldApply) return card;
