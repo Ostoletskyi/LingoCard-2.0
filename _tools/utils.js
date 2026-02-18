@@ -12,9 +12,12 @@ export const ensureDir = (dir) => {
   }
 };
 
+export const resolveCommand = (command) =>
+  process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+
 export const runCommand = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "inherit", shell: true, ...options });
+    const child = spawn(resolveCommand(command), args, { stdio: "inherit", shell: false, ...options });
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`${command} exited with code ${code}`));
