@@ -20,6 +20,7 @@ echo [2] Git - Push project state to remote
 echo [3] Backup menu
 echo [4] Run smoke test
 echo [5] Start local dev server (open browser)
+echo [6] Auto environment setup
 echo [0] Exit
 echo -----------------------------------------------
 set /p CHOICE=Select option: 
@@ -29,6 +30,7 @@ if "%CHOICE%"=="2" call :RUN_PS git_push.ps1 & goto MAIN_MENU
 if "%CHOICE%"=="3" goto BACKUP_MENU
 if "%CHOICE%"=="4" call :RUN_PS smoke.ps1 & goto MAIN_MENU
 if "%CHOICE%"=="5" call :RUN_PS dev_start.ps1 & goto MAIN_MENU
+if "%CHOICE%"=="6" call :RUN_PS env_autosetup.ps1 & goto MAIN_MENU
 if "%CHOICE%"=="0" goto END
 
 echo Invalid option.
