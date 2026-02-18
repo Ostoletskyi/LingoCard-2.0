@@ -12,13 +12,17 @@ export const ensureDir = (dir) => {
   }
 };
 
-export const resolveCommand = (command) =>
-  process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+export const resolveCommand = (command) => {
+  if (process.platform !== "win32") return command;
+  if (command === "npm") return "npm.cmd";
+  if (command === "npx") return "npx.cmd";
+  return command;
+};
 
 export const runCommand = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
     const executable = resolveCommand(command);
-    const spawnOptions = { stdio: "inherit", shell: false, ...options };
+    const spawnOptions = { stdio: "inherit", shell: process.platform === "win32", ...options };
 
     const attach = (child) => {
       child.on("close", (code) => {
