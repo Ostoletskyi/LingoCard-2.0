@@ -11,7 +11,7 @@ const reportPath = path.join(reportDir, "smoke_report.md");
 const reportLines = [];
 
 const record = (label, status, details = "") => {
-  reportLines.push(`- **${label}**: ${status}${details ? ` — ${details}` : ""}`);
+  reportLines.push(`- **${label}**: ${status}${details ? ` - ${details}` : ""}`);
 };
 
 const checkFiles = (files) => {
@@ -21,6 +21,11 @@ const checkFiles = (files) => {
     record(`File ${file}`, exists ? "OK" : "MISSING");
     if (!exists) process.exitCode = 1;
   }
+};
+
+
+const assert = (condition, message) => {
+  if (!condition) throw new Error(message);
 };
 
 
@@ -47,9 +52,9 @@ const assert = (condition: unknown, message: string) => {
 };
 
 const fixtures = [
-  { cards: [{ id: "a1", inf: "machen", translations: [{ value: "делать" }] }] },
-  { verbs: [{ infinitive: "gehen", translations: [{ ru: "идти" }], forms: { p3: "geht" } }] },
-  [{ id: "arr-1", inf: "sein", tr_1_ru: "быть" }],
+  { cards: [{ id: "a1", inf: "machen", translations: [{ value: "to do" }] }] },
+  { verbs: [{ infinitive: "gehen", translations: [{ ru: "to go" }], forms: { p3: "geht" } }] },
+  [{ id: "arr-1", inf: "sein", tr_1_ru: "to be" }],
   { cards: [{ id: "bad-1", inf: 123, forms: { aux: "invalid" }, boxes: [{ id: "b", fieldId: "inf", wMm: -20, hMm: 0 }] }] }
 ];
 
@@ -57,7 +62,7 @@ const referenceCardPayload = [{
   id: "ablehnen",
   frequency: 5,
   infinitive: "ablehnen",
-  translations: ["отклонять", "отказываться", "не принимать"],
+  translations: ["to reject", "to refuse", "to decline"],
   forms: {
     praesens_3: "lehnt ab",
     praeteritum: "lehnte ab",
@@ -65,16 +70,16 @@ const referenceCardPayload = [{
     auxiliary: "hat"
   },
   examples: {
-    praesens: { de: "Ich lehne das Angebot ab.", ru: "Я отклоняю предложение." },
-    modal: { de: "Man kann ablehnen.", ru: "Можно отклонить." },
-    praeteritum: { de: "Er lehnte ab.", ru: "Он отказал." },
-    perfekt: { de: "Sie hat abgelehnt.", ru: "Она отказала." }
+    praesens: { de: "Ich lehne das Angebot ab.", ru: "I reject the offer." },
+    modal: { de: "Man kann ablehnen.", ru: "One can reject it." },
+    praeteritum: { de: "Er lehnte ab.", ru: "He refused." },
+    perfekt: { de: "Sie hat abgelehnt.", ru: "She refused." }
   },
   synonyms: [
-    { word: "zurückweisen", translation: "отклонять" },
-    { word: "verweigern", translation: "отказывать" }
+    { word: "zurueckweisen", translation: "to reject" },
+    { word: "verweigern", translation: "to refuse" }
   ],
-  prefixes: ["отделяемые: ab-"]
+  prefixes: ["separable: ab-"]
 }];
 
 for (const [index, fixture] of fixtures.entries()) {
@@ -98,7 +103,7 @@ assert(referenceCard.forms_aux === "haben", "reference schema: forms.auxiliary=h
 assert(referenceCard.ex_1_de.length > 0 && referenceCard.ex_1_ru.length > 0, "reference schema: examples object mapping failed");
 assert(referenceCard.tags.some((tag) => tag.includes("ab-")), "reference schema: prefixes->tags mapping failed");
 
-const sampleCard = normalizeCard({ inf: "testen", tr_1_ru: "тест", forms_p3: "testet", ex_1_de: "Ich teste." });
+const sampleCard = normalizeCard({ inf: "testen", tr_1_ru: "test", forms_p3: "testet", ex_1_de: "Ich teste." });
 for (const box of DEFAULT_TEMPLATE_BOXES) {
   const result = getFieldText(sampleCard, box.fieldId);
   assert(typeof result.text === "string", \`getFieldText invalid for \${box.fieldId}\`);
@@ -410,11 +415,27 @@ const main = async () => {
     process.exitCode = 1;
   }
 
+
+  try {
+    await runCommand("npm", ["run", "tools:preflight"]);
+    record("Preflight", "OK");
+  } catch (error) {
+    record("Preflight", "FAIL", error.message);
+    process.exitCode = 1;
+  }
+
   try {
     await runCommand("npm", ["run", "build"]);
     record("Build", "OK");
   } catch (error) {
     record("Build", "FAIL", error?.message ?? String(error));
+    process.exitCode = 1;
+  }
+
+  try {
+    await runRuntimeContracts();
+  } catch (error) {
+    record("Runtime contracts", "FAIL", error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 

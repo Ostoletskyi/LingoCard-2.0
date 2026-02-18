@@ -6,8 +6,8 @@ const checks = [];
 
 const pushCheck = (name, ok, details = "") => {
   checks.push({ name, ok, details });
-  const icon = ok ? "✅" : "❌";
-  console.log(`${icon} ${name}${details ? ` — ${details}` : ""}`);
+  const icon = ok ? "[OK]" : "[FAIL]";
+  console.log(`${icon} ${name}${details ? ` - ${details}` : ""}`);
   if (!ok) {
     process.exitCode = 1;
   }
@@ -95,11 +95,11 @@ const main = async () => {
   await runExportChecks();
 
   if (!hasNodeModules) {
-    console.log("\nℹ️ Для полного тестирования установите зависимости: npm ci (или npm install).");
+    console.log("\n[INFO] For complete checks install dependencies: npm ci (or npm install).");
   }
 
   if (process.exitCode && process.exitCode !== 0) {
-    console.error("\n⚠️ Preflight failed: one or more critical checks did not pass.");
+    console.error("\n[WARN] Preflight failed: one or more critical checks did not pass.");
   }
 
   console.log("\nPreflight complete.");
