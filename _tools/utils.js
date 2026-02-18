@@ -12,13 +12,38 @@ export const ensureDir = (dir) => {
   }
 };
 
+export const resolveCommand = (command) =>
+  process.platform === "win32" && command === "npm" ? "npm.cmd" : command;
+
 export const runCommand = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "inherit", shell: true, ...options });
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`${command} exited with code ${code}`));
-    });
+    const executable = resolveCommand(command);
+    const spawnOptions = { stdio: "inherit", shell: false, ...options };
+
+    const attach = (child) => {
+      child.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`${command} exited with code ${code}`));
+      });
+      child.on("error", (error) => {
+        if (process.platform === "win32" && error?.code === "EINVAL") {
+          const fallback = spawn(`${executable} ${args.join(" ")}`, [], {
+            stdio: "inherit",
+            shell: true,
+            ...options
+          });
+          fallback.on("close", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`${command} exited with code ${code}`));
+          });
+          fallback.on("error", reject);
+          return;
+        }
+        reject(error);
+      });
+    };
+
+    attach(spawn(executable, args, spawnOptions));
   });
 
 export const copyDir = (source, target) => {
