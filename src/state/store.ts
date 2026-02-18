@@ -401,6 +401,19 @@ const loadPersistedTemplate = (): LayoutTemplate | null => {
   }
 };
 
+const persistActiveTemplate = (template: LayoutTemplate | null): void => {
+  if (typeof window === "undefined") return;
+  try {
+    if (!template) {
+      window.localStorage.removeItem(TEMPLATE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+  } catch (error) {
+    console.warn("Failed to persist layout template", error);
+  }
+};
+
 type PersistedCards = { cardsA: Card[]; cardsB: Card[] };
 
 const loadPersistedCards = (): PersistedCards | null => {
@@ -955,13 +968,7 @@ export const useAppStore = create<AppState>()(
           widthMm: state.layout.widthMm,
           heightMm: state.layout.heightMm
         });
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
-          } catch (error) {
-            console.warn("Failed to persist layout template", error);
-          }
-        }
+        persistActiveTemplate(state.activeTemplate);
       }
       if (side === "A") {
         state.cardsA = next;
@@ -1003,13 +1010,7 @@ export const useAppStore = create<AppState>()(
           widthMm: state.layout.widthMm,
           heightMm: state.layout.heightMm
         });
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
-          } catch (error) {
-            console.warn("Failed to persist layout template", error);
-          }
-        }
+        persistActiveTemplate(state.activeTemplate);
       }
 
       if (side === "A") {
@@ -1061,13 +1062,7 @@ export const useAppStore = create<AppState>()(
         heightMm: state.layout.heightMm
       });
       state.activeTemplate = template;
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
-        } catch (error) {
-          console.warn("Failed to persist layout template", error);
-        }
-      }
+      persistActiveTemplate(template);
 
       trackStateEvent(state, get(), `removeBox:${side}:${selectedBoxId}:column`);
       const pxPerMm = getPxPerMm(1);
@@ -1191,13 +1186,7 @@ export const useAppStore = create<AppState>()(
         return;
       }
       state.activeTemplate = template;
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(template));
-        } catch (error) {
-          console.warn("Failed to persist layout template", error);
-        }
-      }
+      persistActiveTemplate(template);
 
       const selected = side === "A" ? state.selectedCardIdsA : state.selectedCardIdsB;
       const selectedSet = new Set(selected);
@@ -1235,13 +1224,7 @@ export const useAppStore = create<AppState>()(
           widthMm: state.layout.widthMm,
           heightMm: state.layout.heightMm
         });
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(state.activeTemplate));
-          } catch (error) {
-            console.warn("Failed to persist layout template", error);
-          }
-        }
+        persistActiveTemplate(state.activeTemplate);
       }
       if (side === "A") {
         state.cardsA = next;
