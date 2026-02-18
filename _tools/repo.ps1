@@ -80,7 +80,7 @@ switch ($Action) {
   }
 
   "push" {
-    # Push SHOULD NOT silently commit for you. It is safer.
+    # Push SHOULD NOT silently commit for you. It's safer.
     if (Is-Dirty) {
       throw "Working tree is dirty. Commit your changes first, then run push."
     }

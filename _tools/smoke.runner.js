@@ -68,7 +68,7 @@ const referenceCardPayload = [{
   },
   examples: {
     praesens: { de: "Ich lehne das Angebot ab.", ru: "I reject the offer." },
-    modal: { de: "Man kann ablehnen.", ru: "One can reject it." },
+    modal: { de: "Man kann ablehnen.", ru: "One can reject." },
     praeteritum: { de: "Er lehnte ab.", ru: "He refused." },
     perfekt: { de: "Sie hat abgelehnt.", ru: "She refused." }
   },
