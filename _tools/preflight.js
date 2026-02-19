@@ -77,6 +77,21 @@ const exportChecks = [
   { file: "src/state/store.ts", exportName: "useAppStore" }
 ];
 
+
+const checkDuplicateDeclarations = (filePath, identifiers) => {
+  try {
+    const fullPath = path.join(projectRoot, filePath);
+    const content = fs.readFileSync(fullPath, "utf-8");
+    for (const id of identifiers) {
+      const pattern = new RegExp(`(?:const|let|var|function|type)\s+${id}\b`, "g");
+      const matches = content.match(pattern) ?? [];
+      pushCheck(`duplicate declaration guard ${id} in ${filePath}`, matches.length <= 1, matches.length <= 1 ? "ok" : `found ${matches.length}`);
+    }
+  } catch (error) {
+    pushCheck(`duplicate declaration guard in ${filePath}`, false, error instanceof Error ? error.message : String(error));
+  }
+};
+
 const runExportChecks = async () => {
   for (const item of exportChecks) {
     try {
@@ -128,6 +143,7 @@ const writePreflightReports = () => {
 
 const main = async () => {
   await runExportChecks();
+  checkDuplicateDeclarations("src/state/store.ts", ["migratePersistedState", "PERSISTENCE_CHUNK_KEYS"]);
   await runTypeScriptCheck();
 
   if (!hasNodeModules) {
