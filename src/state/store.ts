@@ -25,6 +25,8 @@ import { getPxPerMm } from "../utils/mmPx";
 import type { ListSide, AppStateSnapshot, HistoryState, HistoryBookmark, ChangeLogEntry } from "./types";
 export type { ListSide, AppStateSnapshot, HistoryState, HistoryBookmark, ChangeLogEntry } from "./types";
 
+const autoLayoutVariantBySide: Record<ListSide, 0 | 1 | 2> = { A: 0, B: 0 };
+
 type AnyPersistedState = { version?: unknown; state?: unknown };
 
 const PERSISTENCE_CHUNK_KEYS = [CARDS_META_KEY, CARDS_CHUNK_KEY_PREFIX, CARDS_CHUNK_SIZE] as const;
@@ -779,7 +781,9 @@ export const useAppStore = create<AppState>()(
       if (!state.editModeEnabled) return;
       trackStateEvent(state, snapshotState(get()), `autoLayoutAllCards:${side}`);
       const source = side === "A" ? state.cardsA : state.cardsB;
-      const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm));
+      const variant = autoLayoutVariantBySide[side];
+      const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm, variant));
+      autoLayoutVariantBySide[side] = ((variant + 1) % 3) as 0 | 1 | 2;
       if (side === "A") {
         state.cardsA = next;
       } else {
@@ -855,6 +859,9 @@ export const useAppStore = create<AppState>()(
         state.cardsA = next;
       } else {
         state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, snapshotState(get()), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
