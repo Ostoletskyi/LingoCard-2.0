@@ -33,6 +33,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const gridIntensity = useAppStore((state) => state.gridIntensity);
   const showOnlyCmLines = useAppStore((state) => state.showOnlyCmLines);
   const debugOverlays = useAppStore((state) => state.debugOverlays);
+  const showBlockMetrics = useAppStore((state) => state.showBlockMetrics);
   const rulersPlacement = useAppStore((state) => state.rulersPlacement);
   const toggleGrid = useAppStore((state) => state.toggleGrid);
   const toggleRulers = useAppStore((state) => state.toggleRulers);
@@ -40,6 +41,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
   const setGridIntensity = useAppStore((state) => state.setGridIntensity);
   const toggleOnlyCmLines = useAppStore((state) => state.toggleOnlyCmLines);
   const toggleDebugOverlays = useAppStore((state) => state.toggleDebugOverlays);
+  const toggleBlockMetrics = useAppStore((state) => state.toggleBlockMetrics);
   const setRulersPlacement = useAppStore((state) => state.setRulersPlacement);
 
   const [openSection, setOpenSection] = useState<ToolbarSection | null>(() => {
@@ -324,6 +326,7 @@ export const Toolbar = ({ theme, onToggleTheme }: ToolbarProps) => {
           {openSection === "snap" && (
             <div className="grid gap-2">
               <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={snapEnabled} onChange={toggleSnap} />Привязка</label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={showBlockMetrics} onChange={toggleBlockMetrics} />Показать размеры блоков</label>
               <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-200"><input type="checkbox" checked={debugOverlays} onChange={toggleDebugOverlays} />Отладка</label>
             </div>
           )}

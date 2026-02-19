@@ -100,6 +100,9 @@ const makeBox = (params: {
   weight?: "normal" | "bold";
   label: string;
   textMode?: "static" | "dynamic";
+  autoH?: boolean;
+  reservedRightPx?: number;
+  semanticKey?: string;
 }) => {
   const fitted = fitTextToBox(
     params.text,
@@ -129,8 +132,11 @@ const makeBox = (params: {
       visible: true
     },
     textMode: params.textMode ?? "static",
+    autoH: params.autoH,
+    reservedRightPx: params.reservedRightPx,
     staticText: fitted.text,
-    label: params.label
+    label: params.label,
+    type: params.semanticKey ?? params.id
   };
 
   return box;
@@ -215,6 +221,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "hero_inf",
+      semanticKey: "hero_inf",
       fieldId: "inf",
       text: card.inf || "—",
       zone: zones.heroInf,
@@ -224,7 +231,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       lineHeight: 1.05,
       weight: "bold",
       label: "Infinitiv",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false
     })
   );
 
@@ -253,6 +261,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "freq",
+      semanticKey: "freq",
       fieldId: "freq",
       text: "",
       zone: zones.heroFreq,
@@ -261,13 +270,16 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 16,
       lineHeight: 1,
       label: "Частотность",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false,
+      reservedRightPx: 48
     })
   );
 
   boxes.push(
     makeBox({
       id: "meta",
+      semanticKey: "meta",
       fieldId: "tags",
       text: card.tags.length ? card.tags.join(" · ") : "",
       zone: zones.heroMeta,
@@ -276,14 +288,16 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 10,
       lineHeight: 1.1,
       label: "Meta",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false
     })
   );
 
   boxes.push(
     makeBox({
       id: "hero_translations",
-      fieldId: "tr_1_ru",
+      semanticKey: "hero_translations",
+      fieldId: "hero_translations",
       text: trText,
       zone: zones.heroTranslations,
       baseFontPt: 10,
@@ -291,7 +305,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 12,
       lineHeight: 1.2,
       label: "Переводы",
-      textMode: "static"
+      textMode: "dynamic",
+      autoH: true
     })
   );
 
@@ -299,6 +314,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "examples",
+      semanticKey: "examples",
       fieldId: "ex_1_de",
       text: exText,
       zone: { xMm: zones.left.xMm, yMm: zones.left.yMm, wMm: zones.left.wMm, hMm: leftTopH },
@@ -307,13 +323,15 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.25,
       label: "Примеры",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
   boxes.push(
     makeBox({
       id: "recommendations",
+      semanticKey: "recommendations",
       fieldId: "rek_1_de",
       text: rekText,
       zone: {
@@ -327,7 +345,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 13,
       lineHeight: 1.18,
       label: "Рекомендации",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
@@ -335,6 +354,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "forms",
+      semanticKey: "forms",
       fieldId: "forms_p3",
       text: formsText,
       zone: { xMm: zones.rightTop.xMm, yMm: zones.rightTop.yMm, wMm: zones.rightTop.wMm, hMm: rightTopHalf },
@@ -343,13 +363,15 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.16,
       label: "Формы и рекция",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
   boxes.push(
     makeBox({
       id: "synonyms",
+      semanticKey: "synonyms",
       fieldId: "syn_1_de",
       text: synText,
       zone: {
@@ -363,7 +385,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.16,
       label: "Синонимы",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
