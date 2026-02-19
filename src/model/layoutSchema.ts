@@ -24,6 +24,10 @@ export const BoxSchema = z.object({
   text: z.string().optional(),
   staticText: z.string().optional(),
   textMode: z.enum(["static", "dynamic"]).optional(),
+  autoH: z.boolean().optional(),
+  minH: z.number().optional(),
+  maxH: z.number().optional(),
+  reservedRightPx: z.number().optional(),
   label: z.string().optional(),
   label_i18n: z.string().optional(),
   type: z.string().optional()
@@ -62,13 +66,13 @@ export const defaultLayout: Layout = {
       }
     },
     {
-      id: "tr_1_ru",
+      id: "hero_translations",
       xMm: 8,
       yMm: 22,
       wMm: 120,
       hMm: 8,
       z: 1,
-      fieldId: "tr_1_ru",
+      fieldId: "hero_translations",
       style: {
         fontSizePt: 12,
         fontWeight: "normal",
