@@ -69,6 +69,44 @@ function Test-TypeScriptStoreDrift {
         ($joined -match "TS1117")
 }
 
+
+function Restore-StoreFilesFromRecentHistory {
+    param([int]$MaxCommits = 25)
+
+    Log-Warn "Trying to recover store-related files from recent git history (up to $MaxCommits revisions)."
+    $commits = @(& git rev-list --max-count=$MaxCommits HEAD -- src/state/store.ts)
+    if (-not $commits -or $commits.Count -eq 0) {
+        Log-Warn 'No historical revisions found for src/state/store.ts'
+        return $false
+    }
+
+    foreach ($commit in $commits) {
+        if ([string]::IsNullOrWhiteSpace($commit)) {
+            continue
+        }
+        Log-Info "Trying store recovery from commit $commit"
+        try {
+            Run-Cmd -Title "git checkout $commit -- store-related files" -Command 'git' -Arguments @(
+                'checkout', $commit, '--',
+                'src/state/store.ts',
+                'src/state/persistence.ts',
+                'src/state/types.ts',
+                'src/state/templateOps.ts'
+            )
+            $tscOk = Run-CmdSafe -Title "npm run tsc (probe @$commit)" -Command 'npm' -Arguments @('run', 'tsc')
+            if ($tscOk) {
+                Log-Ok "Store recovery succeeded using commit $commit"
+                return $true
+            }
+        }
+        catch {
+            Log-Warn "Probe failed for commit $commit: $($_.Exception.Message)"
+        }
+    }
+
+    Log-Warn 'Could not find a passing historical revision for store-related files.'
+    return $false
+}
 function Restore-KnownProblemFilesFromOrigin {
     $hasOriginMain = $false
     & git rev-parse --verify --quiet 'origin/main' | Out-Null
@@ -145,7 +183,8 @@ try {
         npm run tsc 2>&1 | Tee-Object -Variable tscOutput | Out-Host
         $tscExit = $LASTEXITCODE
         if ($tscExit -ne 0) {
-            if (Test-TypeScriptStoreDrift -OutputLines $tscOutput) {
+            $storeDriftDetected = Test-TypeScriptStoreDrift -OutputLines $tscOutput
+            if ($storeDriftDetected) {
                 Log-Warn 'Detected store drift in tsc output. Restoring known-problem files from origin/main before retry.'
                 Restore-KnownProblemFilesFromOrigin
             }
@@ -155,7 +194,17 @@ try {
                 Remove-Item -Path 'node_modules' -Recurse -Force
             }
             Run-Cmd -Title 'npm ci (retry)' -Command 'npm' -Arguments @('ci')
-            Run-Cmd -Title 'npm run tsc (retry)' -Command 'npm' -Arguments @('run', 'tsc')
+
+            if ($storeDriftDetected) {
+                $historyRestoreOk = Restore-StoreFilesFromRecentHistory
+                if ($historyRestoreOk) {
+                    Log-Ok 'Historical store recovery produced a passing tsc check.'
+                } else {
+                    Run-Cmd -Title 'npm run tsc (retry)' -Command 'npm' -Arguments @('run', 'tsc')
+                }
+            } else {
+                Run-Cmd -Title 'npm run tsc (retry)' -Command 'npm' -Arguments @('run', 'tsc')
+            }
         }
         Run-Cmd -Title 'npm run tools:preflight' -Command 'npm' -Arguments @('run', 'tools:preflight')
         Run-Cmd -Title 'npm run tools:smoke' -Command 'npm' -Arguments @('run', 'tools:smoke')
