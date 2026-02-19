@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { projectRoot, ensureDir } from "./utils.js";
+import { projectRoot, ensureDir, runCommand } from "./utils.js";
 import { createResultCollector, STATUS } from "./resultClassifier.js";
 
 const checks = [];
@@ -98,6 +98,17 @@ const runExportChecks = async () => {
   }
 };
 
+
+const runTypeScriptCheck = async () => {
+  try {
+    await runCommand("npm", ["run", "tsc"]);
+    pushCheck("tsc --noEmit", true, "ok");
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    pushCheck("tsc --noEmit", false, details);
+  }
+};
+
 const writePreflightReports = () => {
   const reportDir = path.join(projectRoot, "_reports");
   ensureDir(reportDir);
@@ -117,6 +128,7 @@ const writePreflightReports = () => {
 
 const main = async () => {
   await runExportChecks();
+  await runTypeScriptCheck();
 
   if (!hasNodeModules) {
     console.log("\n[INFO] For complete checks install dependencies: npm ci (or npm install).");
