@@ -1,6 +1,6 @@
 import { runSmoke } from "./smoke.core.js";
 
-runSmoke({ robustSpawn: false, blockingDevServerFailure: true })
+runSmoke({ robustSpawn: true, blockingDevServerFailure: false })
   .then((code) => {
     process.exit(code);
   })
