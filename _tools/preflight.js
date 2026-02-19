@@ -83,12 +83,44 @@ const checkDuplicateDeclarations = (filePath, identifiers) => {
     const fullPath = path.join(projectRoot, filePath);
     const content = fs.readFileSync(fullPath, "utf-8");
     for (const id of identifiers) {
-      const pattern = new RegExp(`(?:const|let|var|function|type)\s+${id}\b`, "g");
+      const pattern = new RegExp(`(?:const|let|var|function|type)\\s+${id}\\b`, "g");
       const matches = content.match(pattern) ?? [];
       pushCheck(`duplicate declaration guard ${id} in ${filePath}`, matches.length <= 1, matches.length <= 1 ? "ok" : `found ${matches.length}`);
     }
   } catch (error) {
     pushCheck(`duplicate declaration guard in ${filePath}`, false, error instanceof Error ? error.message : String(error));
+  }
+};
+
+const checkStoreContracts = (filePath) => {
+  try {
+    const fullPath = path.join(projectRoot, filePath);
+    const content = fs.readFileSync(fullPath, "utf-8");
+
+    const requiredPersistenceSymbols = ["CARDS_META_KEY", "CARDS_CHUNK_KEY_PREFIX", "CARDS_CHUNK_SIZE"];
+    for (const symbol of requiredPersistenceSymbols) {
+      const usesSymbol = content.includes(symbol);
+      const importedSymbol = new RegExp(`\\b${symbol}\\b`).test(content.split("from \"./persistence\"")[0] ?? "");
+      const ok = !usesSymbol || importedSymbol;
+      pushCheck(
+        `store persistence symbol wiring ${symbol}`,
+        ok,
+        ok ? "ok" : "used in store.ts but missing import from ./persistence"
+      );
+    }
+
+    const updateBoxAcrossColumnMatches = content.match(/\bupdateBoxAcrossColumn\s*:/g) ?? [];
+    pushCheck(
+      "duplicate object property guard updateBoxAcrossColumn in src/state/store.ts",
+      updateBoxAcrossColumnMatches.length <= 2,
+      updateBoxAcrossColumnMatches.length <= 2 ? "ok" : `found ${updateBoxAcrossColumnMatches.length}`
+    );
+  } catch (error) {
+    pushCheck(
+      `store contract guard in ${filePath}`,
+      false,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 };
 
@@ -144,6 +176,7 @@ const writePreflightReports = () => {
 const main = async () => {
   await runExportChecks();
   checkDuplicateDeclarations("src/state/store.ts", ["migratePersistedState", "PERSISTENCE_CHUNK_KEYS"]);
+  checkStoreContracts("src/state/store.ts");
   await runTypeScriptCheck();
 
   if (!hasNodeModules) {
