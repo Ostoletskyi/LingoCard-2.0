@@ -164,6 +164,7 @@ const runStep = async (collector, label, fn) => {
   try {
     await fn();
     collector.addStep({ label, status: STATUS.OK, blocking: true });
+    return true;
   } catch (error) {
     collector.addStep({
       label,
@@ -171,7 +172,18 @@ const runStep = async (collector, label, fn) => {
       details: error instanceof Error ? error.message : String(error),
       blocking: true
     });
+    return false;
   }
+};
+
+
+const addSkippedStep = (collector, label, details) => {
+  collector.addStep({
+    label,
+    status: STATUS.SKIP,
+    details,
+    blocking: true
+  });
 };
 
 async function runDevServerCheck(collector, options) {
@@ -254,23 +266,32 @@ export async function runSmoke(options = {}) {
   const collector = createResultCollector();
   const report = createReportWriter();
 
-  await runStep(collector, "TypeScript", () => runCommand("npm", ["run", "tsc"]));
-  await runStep(collector, "Preflight", () => runCommand("npm", ["run", "tools:preflight"]));
-  await runStep(collector, "Build", () => runCommand("npm", ["run", "build"]));
+  const typeScriptOk = await runStep(collector, "TypeScript", () => runCommand("npm", ["run", "tsc"]));
 
-  try {
-    await runRuntimeContracts(collector);
-  } catch (error) {
-    collector.addStep({
-      label: "Runtime contracts",
-      status: STATUS.FAIL,
-      details: error instanceof Error ? error.message : String(error),
-      blocking: true
-    });
+  if (!typeScriptOk) {
+    addSkippedStep(collector, "Preflight", "Skipped because TypeScript failed");
+    addSkippedStep(collector, "Build", "Skipped because TypeScript failed");
+    addSkippedStep(collector, "Runtime contracts", "Skipped because TypeScript failed");
+    addSkippedStep(collector, "Dev server", "Skipped because TypeScript failed");
+    checkFiles(collector);
+  } else {
+    await runStep(collector, "Preflight", () => runCommand("npm", ["run", "tools:preflight"]));
+    await runStep(collector, "Build", () => runCommand("npm", ["run", "build"]));
+
+    try {
+      await runRuntimeContracts(collector);
+    } catch (error) {
+      collector.addStep({
+        label: "Runtime contracts",
+        status: STATUS.FAIL,
+        details: error instanceof Error ? error.message : String(error),
+        blocking: true
+      });
+    }
+
+    checkFiles(collector);
+    await runDevServerCheck(collector, { robustSpawn, blockingDevServerFailure });
   }
-
-  checkFiles(collector);
-  await runDevServerCheck(collector, { robustSpawn, blockingDevServerFailure });
 
   const summary = collector.getSummary();
 
