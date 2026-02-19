@@ -1,7 +1,13 @@
-﻿param()
+param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Under StrictMode, $LASTEXITCODE may be "unset" until a native command runs.
+# Initialize it to a safe default to avoid crashes in scripts that read it early.
+if (-not (Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue)) {
+    $global:LASTEXITCODE = 0
+}
 
 function Get-ProjectRoot {
     param([string]$ProvidedRoot)
