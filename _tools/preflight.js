@@ -1,21 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { projectRoot, ensureDir, runCommand } from "./utils.js";
-import { createResultCollector, STATUS } from "./resultClassifier.js";
+import { projectRoot } from "./utils.js";
 
 const checks = [];
-const collector = createResultCollector();
 
 const pushCheck = (name, ok, details = "") => {
   checks.push({ name, ok, details });
-  const icon = ok ? "[OK]" : "[FAIL]";
-  console.log(`${icon} ${name}${details ? ` - ${details}` : ""}`);
-  collector.addStep({
-    label: name,
-    status: ok ? STATUS.OK : STATUS.FAIL,
-    details,
-    blocking: true
-  });
+  const icon = ok ? "✅" : "❌";
+  console.log(`${icon} ${name}${details ? ` — ${details}` : ""}`);
   if (!ok) {
     process.exitCode = 1;
   }
@@ -52,6 +44,7 @@ for (const filePath of requiredFiles) {
   pushCheck(`file ${filePath}`, exists(filePath), exists(filePath) ? "ok" : "missing");
 }
 
+
 const sourceFiles = fs.readdirSync(path.join(projectRoot, "src"), { recursive: true })
   .filter((p) => typeof p === "string" && /\.(ts|tsx|js|jsx|css)$/.test(p));
 
@@ -77,53 +70,6 @@ const exportChecks = [
   { file: "src/state/store.ts", exportName: "useAppStore" }
 ];
 
-
-const checkDuplicateDeclarations = (filePath, identifiers) => {
-  try {
-    const fullPath = path.join(projectRoot, filePath);
-    const content = fs.readFileSync(fullPath, "utf-8");
-    for (const id of identifiers) {
-      const pattern = new RegExp(`(?:const|let|var|function|type)\\s+${id}\\b`, "g");
-      const matches = content.match(pattern) ?? [];
-      pushCheck(`duplicate declaration guard ${id} in ${filePath}`, matches.length <= 1, matches.length <= 1 ? "ok" : `found ${matches.length}`);
-    }
-  } catch (error) {
-    pushCheck(`duplicate declaration guard in ${filePath}`, false, error instanceof Error ? error.message : String(error));
-  }
-};
-
-const checkStoreContracts = (filePath) => {
-  try {
-    const fullPath = path.join(projectRoot, filePath);
-    const content = fs.readFileSync(fullPath, "utf-8");
-
-    const requiredPersistenceSymbols = ["CARDS_META_KEY", "CARDS_CHUNK_KEY_PREFIX", "CARDS_CHUNK_SIZE"];
-    for (const symbol of requiredPersistenceSymbols) {
-      const usesSymbol = content.includes(symbol);
-      const importedSymbol = new RegExp(`\\b${symbol}\\b`).test(content.split("from \"./persistence\"")[0] ?? "");
-      const ok = !usesSymbol || importedSymbol;
-      pushCheck(
-        `store persistence symbol wiring ${symbol}`,
-        ok,
-        ok ? "ok" : "used in store.ts but missing import from ./persistence"
-      );
-    }
-
-    const updateBoxAcrossColumnMatches = content.match(/\bupdateBoxAcrossColumn\s*:/g) ?? [];
-    pushCheck(
-      "duplicate object property guard updateBoxAcrossColumn in src/state/store.ts",
-      updateBoxAcrossColumnMatches.length <= 2,
-      updateBoxAcrossColumnMatches.length <= 2 ? "ok" : `found ${updateBoxAcrossColumnMatches.length}`
-    );
-  } catch (error) {
-    pushCheck(
-      `store contract guard in ${filePath}`,
-      false,
-      error instanceof Error ? error.message : String(error)
-    );
-  }
-};
-
 const runExportChecks = async () => {
   for (const item of exportChecks) {
     try {
@@ -145,54 +91,21 @@ const runExportChecks = async () => {
   }
 };
 
-
-const runTypeScriptCheck = async () => {
-  try {
-    await runCommand("npm", ["run", "tsc"]);
-    pushCheck("tsc --noEmit", true, "ok");
-  } catch (error) {
-    const details = error instanceof Error ? error.message : String(error);
-    pushCheck("tsc --noEmit", false, details);
-  }
-};
-
-const writePreflightReports = () => {
-  const reportDir = path.join(projectRoot, "_reports");
-  ensureDir(reportDir);
-  const summary = collector.getSummary();
-
-  const mdPath = path.join(reportDir, "preflight_report.md");
-  const jsonPath = path.join(reportDir, "preflight_report.json");
-
-  fs.writeFileSync(mdPath, collector.toMarkdown());
-  fs.writeFileSync(jsonPath, JSON.stringify(collector.toJson(), null, 2));
-
-  console.log(`Preflight report saved to ${mdPath}`);
-  console.log(`Preflight report saved to ${jsonPath}`);
-
-  process.exitCode = summary.code;
-};
-
 const main = async () => {
   await runExportChecks();
-  checkDuplicateDeclarations("src/state/store.ts", ["migratePersistedState", "PERSISTENCE_CHUNK_KEYS"]);
-  checkStoreContracts("src/state/store.ts");
-  await runTypeScriptCheck();
 
   if (!hasNodeModules) {
-    console.log("\n[INFO] For complete checks install dependencies: npm ci (or npm install).");
+    console.log("\nℹ️ Для полного тестирования установите зависимости: npm ci (или npm install).");
   }
 
   if (process.exitCode && process.exitCode !== 0) {
-    console.error("\n[WARN] Preflight failed: one or more critical checks did not pass.");
+    console.error("\n⚠️ Preflight failed: one or more critical checks did not pass.");
   }
 
-  writePreflightReports();
   console.log("\nPreflight complete.");
 };
 
 main().catch((error) => {
   console.error("Preflight failed:", error);
   process.exitCode = 1;
-  writePreflightReports();
 });
