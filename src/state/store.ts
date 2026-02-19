@@ -11,7 +11,7 @@ import {
   STORAGE_KEY,
   loadPersistedTemplate,
   loadPersistedCards,
-  persistCards,
+  persistCards as persistCardsStorage,
   persistActiveTemplate,
   type PersistedCards
 } from "./persistence";
@@ -543,7 +543,7 @@ const persistState = (state: AppState) => {
   }
 
   try {
-    persistCards(state.cardsA, state.cardsB);
+    persistCardsStorage(state.cardsA, state.cardsB);
   } catch (error) {
     failed = true;
     console.warn("[Persist][Quota] fallback to compact/chunks", error);
