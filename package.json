@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "tools:backup": "node _tools/backup.js",
     "tools:restore": "node _tools/restore.js",
-    "tools:smoke": "node _tools/smoke.js",
+    "tools:smoke": "node _tools/smoke.runner.js",
     "tools:dev": "node _tools/dev.js",
     "tools:preflight": "node _tools/preflight.js"
   },

@@ -100,6 +100,9 @@ const makeBox = (params: {
   weight?: "normal" | "bold";
   label: string;
   textMode?: "static" | "dynamic";
+  autoH?: boolean;
+  reservedRightPx?: number;
+  semanticKey?: string;
 }) => {
   const fitted = fitTextToBox(
     params.text,
@@ -129,8 +132,11 @@ const makeBox = (params: {
       visible: true
     },
     textMode: params.textMode ?? "static",
+    autoH: params.autoH,
+    reservedRightPx: params.reservedRightPx,
     staticText: fitted.text,
-    label: params.label
+    label: params.label,
+    type: params.semanticKey ?? params.id
   };
 
   return box;
@@ -181,7 +187,7 @@ const collectFormLines = (card: Card) =>
     { fieldId: "forms_aux", text: joinPresent(["Aux", card.forms_aux], ": ") }
   ].filter((line) => hasText(line.text));
 
-const buildTemplateZones = (widthMm: number, heightMm: number) => {
+const buildTemplateZones = (widthMm: number, heightMm: number, variant: 0 | 1 | 2) => {
   const margin = 4;
   const innerW = widthMm - margin * 2;
   const contentTop = margin + 22;
@@ -189,32 +195,57 @@ const buildTemplateZones = (widthMm: number, heightMm: number) => {
   const contentH = Math.max(20, contentBottom - contentTop);
   const gap = 2;
 
-  const leftW = innerW * 0.62;
+  const leftW = variant === 1 ? innerW * 0.5 : variant === 2 ? innerW : innerW * 0.62;
   const rightW = innerW - leftW - gap;
+
+  if (variant === 2) {
+    const sectionGap = 1.2;
+    const sectionH = (contentH - sectionGap * 3) / 4;
+    return {
+      heroInf: { xMm: margin, yMm: margin, wMm: innerW * 0.62, hMm: 10 },
+      heroFreq: { xMm: margin + innerW * 0.62 + gap, yMm: margin, wMm: innerW * 0.38 - gap, hMm: 4.8 },
+      heroMeta: { xMm: margin + innerW * 0.62 + gap, yMm: margin + 5.4, wMm: innerW * 0.38 - gap, hMm: 4.6 },
+      heroTranslations: { xMm: margin, yMm: margin + 11, wMm: innerW, hMm: 9.5 },
+      left: { xMm: margin, yMm: contentTop, wMm: innerW, hMm: sectionH * 2 + sectionGap },
+      rightTop: {
+        xMm: margin,
+        yMm: contentTop + sectionH * 2 + sectionGap * 2,
+        wMm: innerW,
+        hMm: sectionH
+      },
+      rightBottom: {
+        xMm: margin,
+        yMm: contentTop + sectionH * 3 + sectionGap * 3,
+        wMm: innerW,
+        hMm: sectionH
+      }
+    };
+  }
 
   return {
     heroInf: { xMm: margin, yMm: margin, wMm: innerW * 0.62, hMm: 10 },
     heroFreq: { xMm: margin + innerW * 0.62 + gap, yMm: margin, wMm: innerW * 0.38 - gap, hMm: 4.8 },
     heroMeta: { xMm: margin + innerW * 0.62 + gap, yMm: margin + 5.4, wMm: innerW * 0.38 - gap, hMm: 4.6 },
-    heroTranslations: { xMm: margin, yMm: margin + 11, wMm: innerW, hMm: 9.5 },
+    heroTranslations: { xMm: margin, yMm: margin + 11, wMm: innerW, hMm: variant === 1 ? 10.8 : 9.5 },
     left: { xMm: margin, yMm: contentTop, wMm: leftW, hMm: contentH },
-    rightTop: { xMm: margin + leftW + gap, yMm: contentTop, wMm: rightW, hMm: contentH * 0.44 },
+    rightTop: { xMm: margin + leftW + gap, yMm: contentTop, wMm: rightW, hMm: variant === 1 ? contentH * 0.5 : contentH * 0.44 },
     rightBottom: {
       xMm: margin + leftW + gap,
-      yMm: contentTop + contentH * 0.46,
+      yMm: contentTop + (variant === 1 ? contentH * 0.52 : contentH * 0.46),
       wMm: rightW,
-      hMm: contentH * 0.54
+      hMm: variant === 1 ? contentH * 0.48 : contentH * 0.54
     }
   };
 };
 
-export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: number): Box[] => {
-  const zones = buildTemplateZones(widthMm, heightMm);
+export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: number, variant: 0 | 1 | 2 = 0): Box[] => {
+  const zones = buildTemplateZones(widthMm, heightMm, variant);
   const boxes: Box[] = [];
 
   boxes.push(
     makeBox({
       id: "hero_inf",
+      semanticKey: "hero_inf",
       fieldId: "inf",
       text: card.inf || "—",
       zone: zones.heroInf,
@@ -224,7 +255,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       lineHeight: 1.05,
       weight: "bold",
       label: "Infinitiv",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false
     })
   );
 
@@ -253,6 +285,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "freq",
+      semanticKey: "freq",
       fieldId: "freq",
       text: "",
       zone: zones.heroFreq,
@@ -261,13 +294,16 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 16,
       lineHeight: 1,
       label: "Частотность",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false,
+      reservedRightPx: 48
     })
   );
 
   boxes.push(
     makeBox({
       id: "meta",
+      semanticKey: "meta",
       fieldId: "tags",
       text: card.tags.length ? card.tags.join(" · ") : "",
       zone: zones.heroMeta,
@@ -276,14 +312,16 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 10,
       lineHeight: 1.1,
       label: "Meta",
-      textMode: "dynamic"
+      textMode: "dynamic",
+      autoH: false
     })
   );
 
   boxes.push(
     makeBox({
       id: "hero_translations",
-      fieldId: "tr_1_ru",
+      semanticKey: "hero_translations",
+      fieldId: "hero_translations",
       text: trText,
       zone: zones.heroTranslations,
       baseFontPt: 10,
@@ -291,7 +329,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 12,
       lineHeight: 1.2,
       label: "Переводы",
-      textMode: "static"
+      textMode: "dynamic",
+      autoH: true
     })
   );
 
@@ -299,6 +338,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "examples",
+      semanticKey: "examples",
       fieldId: "ex_1_de",
       text: exText,
       zone: { xMm: zones.left.xMm, yMm: zones.left.yMm, wMm: zones.left.wMm, hMm: leftTopH },
@@ -307,13 +347,15 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.25,
       label: "Примеры",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
   boxes.push(
     makeBox({
       id: "recommendations",
+      semanticKey: "recommendations",
       fieldId: "rek_1_de",
       text: rekText,
       zone: {
@@ -327,7 +369,8 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 13,
       lineHeight: 1.18,
       label: "Рекомендации",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
@@ -335,6 +378,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
   boxes.push(
     makeBox({
       id: "forms",
+      semanticKey: "forms",
       fieldId: "forms_p3",
       text: formsText,
       zone: { xMm: zones.rightTop.xMm, yMm: zones.rightTop.yMm, wMm: zones.rightTop.wMm, hMm: rightTopHalf },
@@ -343,13 +387,15 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.16,
       label: "Формы и рекция",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
   boxes.push(
     makeBox({
       id: "synonyms",
+      semanticKey: "synonyms",
       fieldId: "syn_1_de",
       text: synText,
       zone: {
@@ -363,14 +409,15 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
       maxFontPt: 14,
       lineHeight: 1.16,
       label: "Синонимы",
-      textMode: "static"
+      textMode: "static",
+      autoH: true
     })
   );
 
   return boxes.map((box, index) => ({ ...box, z: index + 1 }));
 };
 
-export const applySemanticLayoutToCard = (card: Card, widthMm: number, heightMm: number): Card => ({
+export const applySemanticLayoutToCard = (card: Card, widthMm: number, heightMm: number, variant: 0 | 1 | 2 = 0): Card => ({
   ...card,
-  boxes: buildSemanticLayoutBoxes(card, widthMm, heightMm)
+  boxes: buildSemanticLayoutBoxes(card, widthMm, heightMm, variant)
 });
