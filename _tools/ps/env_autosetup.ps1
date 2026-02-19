@@ -15,9 +15,9 @@ $script:ProgressValue = 0
 
 function Show-CyberBanner {
     Clear-Host
-    Write-Host '============================================================' -ForegroundColor DarkCyan
+    Write-Host '                                                            ' -ForegroundColor DarkCyan
     Write-Host '        LingoCard :: AUTO ENV BOOTSTRAP :: CINE MODE       ' -ForegroundColor Cyan
-    Write-Host '============================================================' -ForegroundColor DarkCyan
+    Write-Host '                                                            ' -ForegroundColor DarkCyan
     Write-Host "Project: $root" -ForegroundColor DarkGray
     Write-Host "Log:     $log" -ForegroundColor DarkGray
     Write-Host ''
@@ -89,8 +89,9 @@ function Ensure-AdminSession {
         '-Elevated'
     )
 
-    $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList ($args -join ' ') -Wait -PassThru
-    $code = if ($null -ne $proc) { $proc.ExitCode } else { 1 }
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList ($args -join ' ') -Wait
+    $code = $LASTEXITCODE
+    if ($null -eq $code) { $code = 0 }
     exit $code
 }
 
@@ -216,8 +217,8 @@ try {
     Write-Progress -Activity 'Auto environment setup' -Completed
 
     Write-Host ''
-    Write-Host '[OK] Auto environment setup completed successfully.' -ForegroundColor Green
-    Write-Host 'System is ready for LingoCard.' -ForegroundColor Cyan
+    Write-Host '✅ Auto environment setup completed successfully.' -ForegroundColor Green
+    Write-Host 'Система готова для работы с LingoCard.' -ForegroundColor Cyan
 
     Write-Log -LogPath $log -Message 'SUCCESS env_autosetup'
     exit 0
@@ -225,7 +226,7 @@ try {
 catch {
     Write-Progress -Activity 'Auto environment setup' -Completed
     Write-Host ''
-    Write-Host '[ERROR] Auto environment setup failed.' -ForegroundColor Red
+    Write-Host '❌ Автонастройка окружения завершилась с ошибкой.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-Log -LogPath $log -Message "ERROR env_autosetup $($_.Exception.Message)"
     exit 1

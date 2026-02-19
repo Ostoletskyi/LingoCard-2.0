@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot,
     [int]$Port = 5173
 )
