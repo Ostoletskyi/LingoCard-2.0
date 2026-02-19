@@ -57,6 +57,42 @@ function Run-CmdSafe {
     }
 }
 
+function Test-TypeScriptStoreDrift {
+    param([string[]]$OutputLines)
+    $joined = ($OutputLines -join "`n")
+    return
+        ($joined -match "Cannot find name 'CARDS_CHUNK_SIZE'") -or
+        ($joined -match "Cannot find name 'CARDS_META_KEY'") -or
+        ($joined -match "Cannot find name 'CARDS_CHUNK_KEY_PREFIX'") -or
+        ($joined -match "Cannot find name 'reason'") -or
+        ($joined -match "updateBoxAcrossColumn") -or
+        ($joined -match "TS1117")
+}
+
+function Restore-KnownProblemFilesFromOrigin {
+    $hasOriginMain = $false
+    & git rev-parse --verify --quiet 'origin/main' | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $hasOriginMain = $true
+    }
+    if (-not $hasOriginMain) {
+        Log-Warn 'origin/main not found, skip forced restore from remote branch.'
+        return
+    }
+
+    Run-Cmd -Title 'git checkout origin/main -- known-problem files' -Command 'git' -Arguments @(
+        'checkout', 'origin/main', '--',
+        'src/state/store.ts',
+        'src/state/persistence.ts',
+        'src/state/types.ts',
+        'src/state/templateOps.ts',
+        'src/ui/EditorCanvas.tsx',
+        '_tools/preflight.js',
+        '_tools/smoke.core.js',
+        '_tools/utils.js'
+    )
+}
+
 $stashCreated = $false
 $stashTag = ""
 
@@ -104,9 +140,16 @@ try {
         }
 
         Run-Cmd -Title 'npm ci' -Command 'npm' -Arguments @('ci')
-        $tscOk = Run-CmdSafe -Title 'npm run tsc' -Command 'npm' -Arguments @('run', 'tsc')
-        if (-not $tscOk) {
-            Log-Warn 'TypeScript failed after sync. Running hard reset of tracked files and retrying once.'
+
+        $tscOutput = @()
+        npm run tsc 2>&1 | Tee-Object -Variable tscOutput | Out-Host
+        $tscExit = $LASTEXITCODE
+        if ($tscExit -ne 0) {
+            if (Test-TypeScriptStoreDrift -OutputLines $tscOutput) {
+                Log-Warn 'Detected store drift in tsc output. Restoring known-problem files from origin/main before retry.'
+                Restore-KnownProblemFilesFromOrigin
+            }
+            Log-Warn 'TypeScript failed after sync. Running hard reset + reinstall and retrying once.'
             Run-Cmd -Title 'git reset --hard HEAD' -Command 'git' -Arguments @('reset', '--hard', 'HEAD')
             if (Test-Path 'node_modules') {
                 Remove-Item -Path 'node_modules' -Recurse -Force

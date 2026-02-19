@@ -16,6 +16,9 @@ function Invoke-RecoverIfTypeScriptFailure {
         ($joined -match "Cannot find name 'CARDS_CHUNK_SIZE'") -or
         ($joined -match "Cannot find name 'CARDS_META_KEY'") -or
         ($joined -match "Cannot find name 'CARDS_CHUNK_KEY_PREFIX'") -or
+        ($joined -match "Cannot find name 'reason'") -or
+        ($joined -match "TS1117") -or
+        ($joined -match "updateBoxAcrossColumn") -or
         ($joined -match "Cannot find name 'badgeDataUri'")
 
     $typeScriptStepFailed = $false
