@@ -1,5 +1,5 @@
 import type { Card } from "../model/cardSchema";
-import type { ListSide } from "./store";
+import type { ListSide } from "./types";
 import { extractLayoutTemplate, applyLayoutTemplate, type LayoutTemplate } from "../editor/layoutTemplate";
 import { autoResizeCardBoxes } from "../editor/autoBoxSize";
 import { getPxPerMm } from "../utils/mmPx";

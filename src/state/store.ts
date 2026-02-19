@@ -22,36 +22,36 @@ import { BOOKMARK_LIMIT, trackStateEvent } from "./history";
 import { syncTemplateToSide } from "./templateOps";
 import { autoResizeCardBoxes } from "../editor/autoBoxSize";
 import { getPxPerMm } from "../utils/mmPx";
+import type { ListSide, AppStateSnapshot, HistoryState, HistoryBookmark, ChangeLogEntry } from "./types";
+export type { ListSide, AppStateSnapshot, HistoryState, HistoryBookmark, ChangeLogEntry } from "./types";
 
-export type ListSide = "A" | "B";
+type AnyPersistedState = { version?: unknown; state?: unknown };
 
-export type AppStateSnapshot = {
-  cardsA: Card[];
-  cardsB: Card[];
-  selectedId: string | null;
-  selectedSide: ListSide;
-  layout: Layout;
-  selectedBoxId: string | null;
-  selectedCardIdsA: string[];
-  selectedCardIdsB: string[];
+const PERSISTENCE_CHUNK_KEYS = {
+  meta: CARDS_META_KEY,
+  prefix: CARDS_CHUNK_KEY_PREFIX,
+  size: CARDS_CHUNK_SIZE
 };
+void PERSISTENCE_CHUNK_KEYS;
 
-export type HistoryState = {
-  past: AppStateSnapshot[];
-  future: AppStateSnapshot[];
-};
-
-export type HistoryBookmark = {
-  id: string;
-  createdAt: string;
-  action: string;
-  snapshot: AppStateSnapshot;
-};
-
-export type ChangeLogEntry = {
-  id: string;
-  at: string;
-  action: string;
+const migratePersistedState = (raw: AnyPersistedState): PersistedState | null => {
+  if (raw?.version === 1 && raw.state && typeof raw.state === "object") {
+    const state = raw.state as Record<string, unknown>;
+    return {
+      version: 1,
+      state: {
+        ...(state as PersistedState["state"]),
+        activeTemplate:
+          state.activeTemplate && typeof state.activeTemplate === "object"
+            ? (state.activeTemplate as LayoutTemplate)
+            : null
+      }
+    };
+  }
+  if (typeof raw?.version === "number") {
+    console.warn("[Persist][Migration] Unsupported persisted version", raw.version);
+  }
+  return null;
 };
 
 type AnyPersistedState = { version?: unknown; state?: unknown };
@@ -888,6 +888,9 @@ export const useAppStore = create<AppState>()(
         state.cardsA = next;
       } else {
         state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, snapshotState(get()), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
