@@ -22,7 +22,7 @@ export const resolveCommand = (command) => {
 export const runCommand = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
     const executable = resolveCommand(command);
-    const spawnOptions = { stdio: "inherit", shell: process.platform === "win32", ...options };
+    const spawnOptions = { stdio: "inherit", shell: false, ...options };
 
     const attach = (child) => {
       child.on("close", (code) => {

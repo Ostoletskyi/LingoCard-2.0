@@ -194,7 +194,7 @@ async function runDevServerCheck(collector, options) {
     serverProcess = childProcess.spawn(npmCommand, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
       cwd: projectRoot,
       stdio: "ignore",
-      shell: process.platform === "win32" ? true : !options.robustSpawn
+      shell: !options.robustSpawn
     });
 
     serverProcess.on("error", (error) => {
