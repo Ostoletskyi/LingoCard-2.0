@@ -32,8 +32,8 @@ echo [4] Tests  - Run smoke test
 echo [5] Dev    - Start local dev server (and open browser)
 echo [6] Setup  - Auto environment setup
 echo [7] Repair - Automatic problem solving
-echo [9] Help   - Help / Repair hub
 echo [8] Recover - Sync and verify workspace
+echo [9] Help   - Help / Repair hub
 echo.
 echo [R] Reload screen
 echo [0] Exit
