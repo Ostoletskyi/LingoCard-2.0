@@ -574,9 +574,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     if (!viewport) return;
 
     const onWheel = (event: WheelEvent) => {
-      if (!editModeEnabled) {
-        return;
-      }
       if (editingBoxId) {
         event.preventDefault();
         event.stopPropagation();
@@ -602,7 +599,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
     return () => {
       viewport.removeEventListener("wheel", onWheel);
     };
-  }, [editingBoxId, zoomScale, setZoom, selectedFieldIds, adjustColumnFontSizeByField, selectedSide, editModeEnabled]);
+  }, [editingBoxId, zoomScale, setZoom, selectedFieldIds, adjustColumnFontSizeByField, selectedSide]);
 
   const handlePointerLeave = () => {
     setCursorMm(null);
