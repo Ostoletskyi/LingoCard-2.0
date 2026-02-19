@@ -57,78 +57,19 @@ function Run-CmdSafe {
     }
 }
 
-function Test-TypeScriptStoreDrift {
-    param([string[]]$OutputLines)
-    $joined = ($OutputLines -join "`n")
-    return
-        ($joined -match "Cannot find name 'CARDS_CHUNK_SIZE'") -or
-        ($joined -match "Cannot find name 'CARDS_META_KEY'") -or
-        ($joined -match "Cannot find name 'CARDS_CHUNK_KEY_PREFIX'") -or
-        ($joined -match "Cannot find name 'reason'") -or
-        ($joined -match "updateBoxAcrossColumn") -or
-        ($joined -match "TS1117")
-}
-
-
-function Restore-StoreFilesFromRecentHistory {
-    param([int]$MaxCommits = 25)
-
-    Log-Warn "Trying to recover store-related files from recent git history (up to $MaxCommits revisions)."
-    $commits = @(& git rev-list --max-count=$MaxCommits HEAD -- src/state/store.ts)
-    if (-not $commits -or $commits.Count -eq 0) {
-        Log-Warn 'No historical revisions found for src/state/store.ts'
-        return $false
+function Install-Dependencies {
+    $ok = Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')
+    if ($ok) {
+        return $true
     }
 
-    foreach ($commit in $commits) {
-        if ([string]::IsNullOrWhiteSpace($commit)) {
-            continue
-        }
-        Log-Info "Trying store recovery from commit $commit"
-        try {
-            Run-Cmd -Title "git checkout $commit -- store-related files" -Command 'git' -Arguments @(
-                'checkout', $commit, '--',
-                'src/state/store.ts',
-                'src/state/persistence.ts',
-                'src/state/types.ts',
-                'src/state/templateOps.ts'
-            )
-            $tscOk = Run-CmdSafe -Title "npm run tsc (probe @$commit)" -Command 'npm' -Arguments @('run', 'tsc')
-            if ($tscOk) {
-                Log-Ok "Store recovery succeeded using commit $commit"
-                return $true
-            }
-        }
-        catch {
-            Log-Warn "Probe failed for commit $commit: $($_.Exception.Message)"
-        }
+    $errText = "$($Error[0])"
+    if ($errText -match 'EPERM|EACCES|EBUSY') {
+        Log-Warn 'npm ci failed due to file lock/permission issue. Falling back to npm install.'
+        return (Run-CmdSafe -Title 'npm install (fallback)' -Command 'npm' -Arguments @('install'))
     }
 
-    Log-Warn 'Could not find a passing historical revision for store-related files.'
     return $false
-}
-function Restore-KnownProblemFilesFromOrigin {
-    $hasOriginMain = $false
-    & git rev-parse --verify --quiet 'origin/main' | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        $hasOriginMain = $true
-    }
-    if (-not $hasOriginMain) {
-        Log-Warn 'origin/main not found, skip forced restore from remote branch.'
-        return
-    }
-
-    Run-Cmd -Title 'git checkout origin/main -- known-problem files' -Command 'git' -Arguments @(
-        'checkout', 'origin/main', '--',
-        'src/state/store.ts',
-        'src/state/persistence.ts',
-        'src/state/types.ts',
-        'src/state/templateOps.ts',
-        'src/ui/EditorCanvas.tsx',
-        '_tools/preflight.js',
-        '_tools/smoke.core.js',
-        '_tools/utils.js'
-    )
 }
 
 $stashCreated = $false
@@ -141,7 +82,7 @@ try {
 
     Push-Location $root
     try {
-        Log-Info 'Starting recover and verify workflow'
+        Log-Info 'Starting recover and verify workflow (safe mode).'
 
         $status = (& git status --porcelain)
         if ($status) {
@@ -149,63 +90,31 @@ try {
             Run-Cmd -Title 'git stash push -u' -Command 'git' -Arguments @('stash', 'push', '-u', '-m', $stashTag)
             $stashCreated = $true
             Log-Ok 'Local changes were stashed.'
-        } else {
+        }
+        else {
             Log-Ok 'Working tree is clean.'
         }
 
-        Run-Cmd -Title 'git fetch --all --prune' -Command 'git' -Arguments @('fetch', '--all', '--prune')
-        Run-Cmd -Title 'git pull --rebase' -Command 'git' -Arguments @('pull', '--rebase')
+        if ((Test-Path '.git\rebase-merge') -or (Test-Path '.git\rebase-apply')) {
+            Log-Warn 'Detected unfinished rebase. Creating backup branch and aborting rebase.'
+            $backup = "repair_rebase_backup_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss')
+            Run-CmdSafe -Title "git branch $backup" -Command 'git' -Arguments @('branch', $backup) | Out-Null
+            Run-Cmd -Title 'git rebase --abort' -Command 'git' -Arguments @('rebase', '--abort')
+        }
 
-        Run-Cmd -Title 'git checkout (known-problem files)' -Command 'git' -Arguments @(
-            'checkout', '--',
-            'src/state/store.ts',
-            'src/state/persistence.ts',
-            'src/state/types.ts',
-            'src/state/templateOps.ts',
-            'src/ui/EditorCanvas.tsx',
-            '_tools/preflight.js',
-            '_tools/smoke.core.js',
-            '_tools/utils.js'
-        )
+        Run-Cmd -Title 'git fetch --all --prune' -Command 'git' -Arguments @('fetch', '--all', '--prune')
+        Run-CmdSafe -Title 'git pull --rebase' -Command 'git' -Arguments @('pull', '--rebase') | Out-Null
 
         if (Test-Path 'node_modules') {
             Log-Info 'Removing node_modules for clean reinstall.'
             Remove-Item -Path 'node_modules' -Recurse -Force
         }
 
-        if (Test-Path 'package-lock.json') {
-            Run-Cmd -Title 'git checkout -- package-lock.json' -Command 'git' -Arguments @('checkout', '--', 'package-lock.json')
+        if (-not (Install-Dependencies)) {
+            throw 'Could not install dependencies (npm ci/npm install both failed).'
         }
 
-        Run-Cmd -Title 'npm ci' -Command 'npm' -Arguments @('ci')
-
-        $tscOutput = @()
-        npm run tsc 2>&1 | Tee-Object -Variable tscOutput | Out-Host
-        $tscExit = $LASTEXITCODE
-        if ($tscExit -ne 0) {
-            $storeDriftDetected = Test-TypeScriptStoreDrift -OutputLines $tscOutput
-            if ($storeDriftDetected) {
-                Log-Warn 'Detected store drift in tsc output. Restoring known-problem files from origin/main before retry.'
-                Restore-KnownProblemFilesFromOrigin
-            }
-            Log-Warn 'TypeScript failed after sync. Running hard reset + reinstall and retrying once.'
-            Run-Cmd -Title 'git reset --hard HEAD' -Command 'git' -Arguments @('reset', '--hard', 'HEAD')
-            if (Test-Path 'node_modules') {
-                Remove-Item -Path 'node_modules' -Recurse -Force
-            }
-            Run-Cmd -Title 'npm ci (retry)' -Command 'npm' -Arguments @('ci')
-
-            if ($storeDriftDetected) {
-                $historyRestoreOk = Restore-StoreFilesFromRecentHistory
-                if ($historyRestoreOk) {
-                    Log-Ok 'Historical store recovery produced a passing tsc check.'
-                } else {
-                    Run-Cmd -Title 'npm run tsc (retry)' -Command 'npm' -Arguments @('run', 'tsc')
-                }
-            } else {
-                Run-Cmd -Title 'npm run tsc (retry)' -Command 'npm' -Arguments @('run', 'tsc')
-            }
-        }
+        Run-Cmd -Title 'npm run tsc' -Command 'npm' -Arguments @('run', 'tsc')
         Run-Cmd -Title 'npm run tools:preflight' -Command 'npm' -Arguments @('run', 'tools:preflight')
         Run-Cmd -Title 'npm run tools:smoke' -Command 'npm' -Arguments @('run', 'tools:smoke')
 
