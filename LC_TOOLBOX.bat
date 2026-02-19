@@ -30,6 +30,9 @@ echo [2] Git    - Push project state to remote
 echo [3] Backup - Create/Restore
 echo [4] Tests  - Run smoke test
 echo [5] Dev    - Start local dev server (and open browser)
+echo [6] Setup  - Auto environment setup
+echo [7] Repair - Automatic problem solving
+echo [8] Recover - Sync and verify workspace
 echo.
 echo [R] Reload screen
 echo [0] Exit
@@ -42,6 +45,9 @@ if /I "%CHOICE%"=="2" (call :RUN_PS "git_push.ps1"  & goto MAIN_MENU)
 if /I "%CHOICE%"=="3" (goto BACKUP_MENU)
 if /I "%CHOICE%"=="4" (call :RUN_PS "smoke.ps1"     & goto MAIN_MENU)
 if /I "%CHOICE%"=="5" (call :RUN_PS "dev_start.ps1" & goto MAIN_MENU)
+if /I "%CHOICE%"=="6" (call :RUN_PS "env_autosetup.ps1" & goto MAIN_MENU)
+if /I "%CHOICE%"=="7" (call :RUN_PS "auto_problem_solver.ps1" & goto MAIN_MENU)
+if /I "%CHOICE%"=="8" (call :RUN_PS "recover_and_verify.ps1" & goto MAIN_MENU)
 
 if /I "%CHOICE%"=="R" goto MAIN_MENU
 if "%CHOICE%"=="0" goto END
