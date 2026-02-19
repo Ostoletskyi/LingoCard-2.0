@@ -71,14 +71,7 @@ const fitTextToBox = (
     measured = measure(fontPt);
   }
 
-  let fittedLines = measured.lines;
-  if (fittedLines.length > measured.maxLines) {
-    fittedLines = fittedLines.slice(0, measured.maxLines);
-    const lastIndex = fittedLines.length - 1;
-    const lastLine = fittedLines[lastIndex] ?? "";
-    const truncated = lastLine.length > 1 ? `${lastLine.slice(0, Math.max(1, lastLine.length - 1))}…` : "…";
-    fittedLines[lastIndex] = truncated;
-  }
+  const fittedLines = measured.lines;
 
   return {
     fontPt: clamp(fontPt, minFontPt, maxFontPt),

@@ -782,7 +782,35 @@ export const useAppStore = create<AppState>()(
       trackStateEvent(state, snapshotState(get()), `autoLayoutAllCards:${side}`);
       const source = side === "A" ? state.cardsA : state.cardsB;
       const variant = autoLayoutVariantBySide[side];
-      const next = source.map((card) => applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm, variant));
+      const pxPerMm = getPxPerMm(1);
+      const next = source.map((card) => {
+        const layoutCard = applySemanticLayoutToCard(card, state.layout.widthMm, state.layout.heightMm, variant);
+        if (!card.boxes?.length || !layoutCard.boxes?.length) {
+          return autoResizeCardBoxes(layoutCard, pxPerMm);
+        }
+
+        const sourceBoxes = card.boxes;
+        const merged = layoutCard.boxes.map((nextBox) => {
+          const prevBox =
+            sourceBoxes.find((box) => box.id === nextBox.id) ??
+            sourceBoxes.find((box) => box.fieldId === nextBox.fieldId);
+          if (!prevBox) return nextBox;
+          return {
+            ...nextBox,
+            id: prevBox.id,
+            fieldId: prevBox.fieldId,
+            textMode: prevBox.textMode,
+            staticText: prevBox.staticText,
+            style: {
+              ...nextBox.style,
+              align: prevBox.style.align,
+              fontWeight: prevBox.style.fontWeight
+            }
+          };
+        });
+
+        return autoResizeCardBoxes({ ...layoutCard, boxes: merged }, pxPerMm);
+      });
       autoLayoutVariantBySide[side] = ((variant + 1) % 3) as 0 | 1 | 2;
       if (side === "A") {
         state.cardsA = next;
@@ -859,9 +887,6 @@ export const useAppStore = create<AppState>()(
         state.cardsA = next;
       } else {
         state.cardsB = next;
-      }
-      if (reason) {
-        trackStateEvent(state, snapshotState(get()), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
