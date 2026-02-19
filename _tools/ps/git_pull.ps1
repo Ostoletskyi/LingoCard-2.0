@@ -28,6 +28,18 @@ try {
             }
         }
 
+        git fetch --all --prune | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw 'git fetch --all --prune failed.' }
+
+        $upstream = (& git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null)
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($upstream)) {
+            Write-Host 'No upstream branch configured. Skipping pull --rebase.' -ForegroundColor Yellow
+            Write-Host 'Set upstream manually, for example:' -ForegroundColor Yellow
+            Write-Host '  git branch --set-upstream-to origin/<branch>' -ForegroundColor Yellow
+            Write-Log -LogPath $log -Message 'WARN git_pull no_upstream'
+            exit 3
+        }
+
         git pull --rebase | Out-Host
         if ($LASTEXITCODE -ne 0) {
             Write-Host 'Pull failed. Resolve conflicts manually.' -ForegroundColor Yellow

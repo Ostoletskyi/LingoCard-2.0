@@ -117,7 +117,9 @@ try {
 
         # Abort stale rebase session if present
         if ((Test-Path '.git\rebase-merge') -or (Test-Path '.git\rebase-apply')) {
-            Log-Warn 'Detected unfinished rebase, attempting automatic abort.'
+            Log-Warn 'Detected unfinished rebase. Creating backup branch before abort.'
+            $backup = "auto_fix_rebase_backup_{0}" -f (Get-Date -Format 'yyyyMMdd_HHmmss')
+            Run-CmdSafe -Title "git branch $backup" -Command 'git' -Arguments @('branch', $backup) | Out-Null
             Run-CmdSafe -Title 'git rebase --abort' -Command 'git' -Arguments @('rebase','--abort') | Out-Null
         } else {
             Log-Ok 'No unfinished rebase detected.'
@@ -163,7 +165,12 @@ try {
         $preflightOk = Run-CmdSafe -Title 'npm run tools:preflight' -Command 'npm' -Arguments @('run','tools:preflight')
         if (-not $preflightOk) {
             Log-Warn 'Preflight failed. Trying npm ci as auto-fix.'
-            if (Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')) {
+            $depsOk = Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')
+            if (-not $depsOk) {
+                Log-Warn 'npm ci failed. Trying npm install fallback.'
+                $depsOk = Run-CmdSafe -Title 'npm install (fallback)' -Command 'npm' -Arguments @('install')
+            }
+            if ($depsOk) {
                 $preflightOk = Run-CmdSafe -Title 'npm run tools:preflight (retry)' -Command 'npm' -Arguments @('run','tools:preflight')
             }
         }
@@ -171,8 +178,13 @@ try {
         if ($preflightOk) {
             $smokePassed = Invoke-SmokeWithReportFallback -Title 'npm run tools:smoke'
             if (-not $smokePassed) {
-                Log-Warn 'Smoke failed. Running npm ci + smoke retry.'
-                if (Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')) {
+                Log-Warn 'Smoke failed. Running dependency repair + smoke retry.'
+                $depsOk = Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')
+                if (-not $depsOk) {
+                    Log-Warn 'npm ci failed. Trying npm install fallback.'
+                    $depsOk = Run-CmdSafe -Title 'npm install (fallback)' -Command 'npm' -Arguments @('install')
+                }
+                if ($depsOk) {
                     $smokePassed = Invoke-SmokeWithReportFallback -Title 'npm run tools:smoke (retry)'
                 }
             }

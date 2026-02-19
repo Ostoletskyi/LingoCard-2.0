@@ -133,7 +133,10 @@ function Show-Menu {
     Write-Host '[4] Run preflight'
     Write-Host '[5] Run smoke'
     Write-Host '[6] Open reports folder'
-    Write-Host '[7] Reset source files to HEAD (DANGEROUS)'
+    Write-Host '[7] Create backup now'
+    Write-Host '[8] Restore from backup'
+    Write-Host '[9] Run toolbox self-test (quick)'
+    Write-Host '[D] Reset source files to HEAD (DANGEROUS)'
     Write-Host '[0] Exit'
 }
 
@@ -153,7 +156,11 @@ try {
                 if (-not (Test-Path $reportDir)) { New-Item -Path $reportDir -ItemType Directory | Out-Null }
                 & explorer.exe $reportDir | Out-Null
             }
-            '7' { Dangerous-ResetSourceFiles }
+            '7' { & (Join-Path $PSScriptRoot 'backup_create.ps1') -ProjectRoot $root | Out-Host }
+            '8' { & (Join-Path $PSScriptRoot 'backup_restore.ps1') -ProjectRoot $root | Out-Host }
+            '9' { & (Join-Path $PSScriptRoot 'toolbox_selftest.ps1') -ProjectRoot $root -Quick | Out-Host }
+            'D' { Dangerous-ResetSourceFiles }
+            'd' { Dangerous-ResetSourceFiles }
             '0' { break }
             default { Warn 'Invalid option.' }
         }
