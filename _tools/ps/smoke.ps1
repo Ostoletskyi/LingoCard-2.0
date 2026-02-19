@@ -5,28 +5,43 @@ $root = Get-ProjectRoot $ProjectRoot
 Ensure-ToolDirs $root
 $log = New-LogPath -ProjectRoot $root -Prefix 'smoke'
 
-function Invoke-RecoverIfKnownTypeScriptDrift {
-    param([string[]]$OutputLines)
+function Invoke-RecoverIfTypeScriptFailure {
+    param(
+        [string[]]$OutputLines,
+        [string]$ReportJsonPath
+    )
 
     $joined = ($OutputLines -join "`n")
-    $hasKnownErrors =
+    $knownDriftPattern =
         ($joined -match "Cannot find name 'CARDS_CHUNK_SIZE'") -or
         ($joined -match "Cannot find name 'CARDS_META_KEY'") -or
         ($joined -match "Cannot find name 'CARDS_CHUNK_KEY_PREFIX'") -or
         ($joined -match "Cannot find name 'badgeDataUri'")
 
-    if (-not $hasKnownErrors) {
+    $typeScriptStepFailed = $false
+    if (Test-Path $ReportJsonPath) {
+        try {
+            $report = Get-Content -Path $ReportJsonPath -Raw | ConvertFrom-Json
+            $typeScriptStepFailed = @($report.steps | Where-Object {
+                $_.label -eq 'TypeScript' -and $_.status -eq 'FAIL'
+            }).Count -gt 0
+        } catch {
+            Write-Log -LogPath $log -Message "WARN smoke ts_step_parse_failed $($_.Exception.Message)"
+        }
+    }
+
+    if (-not ($knownDriftPattern -or $typeScriptStepFailed)) {
         return $false
     }
 
     $recoverScript = Join-Path $PSScriptRoot 'recover_and_verify.ps1'
     if (-not (Test-Path $recoverScript)) {
-        Write-Host 'Detected known local-drift TypeScript errors, but recover_and_verify.ps1 was not found.' -ForegroundColor Yellow
+        Write-Host 'Detected TypeScript-related smoke failure, but recover_and_verify.ps1 was not found.' -ForegroundColor Yellow
         Write-Log -LogPath $log -Message 'WARN smoke recover_script_missing'
         return $false
     }
 
-    Write-Host 'Detected known local drift TypeScript errors. Starting automatic recover-and-verify workflow...' -ForegroundColor Yellow
+    Write-Host 'Detected TypeScript-related smoke failure. Starting automatic recover-and-verify workflow...' -ForegroundColor Yellow
     Write-Log -LogPath $log -Message 'WARN smoke triggering_recover_and_verify'
 
     & $recoverScript -ProjectRoot $root | Out-Host
@@ -41,6 +56,7 @@ function Invoke-RecoverIfKnownTypeScriptDrift {
     Write-Log -LogPath $log -Message "WARN smoke recover_and_verify_failed exit=$recoverExit"
     return $false
 }
+
 
 try {
     Assert-Command node
@@ -62,12 +78,12 @@ try {
         npm run tools:smoke 2>&1 | Tee-Object -Variable smokeOutput | Out-Host
         $smokeExit = $LASTEXITCODE
 
-        if ($smokeExit -ne 0 -and (Invoke-RecoverIfKnownTypeScriptDrift -OutputLines $smokeOutput)) {
+        $reportJsonPath = Join-Path $root '_reports\smoke_report.json'
+        if ($smokeExit -ne 0 -and (Invoke-RecoverIfTypeScriptFailure -OutputLines $smokeOutput -ReportJsonPath $reportJsonPath)) {
             exit 0
         }
 
         if ($smokeExit -ne 0) {
-            $reportJsonPath = Join-Path $root '_reports\smoke_report.json'
             if (Test-Path $reportJsonPath) {
                 try {
                     $json = Get-Content -Path $reportJsonPath -Raw | ConvertFrom-Json
