@@ -67,6 +67,12 @@ type PersistedState = {
   };
 };
 
+type PersistedCardsPayload = {
+  version: 1;
+  cardsA: Card[];
+  cardsB: Card[];
+};
+
 export type AppState = AppStateSnapshot &
   HistoryState & {
     zoom: number;
@@ -239,7 +245,20 @@ const safeClone = <T>(value: T): T => {
   }
 };
 
+const toPersistableCard = (card: Card): Card => {
+  const source = safeClone(card) as Card & { meta?: Record<string, unknown> };
+  if (!source.meta) return source;
+  const { originalSource: _originalSource, ...restMeta } = source.meta;
+  if (Object.keys(restMeta).length) {
+    source.meta = restMeta;
+  } else {
+    delete source.meta;
+  }
+  return source;
+};
+
 const cloneCards = (cards: Card[]) => cards.map((card) => safeClone(card));
+const cloneCardsForPersist = (cards: Card[]) => cards.map((card) => toPersistableCard(card));
 
 const ensureUniqueCardIds = (cards: Card[]): Card[] => {
   const used = new Set<string>();
@@ -355,6 +374,11 @@ const sanitizePersistedState = (raw: PersistedState["state"], persistedCards: Pe
   const cardsAWithBoxes = ensureCardsHaveBoxes(cardsA, widthMm, heightMm);
   const cardsBWithBoxes = ensureCardsHaveBoxes(cardsB, widthMm, heightMm);
 
+  const safeActiveTemplate =
+    raw.activeTemplate && typeof raw.activeTemplate === "object" && (raw.activeTemplate as any).version === 1
+      ? (raw.activeTemplate as LayoutTemplate)
+      : null;
+
   return {
     cardsA: cardsAWithBoxes,
     cardsB: cardsBWithBoxes,
@@ -401,6 +425,28 @@ const loadPersistedState = () => {
     return sanitizePersistedState(parsed.state, loadPersistedCards());
   } catch {
     return null;
+  }
+};
+
+const persistCards = (cardsA: Card[], cardsB: Card[]) => {
+  if (typeof window === "undefined") return;
+  const payload = JSON.stringify({ cardsA, cardsB });
+  const chunks: string[] = [];
+  for (let index = 0; index < payload.length; index += CARDS_CHUNK_SIZE) {
+    chunks.push(payload.slice(index, index + CARDS_CHUNK_SIZE));
+  }
+
+  const prevMetaRaw = window.localStorage.getItem(CARDS_META_KEY);
+  const prevChunks = prevMetaRaw ? (JSON.parse(prevMetaRaw).chunks as number | undefined) : 0;
+
+  chunks.forEach((chunk, index) => {
+    window.localStorage.setItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`, chunk);
+  });
+  window.localStorage.setItem(CARDS_META_KEY, JSON.stringify({ version: 1, chunks: chunks.length }));
+
+  const prevCount = Number.isFinite(prevChunks) ? Number(prevChunks) : 0;
+  for (let index = chunks.length; index < prevCount; index += 1) {
+    window.localStorage.removeItem(`${CARDS_CHUNK_KEY_PREFIX}${index}`);
   }
 };
 
@@ -803,6 +849,55 @@ export const useAppStore = create<AppState>()(
         state.cardsA = next;
       } else {
         state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, snapshotState(get()), reason);
+      }
+    }),
+    updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      let changed = false;
+      const next = list.map((card) => {
+        if (!card.boxes?.length) {
+          return card;
+        }
+        const target = card.boxes.find((box) => box.id === boxId);
+        if (!target) {
+          return card;
+        }
+        const hasChanges = Object.entries(update).some(([key, value]) => target[key as keyof Box] !== value);
+        if (!hasChanges) {
+          return card;
+        }
+        changed = true;
+        return {
+          ...card,
+          boxes: card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box))
+        };
+      });
+      if (!changed) return;
+
+      const sourceCandidate =
+        state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : undefined;
+      const templateSource = sourceCandidate ?? next.find((card) => card.boxes?.some((box) => box.id === boxId));
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+        persistActiveTemplate(state.activeTemplate);
+      }
+
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, snapshotState(get()), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
