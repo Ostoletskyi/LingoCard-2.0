@@ -191,11 +191,21 @@ async function runDevServerCheck(collector, options) {
   let serverProcess;
   try {
     const npmCommand = options.robustSpawn ? resolveCommand("npm") : "npm";
-    serverProcess = childProcess.spawn(npmCommand, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"], {
-      cwd: projectRoot,
-      stdio: "ignore",
-      shell: !options.robustSpawn
-    });
+    const devArgs = ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"];
+    if (process.platform === "win32") {
+      const devCommandLine = `${npmCommand} ${devArgs.map((arg) => `"${arg.replace(/"/g, '\\"')}"`).join(" ")}`;
+      serverProcess = childProcess.spawn(devCommandLine, [], {
+        cwd: projectRoot,
+        stdio: "ignore",
+        shell: true
+      });
+    } else {
+      serverProcess = childProcess.spawn(npmCommand, devArgs, {
+        cwd: projectRoot,
+        stdio: "ignore",
+        shell: !options.robustSpawn
+      });
+    }
 
     serverProcess.on("error", (error) => {
       collector.addStep({

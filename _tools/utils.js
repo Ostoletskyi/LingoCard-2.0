@@ -30,22 +30,20 @@ export const runCommand = (command, args, options = {}) =>
         else reject(new Error(`${command} exited with code ${code}`));
       });
       child.on("error", (error) => {
-        if (process.platform === "win32" && error?.code === "EINVAL") {
-          const fallback = spawn(`${executable} ${args.join(" ")}`, [], {
-            stdio: "inherit",
-            shell: true,
-            ...options
-          });
-          fallback.on("close", (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`${command} exited with code ${code}`));
-          });
-          fallback.on("error", reject);
-          return;
-        }
         reject(error);
       });
     };
+
+    const spawnWithShellCommand = () => {
+      const quoted = args.map((arg) => `"${String(arg).replace(/"/g, '\\"')}"`).join(" ");
+      const commandLine = quoted ? `${executable} ${quoted}` : executable;
+      attach(spawn(commandLine, [], { ...spawnOptions, shell: true }));
+    };
+
+    if (process.platform === "win32") {
+      spawnWithShellCommand();
+      return;
+    }
 
     attach(spawn(executable, args, spawnOptions));
   });
