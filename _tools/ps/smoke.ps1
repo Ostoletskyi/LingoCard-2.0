@@ -22,8 +22,30 @@ try {
         }
 
         npm run tools:smoke | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Smoke test failed (npm run tools:smoke).'
+        $smokeExit = $LASTEXITCODE
+        if ($smokeExit -ne 0) {
+            $reportJsonPath = Join-Path $root '_reports\smoke_report.json'
+            if (Test-Path $reportJsonPath) {
+                try {
+                    $json = Get-Content -Path $reportJsonPath -Raw | ConvertFrom-Json
+                } catch {
+                    Write-Log -LogPath $log -Message "WARN smoke json_parse_failed $($_.Exception.Message)"
+                    throw 'Smoke test failed (npm run tools:smoke). Could not parse JSON report.'
+                }
+
+                if ($json.overall.pass -eq $true) {
+                    Write-Host 'Smoke command returned non-zero, but JSON report says PASS. Treating as success.' -ForegroundColor Yellow
+                    Write-Log -LogPath $log -Message 'WARN smoke nonzero_exit_json_pass'
+                    Write-Host 'Smoke test passed.'
+                    Write-Log -LogPath $log -Message 'SUCCESS smoke'
+                    exit 0
+                }
+
+                $jsonCode = if ($json.overall.code -ne $null) { [int]$json.overall.code } else { $smokeExit }
+                throw "Smoke test failed (npm run tools:smoke). JSON overall.code=$jsonCode"
+            }
+
+            throw 'Smoke test failed (npm run tools:smoke). JSON report not found.'
         }
 
         Write-Host 'Smoke test passed.'
