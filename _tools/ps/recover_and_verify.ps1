@@ -40,6 +40,23 @@ function Run-Cmd {
     }
 }
 
+function Run-CmdSafe {
+    param(
+        [string]$Title,
+        [string]$Command,
+        [string[]]$Arguments
+    )
+
+    try {
+        Run-Cmd -Title $Title -Command $Command -Arguments $Arguments
+        return $true
+    }
+    catch {
+        Log-Warn $_.Exception.Message
+        return $false
+    }
+}
+
 $stashCreated = $false
 $stashTag = ""
 
@@ -69,6 +86,8 @@ try {
             'checkout', '--',
             'src/state/store.ts',
             'src/state/persistence.ts',
+            'src/state/types.ts',
+            'src/state/templateOps.ts',
             'src/ui/EditorCanvas.tsx',
             '_tools/preflight.js',
             '_tools/smoke.core.js',
@@ -85,7 +104,16 @@ try {
         }
 
         Run-Cmd -Title 'npm ci' -Command 'npm' -Arguments @('ci')
-        Run-Cmd -Title 'npm run tsc' -Command 'npm' -Arguments @('run', 'tsc')
+        $tscOk = Run-CmdSafe -Title 'npm run tsc' -Command 'npm' -Arguments @('run', 'tsc')
+        if (-not $tscOk) {
+            Log-Warn 'TypeScript failed after sync. Running hard reset of tracked files and retrying once.'
+            Run-Cmd -Title 'git reset --hard HEAD' -Command 'git' -Arguments @('reset', '--hard', 'HEAD')
+            if (Test-Path 'node_modules') {
+                Remove-Item -Path 'node_modules' -Recurse -Force
+            }
+            Run-Cmd -Title 'npm ci (retry)' -Command 'npm' -Arguments @('ci')
+            Run-Cmd -Title 'npm run tsc (retry)' -Command 'npm' -Arguments @('run', 'tsc')
+        }
         Run-Cmd -Title 'npm run tools:preflight' -Command 'npm' -Arguments @('run', 'tools:preflight')
         Run-Cmd -Title 'npm run tools:smoke' -Command 'npm' -Arguments @('run', 'tools:smoke')
 

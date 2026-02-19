@@ -1038,6 +1038,52 @@ export const useAppStore = create<AppState>()(
         trackStateEvent(state, snapshotState(get()), reason);
       }
     }),
+    updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      let changed = false;
+      const next = list.map((card) => {
+        if (!card.boxes?.length) {
+          return card;
+        }
+        const target = card.boxes.find((box) => box.id === boxId);
+        if (!target) {
+          return card;
+        }
+        const hasChanges = Object.entries(update).some(([key, value]) => target[key as keyof Box] !== value);
+        if (!hasChanges) {
+          return card;
+        }
+        changed = true;
+        return {
+          ...card,
+          boxes: card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box))
+        };
+      });
+      if (!changed) return;
+
+      const sourceCandidate =
+        state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : undefined;
+      const templateSource = sourceCandidate ?? next.find((card) => card.boxes?.some((box) => box.id === boxId));
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+        persistActiveTemplate(state.activeTemplate);
+      }
+
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, snapshotState(get()), reason);
+      }
+    }),
     addBlockToCard: (side, cardId, kind) => set((state) => {
       if (!state.editModeEnabled) return;
       trackStateEvent(state, snapshotState(get()), `addBlockToCard:${side}:${kind}`);
