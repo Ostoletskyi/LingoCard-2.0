@@ -1,4 +1,4 @@
-﻿param([string]$ProjectRoot)
+param([string]$ProjectRoot)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
