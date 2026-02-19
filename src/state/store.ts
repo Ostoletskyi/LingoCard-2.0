@@ -13,6 +13,9 @@ import {
   loadPersistedCards,
   persistCards as persistCardsStorage,
   persistActiveTemplate,
+  CARDS_META_KEY,
+  CARDS_CHUNK_KEY_PREFIX,
+  CARDS_CHUNK_SIZE,
   type PersistedCards
 } from "./persistence";
 import { BOOKMARK_LIMIT, trackStateEvent } from "./history";
@@ -52,6 +55,13 @@ export type ChangeLogEntry = {
 };
 
 type AnyPersistedState = { version?: unknown; state?: unknown };
+
+const PERSISTENCE_CHUNK_KEYS = {
+  meta: CARDS_META_KEY,
+  prefix: CARDS_CHUNK_KEY_PREFIX,
+  size: CARDS_CHUNK_SIZE
+};
+void PERSISTENCE_CHUNK_KEYS;
 
 const migratePersistedState = (raw: AnyPersistedState): PersistedState | null => {
   if (raw?.version === 1 && raw.state && typeof raw.state === "object") {

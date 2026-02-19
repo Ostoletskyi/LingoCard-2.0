@@ -175,6 +175,7 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
   const dragPreviewRafRef = useRef<number | null>(null);
   const pendingDragBoxRef = useRef<Box | null>(null);
   const isDarkTheme = document.documentElement.classList.contains("dark");
+  const badgeDataUri = "";
 
   const card = useMemo(() => {
     if (!selectedId) return null;
@@ -814,12 +815,14 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                 }}
               />
             )}
-            <img
-              src={badgeDataUri}
-              alt="verb badge"
-              className="pointer-events-none absolute right-2 top-2 z-20 opacity-90"
-              style={{ width: mmToPx(10, basePxPerMm), height: mmToPx(10, basePxPerMm) }}
-            />
+            {typeof badgeDataUri === "string" && badgeDataUri.length > 0 ? (
+              <img
+                src={badgeDataUri}
+                alt="verb badge"
+                className="pointer-events-none absolute right-2 top-2 z-20 opacity-90"
+                style={{ width: mmToPx(10, basePxPerMm), height: mmToPx(10, basePxPerMm) }}
+              />
+            ) : null}
             {renderMode === "editor" && card?.tags?.length ? (
               <div className="absolute right-2 top-2 text-[10px] text-slate-300 dark:text-slate-700" style={{ transform: `translateY(${mmToPx(10.6, basePxPerMm)}px)` }}>
                 {card.tags.join(" · ")}
