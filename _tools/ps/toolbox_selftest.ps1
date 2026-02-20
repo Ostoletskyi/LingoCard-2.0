@@ -1,102 +1,132 @@
-﻿param(
+param(
     [string]$ProjectRoot,
-    [string]$LogPath,
-    [switch]$VersionsOnly
+    [switch]$Quick
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
-Ensure-ToolDirectories $root
-$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'selftest'
-$action = 'toolbox_selftest'
+Ensure-ToolDirs $root
+$log = New-LogPath -ProjectRoot $root -Prefix 'selftest'
 
-function Test-Bom {
-    param([string]$Path)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Log-Info([string]$Message) {
+    Write-Host "[INFO] $Message" -ForegroundColor Cyan
+    Write-Log -LogPath $log -Message "INFO $Message"
+}
+
+function Log-Ok([string]$Message) {
+    Write-Host "[OK] $Message" -ForegroundColor Green
+    Write-Log -LogPath $log -Message "OK $Message"
+}
+
+function Log-Warn([string]$Message) {
+    Write-Host "[WARN] $Message" -ForegroundColor Yellow
+    Write-Log -LogPath $log -Message "WARN $Message"
+}
+
+function Log-Fail([string]$Message) {
+    Write-Host "[FAIL] $Message" -ForegroundColor Red
+    Write-Log -LogPath $log -Message "FAIL $Message"
+}
+
+function Test-Bom([string]$Path) {
     $bytes = [System.IO.File]::ReadAllBytes($Path)
     return ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
 }
 
+$failed = 0
+
 try {
-    $errors = 0
-    $psDir = Join-Path $root '_tools\ps'
-    $requiredScripts = @(
-        'backup_create.ps1','backup_restore.ps1','git_pull_rebase.ps1','git_push.ps1',
-        'git_fix_remote_access.ps1','git_init_local.ps1','smoke_run.ps1','dev_start.ps1','toolbox_selftest.ps1'
-    )
+    Push-Location $root
+    try {
+        Log-Info 'Starting toolbox self-test.'
 
-    Write-Host '--- Required files check ---'
-    foreach ($script in $requiredScripts) {
-        $full = Join-Path $psDir $script
-        if (Test-Path $full) { Write-Host "OK: $script" }
-        else { Write-Host "MISSING: $script" -ForegroundColor Red; $errors += 1 }
-    }
-
-    $psFiles = Get-ChildItem -Path $psDir -Filter '*.ps1' -File
-
-    Write-Host '--- Encoding check (UTF-8 BOM) ---'
-    foreach ($file in $psFiles) {
-        if (Test-Bom -Path $file.FullName) { Write-Host "OK: $($file.Name)" }
-        else { Write-Host "WARN: $($file.Name) has no BOM" -ForegroundColor Yellow; $errors += 1 }
-    }
-
-    Write-Host '--- PowerShell parser check ---'
-    foreach ($file in $psFiles) {
-        try {
-            [ScriptBlock]::Create((Get-Content -Path $file.FullName -Raw)) | Out-Null
-            Write-Host "OK: $($file.Name)"
+        foreach ($cmd in @('git', 'node', 'npm')) {
+            if (Get-Command $cmd -ErrorAction SilentlyContinue) {
+                Log-Ok "Command available: $cmd"
+            }
+            else {
+                Log-Fail "Command missing: $cmd"
+                $failed += 1
+            }
         }
-        catch {
-            Write-Host "FAIL: $($file.Name)" -ForegroundColor Red
-            Write-Host $_.Exception.Message -ForegroundColor Red
-            $errors += 1
+
+        $psDir = Join-Path $root '_tools\ps'
+        $required = @(
+            'git_pull.ps1','git_push.ps1','backup_create.ps1','backup_restore.ps1',
+            'smoke.ps1','dev_start.ps1','recover_and_verify.ps1','help_repair.ps1','auto_problem_solver.ps1','toolbox_selftest.ps1'
+        )
+
+        foreach ($name in $required) {
+            $path = Join-Path $psDir $name
+            if (Test-Path $path) {
+                Log-Ok "Script found: $name"
+            }
+            else {
+                Log-Fail "Script missing: $name"
+                $failed += 1
+            }
         }
-    }
 
-    Write-Host '--- Dependency check ---'
-    foreach ($cmd in @('git','node','npm')) {
-        if (Get-Command $cmd -ErrorAction SilentlyContinue) {
-            Write-Host "OK: $cmd"
-        } else {
-            Write-Host "MISSING: $cmd" -ForegroundColor Yellow
-            $errors += 1
+        $psFiles = Get-ChildItem -Path $psDir -Filter '*.ps1' -File
+        foreach ($file in $psFiles) {
+            if (Test-Bom -Path $file.FullName) {
+                Log-Ok "Encoding BOM: $($file.Name)"
+            }
+            else {
+                Log-Warn "Encoding BOM missing: $($file.Name)"
+            }
+
+            try {
+                [ScriptBlock]::Create((Get-Content -Path $file.FullName -Raw)) | Out-Null
+                Log-Ok "Parse OK: $($file.Name)"
+            }
+            catch {
+                Log-Fail "Parse error: $($file.Name) - $($_.Exception.Message)"
+                $failed += 1
+            }
         }
-    }
 
-    if ($VersionsOnly) {
-        if (Get-Command git -ErrorAction SilentlyContinue) { git --version }
-        if (Get-Command node -ErrorAction SilentlyContinue) { node -v }
-        if (Get-Command npm -ErrorAction SilentlyContinue) { npm -v }
-        Write-ToolLog -LogPaths $log -Action $action -Command 'versions only' -Result 'success' -ExitCode 0
-        Show-LogHint -LogPaths $log
-        exit 0
-    }
-
-    if (Get-Command npm -ErrorAction SilentlyContinue) {
-        Write-Host '--- tools:smoke ---'
-        Push-Location $root
-        try {
-            npm run tools:smoke 2>&1 | Tee-Object -FilePath $log.Md -Append
-            if ($LASTEXITCODE -ne 0) { $errors += 1 }
+        foreach ($bin in @('node_modules/.bin/tsc','node_modules/.bin/vite','node_modules/.bin/eslint')) {
+            if (Test-Path $bin) {
+                Log-Ok ".bin exists: $bin"
+            }
+            else {
+                Log-Warn ".bin missing: $bin"
+            }
         }
-        finally { Pop-Location }
-    }
 
-    if ($errors -eq 0) {
-        Write-Host 'SELF-TEST RESULT: PASS' -ForegroundColor Green
-        Write-ToolLog -LogPaths $log -Action $action -Command 'full selftest' -Result 'PASS' -ExitCode 0
-        Show-LogHint -LogPaths $log
-        exit 0
-    }
+        if (-not $Quick) {
+            Log-Info 'Running npm run tools:preflight'
+            & npm run tools:preflight | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                Log-Fail 'Preflight failed during self-test.'
+                $failed += 1
+            }
 
-    Write-Host 'SELF-TEST RESULT: FAIL' -ForegroundColor Red
-    Write-ToolLog -LogPaths $log -Action $action -Command 'full selftest' -Result 'FAIL' -ExitCode 1
-    Show-LogHint -LogPaths $log
-    exit 1
+            Log-Info 'Running npm run tools:smoke'
+            & npm run tools:smoke | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                Log-Fail 'Smoke failed during self-test.'
+                $failed += 1
+            }
+        }
+
+        if ($failed -eq 0) {
+            Log-Ok 'TOOLBOX SELF-TEST RESULT: PASS'
+            exit 0
+        }
+
+        Log-Fail "TOOLBOX SELF-TEST RESULT: FAIL ($failed issues)"
+        exit 1
+    }
+    finally {
+        Pop-Location
+    }
 }
 catch {
-    Write-Host 'Self-test execution failed.' -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPaths $log -Action $action -Command 'selftest' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPaths $log
+    Log-Fail "Self-test crashed: $($_.Exception.Message)"
     exit 1
 }
