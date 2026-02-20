@@ -1,5 +1,5 @@
 import { CardSchema, normalizeCard, type Card } from "../model/cardSchema";
-import { parseCardImportFile } from "../model/cardImportSchema";
+import { normalizeImportedJson } from "./normalizer";
 import { z } from "zod";
 
 export type ImportMode = "skip" | "overwrite" | "keep";
@@ -24,13 +24,10 @@ export type ImportResult = {
 export const importCardsFromJson = (text: string, mode: ImportMode = "keep") => {
   const parsed = JSON.parse(text);
   const cards: Card[] = [];
-  const payloadCards = Array.isArray(parsed) ? parsed : parsed.cards;
-  if (!Array.isArray(payloadCards)) {
-    throw new Error("Invalid JSON format");
-  }
+  const payloadCards = normalizeImportedJson(parsed);
   const seen = new Map<string, Card>();
   payloadCards.forEach((item) => {
-    const normalized = normalizeCard(item);
+    const normalized = normalizeCard(item as Partial<Card>);
     // Import-only rule: initialize title from infinitive once.
     if (!normalized.title?.trim() && normalized.inf?.trim()) {
       normalized.title = normalized.inf.trim();
@@ -61,28 +58,7 @@ export const validateCardsImport = (
 ): ImportResult => {
   try {
     const parsed = JSON.parse(text);
-    const parseResult = parseCardImportFile(parsed);
-    if (!parseResult.ok) {
-      return {
-        status: "error",
-        cards: [],
-        warnings: [],
-        errorLog: {
-          timestamp: new Date().toISOString(),
-          errorCode: "INVALID_FORMAT",
-          humanSummary: parseResult.error.message,
-          ...(meta?.fileName ? { fileName: meta.fileName } : {}),
-          ...(meta?.size != null ? { size: meta.size } : {}),
-          ...(parseResult.error.details
-            ? { technicalDetails: parseResult.error.details }
-            : {}),
-          ...(parseResult.error.samplePaths
-            ? { samplePaths: parseResult.error.samplePaths }
-            : {})
-        }
-      };
-    }
-    const payloadCards = parseResult.cards;
+    const payloadCards = normalizeImportedJson(parsed);
     const cards: Card[] = [];
     const warnings: string[] = [];
     payloadCards.forEach((item, index) => {
