@@ -8,10 +8,10 @@ export type LmStudioConfig = {
 export const AI_CONFIG_STORAGE_KEY = "lc.ai.lmstudio.config";
 
 export const DEFAULT_LM_STUDIO_CONFIG: LmStudioConfig = {
-  baseUrl: "http://localhost:1234",
+  baseUrl: "http://127.0.0.1:1234",
   model: "local-model",
   temperature: 0.4,
-  timeoutMs: 30000
+  timeoutMs: 90000
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));

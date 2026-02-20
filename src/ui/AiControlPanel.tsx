@@ -81,39 +81,54 @@ export const AiControlPanel = () => {
 
       const payloads: unknown[] = [];
       const rawChunks: string[] = [];
+      const tokenErrors: string[] = [];
 
       for (let index = 0; index < tokens.length; index += 1) {
         const token = tokens[index];
         if (!token) continue;
         setQueueInfo(`Processing ${index + 1}/${tokens.length}: ${token}`);
 
-        const generated = await requestCardFromLmStudio(token, controller.signal, activeConfig, inputLanguage);
-        rawChunks.push(`[${token}]\n${generated.rawContent}`);
+        try {
+          const generated = await requestCardFromLmStudio(token, controller.signal, activeConfig, inputLanguage);
+          rawChunks.push(`[${token}]\n${generated.rawContent}`);
 
-        let payload = generated.payload;
-        let validation = validateAiPayload(payload, mode);
+          let payload = generated.payload;
+          let validation = validateAiPayload(payload, mode);
 
-        if (!validation.success) {
-          const repaired = await repairJsonWithLmStudio(generated.rawContent, activeConfig, controller.signal);
-          rawChunks.push(`[repair:${token}]\n${repaired.rawContent}`);
-          payload = repaired.payload;
-          validation = validateAiPayload(payload, mode);
-        }
+          if (!validation.success) {
+            const repaired = await repairJsonWithLmStudio(generated.rawContent, activeConfig, controller.signal);
+            rawChunks.push(`[repair:${token}]\n${repaired.rawContent}`);
+            payload = repaired.payload;
+            validation = validateAiPayload(payload, mode);
+          }
 
-        if (!validation.success) {
-          throw new Error(`Validation failed for "${token}": ${validation.error}`);
-        }
+          if (!validation.success) {
+            tokenErrors.push(`${token}: ${validation.error}`);
+            continue;
+          }
 
-        payloads.push(validation.data);
-        if (mode === "generate") {
-          addCard(validation.data, "B");
+          payloads.push(validation.data);
+          if (mode === "generate") {
+            addCard(validation.data, "B");
+          }
+        } catch (tokenError) {
+          const message = tokenError instanceof Error ? tokenError.message : String(tokenError);
+          tokenErrors.push(`${token}: ${message}`);
         }
       }
 
       setRawResponse(rawChunks.join("\n\n"));
       setResponseJson(JSON.stringify(payloads.length === 1 ? payloads[0] : payloads, null, 2));
-      setStatus("done");
-      setQueueInfo(`Done: ${payloads.length} card(s).`);
+
+      if (payloads.length) {
+        setStatus(tokenErrors.length ? "error" : "done");
+        setQueueInfo(`Done: ${payloads.length}/${tokens.length} card(s).`);
+        if (tokenErrors.length) {
+          setErrorText(`Some tokens failed:\n${tokenErrors.join("\n")}`);
+        }
+      } else {
+        throw new Error(tokenErrors.length ? `All tokens failed:\n${tokenErrors.join("\n")}` : "No cards generated");
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         setStatus("idle");
@@ -191,7 +206,7 @@ export const AiControlPanel = () => {
 
       <div className="grid gap-3 rounded-2xl bg-slate-50/70 p-4 dark:bg-slate-900/60">
         <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">1. LM Studio config</label>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
           <input
             value={config.baseUrl}
             onChange={(event) => setConfig((prev) => ({ ...prev, baseUrl: event.target.value }))}
@@ -212,6 +227,16 @@ export const AiControlPanel = () => {
             value={config.temperature}
             onChange={(event) => setConfig((prev) => ({ ...prev, temperature: Number(event.target.value) || 0.4 }))}
             placeholder="temperature"
+            className="border border-slate-200 rounded-xl px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/70"
+          />
+          <input
+            type="number"
+            min={5000}
+            max={120000}
+            step={1000}
+            value={config.timeoutMs}
+            onChange={(event) => setConfig((prev) => ({ ...prev, timeoutMs: Number(event.target.value) || 90000 }))}
+            placeholder="timeout ms"
             className="border border-slate-200 rounded-xl px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/70"
           />
         </div>

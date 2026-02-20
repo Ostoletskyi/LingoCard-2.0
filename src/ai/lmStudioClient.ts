@@ -53,6 +53,13 @@ const normalizeFetchError = (error: unknown): LmStudioClientError => {
     return new LmStudioClientError("Request timeout", "TIMEOUT", "Request was aborted or timed out");
   }
   const message = error instanceof Error ? error.message : String(error);
+  if (/timeout/i.test(message)) {
+    return new LmStudioClientError(
+      "LM Studio request timeout. Increase timeout or use a smaller/faster model.",
+      "TIMEOUT",
+      message
+    );
+  }
   if (/failed to fetch/i.test(message)) {
     return new LmStudioClientError(
       "LM Studio API unavailable. Check that API server is running and base URL/port are correct.",
