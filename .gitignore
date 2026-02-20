@@ -5,3 +5,5 @@ node_modules
 .env
 
 /_tools/reports
+/_tmp
+/_tools/backups
