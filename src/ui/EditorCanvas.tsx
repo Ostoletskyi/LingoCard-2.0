@@ -918,10 +918,6 @@ export const EditorCanvas = ({ renderMode = "editor" }: EditorCanvasProps) => {
                           commitEdit(true);
                           return;
                         }
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          commitEdit(true);
-                        }
                         if (event.key === "Escape") {
                           event.preventDefault();
                           setEditValue(editSession?.originalValue ?? "");

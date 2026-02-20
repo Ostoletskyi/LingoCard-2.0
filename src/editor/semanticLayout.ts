@@ -157,8 +157,8 @@ const collectPairLines = (card: Card, prefix: "syn" | "ex" | "rek", max: number)
       continue;
     }
     if (prefix === "ex") {
-      const de = card[`ex_${i}_de` as keyof Card] as string;
-      const ru = card[`ex_${i}_ru` as keyof Card] as string;
+      const de = ((card[`ex_${i}_de` as keyof Card] as string) || "").replace(/\s+/g, " ").trim();
+      const ru = ((card[`ex_${i}_ru` as keyof Card] as string) || "").replace(/\s+/g, " ").trim();
       const tag = card[`ex_${i}_tag` as keyof Card] as string;
       const line = [
         joinPresent([tag ? `[${tag}]` : "", de], " "),
@@ -273,10 +273,7 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
     ? trLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
     : "—";
   const exText = exLines.length
-    ? exLines
-        .map((line, index) => `${index + 1}. ${line}`)
-        .join("\n")
-        .replace(/\n(\d+\.)/g, "\n\n$1")
+    ? exLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
     : "—";
   const formsText = formsLines.length ? formsLines.join("\n") : "—";
   const synText = synLines.length

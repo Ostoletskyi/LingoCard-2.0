@@ -47,6 +47,7 @@ export const AiControlPanel = () => {
   const [progressTotal, setProgressTotal] = useState(0);
   const [tokenElapsedMs, setTokenElapsedMs] = useState(0);
   const [lastTokenMs, setLastTokenMs] = useState(0);
+  const [generationLog, setGenerationLog] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const tokenStartedAtRef = useRef<number | null>(null);
   const addCard = useAppStore((state) => state.addCard);
@@ -68,6 +69,10 @@ export const AiControlPanel = () => {
   }, [status]);
 
   const isSending = status === "sending";
+
+  const appendLog = (line: string) => {
+    setGenerationLog((prev) => [...prev.slice(-12), line]);
+  };
 
   const runHealthCheck = async (nextConfig: LmStudioConfig, signal?: AbortSignal) => {
     const health = await healthCheck(nextConfig, signal);
@@ -103,15 +108,19 @@ export const AiControlPanel = () => {
     setProgressToken("");
     setTokenElapsedMs(0);
     setLastTokenMs(0);
+    setGenerationLog([]);
+    appendLog(`⏳ Запуск генерации: ${tokens.length} токен(ов)`);
 
     try {
       await runHealthCheck(activeConfig, controller.signal);
+      appendLog("✅ Health check OK");
 
       if (!activeConfig.model || activeConfig.model === "local-model") {
         const models = await listModels(activeConfig, controller.signal);
         if (models.length) {
           activeConfig.model = models[0] || activeConfig.model;
           setConfig({ ...activeConfig });
+          appendLog(`🤖 Модель: ${activeConfig.model}`);
         }
       }
 
@@ -127,6 +136,7 @@ export const AiControlPanel = () => {
         tokenStartedAtRef.current = Date.now();
         setTokenElapsedMs(0);
         setQueueInfo(`Processing ${index + 1}/${tokens.length}: ${token}`);
+        appendLog(`▶️ ${index + 1}/${tokens.length}: ${token}`);
 
         try {
           const generated = await requestCardFromLmStudio(token, controller.signal, activeConfig, inputLanguage);
@@ -144,6 +154,7 @@ export const AiControlPanel = () => {
 
           if (!validation.success) {
             tokenErrors.push(`${token}: ${validation.error}`);
+            appendLog(`❌ ${token}: validation failed`);
             continue;
           }
 
@@ -151,12 +162,16 @@ export const AiControlPanel = () => {
           if (mode === "generate") {
             addCard(validation.data, "B");
           }
+          appendLog(`✅ ${token}: карточка добавлена`);
         } catch (tokenError) {
           const message = tokenError instanceof Error ? tokenError.message : String(tokenError);
           tokenErrors.push(`${token}: ${message}`);
+          appendLog(`❌ ${token}: ${message}`);
         } finally {
           const started = tokenStartedAtRef.current;
-          setLastTokenMs(started ? Date.now() - started : 0);
+          const elapsed = started ? Date.now() - started : 0;
+          setLastTokenMs(elapsed);
+          appendLog(`⏱️ ${token}: ${formatClock(elapsed)}`);
           tokenStartedAtRef.current = null;
         }
       }
@@ -167,6 +182,7 @@ export const AiControlPanel = () => {
       if (payloads.length) {
         setStatus(tokenErrors.length ? "error" : "done");
         setQueueInfo(`Done: ${payloads.length}/${tokens.length} card(s).`);
+        appendLog(`🏁 Готово: ${payloads.length}/${tokens.length}`);
         if (tokenErrors.length) {
           setErrorText(`Some tokens failed:\n${tokenErrors.join("\n")}`);
         }
@@ -177,6 +193,7 @@ export const AiControlPanel = () => {
       if (error instanceof DOMException && error.name === "AbortError") {
         setStatus("idle");
         setQueueInfo("Canceled.");
+        appendLog("🛑 Отменено пользователем");
         return;
       }
       const message =
@@ -187,6 +204,7 @@ export const AiControlPanel = () => {
             : String(error);
       setErrorText(message);
       setStatus("error");
+      appendLog(`❌ Ошибка: ${message}`);
     } finally {
       abortRef.current = null;
       tokenStartedAtRef.current = null;
@@ -217,6 +235,22 @@ export const AiControlPanel = () => {
     abortRef.current = null;
     tokenStartedAtRef.current = null;
     setStatus("idle");
+    appendLog("🛑 Отмена");
+  };
+
+  const handleLoadModels = async () => {
+    try {
+      const models = await listModels(config);
+      if (!models.length) {
+        setHealthText("LM Studio API online, but no models found in /v1/models.");
+        return;
+      }
+      setConfig((prev) => ({ ...prev, model: models[0] || prev.model }));
+      setHealthText(`Models detected: ${models.join(", ")}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setHealthText(message);
+    }
   };
 
   const handleLoadModels = async () => {
@@ -269,6 +303,24 @@ export const AiControlPanel = () => {
           </div>
           <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">Текущий глагол: {formatClock(tokenElapsedMs)}</div>
           <div className="text-xs text-slate-500 dark:text-slate-400">Предыдущий: {formatClock(lastTokenMs)}</div>
+        </div>
+      )}
+
+      {status === "sending" && (
+        <div className="fixed inset-0 z-40 pointer-events-none">
+          <div className="absolute inset-0 bg-slate-900/15 dark:bg-slate-950/30" />
+          <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/85">
+            <div className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Live generation stream</div>
+            <div className="h-24 overflow-hidden rounded-xl bg-slate-50/80 p-2 font-mono text-xs dark:bg-slate-950/60">
+              <div className="animate-pulse space-y-1">
+                {generationLog.slice(-6).map((line, index) => (
+                  <div key={`${line}-${index}`} className="truncate text-slate-700 dark:text-slate-200">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
