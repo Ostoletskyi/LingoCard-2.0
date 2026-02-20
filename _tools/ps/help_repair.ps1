@@ -262,7 +262,7 @@ function Show-MainMenuGuide([string]$Lang) {
         }
         if ($dict.items.ContainsKey($pick)) {
             Write-Host ''
-            Write-Host ("$pick: " + $dict.items[$pick]) -ForegroundColor Green
+            Write-Host (("{0}: " -f $pick) + $dict.items[$pick]) -ForegroundColor Green
             Read-Host 'Press Enter to continue' | Out-Null
         }
         else {
