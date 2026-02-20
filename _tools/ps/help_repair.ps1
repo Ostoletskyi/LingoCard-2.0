@@ -12,6 +12,43 @@ function Log([string]$m) { Write-Log -LogPath $log -Message $m }
 function Info([string]$m) { Write-Host "[INFO] $m" -ForegroundColor Cyan; Log "INFO $m" }
 function Ok([string]$m) { Write-Host "[OK] $m" -ForegroundColor Green; Log "OK $m" }
 function Warn([string]$m) { Write-Host "[WARN] $m" -ForegroundColor Yellow; Log "WARN $m" }
+function Err([string]$m) { Write-Host "[ERR] $m" -ForegroundColor Red; Log "ERR $m" }
+
+function Show-Banner {
+    Clear-Host
+    Write-Host '============================================================' -ForegroundColor DarkCyan
+    Write-Host '                 LingoCard Help / Repair Hub                ' -ForegroundColor Cyan
+    Write-Host '============================================================' -ForegroundColor DarkCyan
+    Write-Host "Project: $root" -ForegroundColor Gray
+    Write-Host ''
+}
+
+function Show-Step([string]$Label) {
+    Write-Host "--> $Label" -ForegroundColor Magenta
+}
+
+function Wait-Return {
+    Write-Host ''
+    Read-Host 'Press Enter to return to Help / Repair menu' | Out-Null
+}
+
+function Invoke-MenuAction {
+    param(
+        [string]$Label,
+        [scriptblock]$Action
+    )
+    try {
+        Show-Step $Label
+        & $Action
+        Ok "$Label completed."
+    }
+    catch {
+        Err "$Label failed: $($_.Exception.Message)"
+    }
+    finally {
+        Wait-Return
+    }
+}
 
 function Run-CmdSafe {
     param([string]$Command, [string[]]$Args)
@@ -125,7 +162,7 @@ function Dangerous-ResetSourceFiles {
 }
 
 function Show-Menu {
-    Write-Host ''
+    Show-Banner
     Write-Host '================ Help / Repair ================'
     Write-Host '[1] Diagnose (read-only)'
     Write-Host '[2] Repair environment (safe)'
@@ -137,6 +174,7 @@ function Show-Menu {
     Write-Host '[8] Restore from backup'
     Write-Host '[9] Run toolbox self-test (quick)'
     Write-Host '[D] Reset source files to HEAD (DANGEROUS)'
+    Write-Host '[B] Back to main toolbox menu'
     Write-Host '[0] Exit'
 }
 
@@ -146,23 +184,30 @@ try {
         Show-Menu
         $choice = Read-Host 'Select option'
         switch ($choice) {
-            '1' { Show-Diagnose }
-            '2' { Repair-Environment }
-            '3' { Repair-GitState }
-            '4' { & npm run tools:preflight | Out-Host }
-            '5' { & npm run tools:smoke | Out-Host }
+            '1' { Invoke-MenuAction -Label 'Diagnose' -Action { Show-Diagnose } }
+            '2' { Invoke-MenuAction -Label 'Repair environment' -Action { Repair-Environment } }
+            '3' { Invoke-MenuAction -Label 'Repair git state' -Action { Repair-GitState } }
+            '4' { Invoke-MenuAction -Label 'Run preflight' -Action { & npm run tools:preflight | Out-Host } }
+            '5' { Invoke-MenuAction -Label 'Run smoke' -Action { & npm run tools:smoke | Out-Host } }
             '6' {
-                $reportDir = Join-Path $root '_reports'
-                if (-not (Test-Path $reportDir)) { New-Item -Path $reportDir -ItemType Directory | Out-Null }
-                & explorer.exe $reportDir | Out-Null
+                Invoke-MenuAction -Label 'Open reports folder' -Action {
+                    $reportDir = Join-Path $root '_reports'
+                    if (-not (Test-Path $reportDir)) { New-Item -Path $reportDir -ItemType Directory | Out-Null }
+                    & explorer.exe $reportDir | Out-Null
+                }
             }
-            '7' { & (Join-Path $PSScriptRoot 'backup_create.ps1') -ProjectRoot $root | Out-Host }
-            '8' { & (Join-Path $PSScriptRoot 'backup_restore.ps1') -ProjectRoot $root | Out-Host }
-            '9' { & (Join-Path $PSScriptRoot 'toolbox_selftest.ps1') -ProjectRoot $root -Quick | Out-Host }
-            'D' { Dangerous-ResetSourceFiles }
-            'd' { Dangerous-ResetSourceFiles }
+            '7' { Invoke-MenuAction -Label 'Create backup' -Action { & (Join-Path $PSScriptRoot 'backup_create.ps1') -ProjectRoot $root | Out-Host } }
+            '8' { Invoke-MenuAction -Label 'Restore backup' -Action { & (Join-Path $PSScriptRoot 'backup_restore.ps1') -ProjectRoot $root | Out-Host } }
+            '9' { Invoke-MenuAction -Label 'Toolbox self-test quick' -Action { & (Join-Path $PSScriptRoot 'toolbox_selftest.ps1') -ProjectRoot $root -Quick | Out-Host } }
+            'D' { Invoke-MenuAction -Label 'Dangerous source reset' -Action { Dangerous-ResetSourceFiles } }
+            'd' { Invoke-MenuAction -Label 'Dangerous source reset' -Action { Dangerous-ResetSourceFiles } }
+            'B' { break }
+            'b' { break }
             '0' { break }
-            default { Warn 'Invalid option.' }
+            default {
+                Warn 'Invalid option.'
+                Wait-Return
+            }
         }
     }
 }
