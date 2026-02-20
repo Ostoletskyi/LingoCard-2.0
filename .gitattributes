@@ -1,0 +1,9 @@
+# Keep source files with stable LF endings to avoid noisy Windows rebase churn.
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.css text eol=lf
+
+# Explicit pin for recurring merge-noise file.
+src/utils/cardFields.ts text eol=lf
