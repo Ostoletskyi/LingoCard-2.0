@@ -46,12 +46,34 @@ const THINKING_TICKER_LINES = [
 const sanitizeCardTextPayload = (payload: unknown) => {
   if (!payload || typeof payload !== "object") return payload;
   const clone = { ...(payload as Record<string, unknown>) };
+
   for (const [key, value] of Object.entries(clone)) {
     if (typeof value !== "string") continue;
-    if (/^(inf|forms_|tr_\d+_|syn_\d+_|rek_\d+_|ex_\d+_)/.test(key)) {
+    if (/^(id|inf|forms_|tr_\d+_|syn_\d+_|rek_\d+_|ex_\d+_)/.test(key)) {
       clone[key] = value.replace(/\s+/g, " ").trim();
     }
   }
+
+  const requiredStringFields = [
+    "id",
+    "inf",
+    "tr_1_ru", "tr_1_ctx", "tr_2_ru", "tr_2_ctx", "tr_3_ru", "tr_3_ctx", "tr_4_ru", "tr_4_ctx",
+    "forms_p3", "forms_prat", "forms_p2", "forms_service",
+    "syn_1_de", "syn_1_ru", "syn_2_de", "syn_2_ru", "syn_3_de", "syn_3_ru",
+    "ex_1_de", "ex_1_ru", "ex_1_tag", "ex_2_de", "ex_2_ru", "ex_2_tag", "ex_3_de", "ex_3_ru", "ex_3_tag", "ex_4_de", "ex_4_ru", "ex_4_tag", "ex_5_de", "ex_5_ru", "ex_5_tag",
+    "rek_1_de", "rek_1_ru", "rek_2_de", "rek_2_ru", "rek_3_de", "rek_3_ru", "rek_4_de", "rek_4_ru", "rek_5_de", "rek_5_ru"
+  ] as const;
+
+  for (const field of requiredStringFields) {
+    if (typeof clone[field] !== "string") clone[field] = "";
+  }
+
+  if (clone.forms_aux !== "haben" && clone.forms_aux !== "sein" && clone.forms_aux !== "") {
+    clone.forms_aux = "";
+  }
+  if (!Array.isArray(clone.tags)) clone.tags = [];
+  if (typeof clone.freq !== "number" || !Number.isFinite(clone.freq)) clone.freq = 0;
+
   return clone;
 };
 
