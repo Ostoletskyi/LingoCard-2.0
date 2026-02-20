@@ -203,6 +203,31 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
       })
       .filter(Boolean)
       .join("\n");
+    return { text: text || "Рекомендации…", isPlaceholder: text.length === 0 };
+  }
+  if (normalizedFieldId === "examples") {
+    const fromAgg = (card.examples ?? [])
+      .map((item) => {
+        const head = item.tag ? `[${item.tag}] ` : "";
+        const de = item.de?.trim() ?? "";
+        const ru = item.ru?.trim() ?? "";
+        return [head + de, ru ? `— ${ru}` : ""].filter(Boolean).join("\n");
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromAgg) {
+      return { text: fromAgg, isPlaceholder: false };
+    }
+    const text = [1, 2, 3, 4, 5]
+      .map((i) => {
+        const de = (card[`ex_${i}_de` as keyof Card] as string)?.trim();
+        const ru = (card[`ex_${i}_ru` as keyof Card] as string)?.trim();
+        const tag = (card[`ex_${i}_tag` as keyof Card] as string)?.trim();
+        if (!de && !ru) return "";
+        return [`${tag ? `[${tag}] ` : ""}${de ?? ""}`.trim(), ru ? `— ${ru}` : ""].filter(Boolean).join("\n");
+      })
+      .filter(Boolean)
+      .join("\n\n");
     return { text: text || "Примеры…", isPlaceholder: text.length === 0 };
   }
   if (normalizedFieldId === "custom_text") {
