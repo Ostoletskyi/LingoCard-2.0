@@ -288,6 +288,83 @@ const ensureCardsHaveBoxes = (cards: Card[], widthMm: number, heightMm: number):
 const ensureCardHasBoxes = (card: Card, widthMm: number, heightMm: number): Card =>
   card.boxes && card.boxes.length ? card : applySemanticLayoutToCard(card, widthMm, heightMm);
 
+const boxesOverlap = (a: Box, b: Box) =>
+  a.xMm < b.xMm + b.wMm &&
+  a.xMm + a.wMm > b.xMm &&
+  a.yMm < b.yMm + b.hMm &&
+  a.yMm + a.hMm > b.yMm;
+
+const relayoutBoxesNoOverlap = (card: Card, widthMm: number, heightMm: number): Card => {
+  if (!card.boxes?.length) return card;
+  const margin = 4;
+  const contentTop = margin + 22;
+  const contentBottom = heightMm - margin;
+  const minFontPt = 6;
+
+  const infBox = card.boxes.find((box) => box.fieldId === "inf" || box.id === "hero_inf") ?? null;
+  const others = card.boxes.filter((box) => box !== infBox).sort((a, b) => (a.yMm - b.yMm) || (a.xMm - b.xMm));
+
+  const placed: Box[] = [];
+  if (infBox) placed.push(infBox);
+
+  const findFreeSlot = (wMm: number, hMm: number) => {
+    const maxX = widthMm - margin - wMm;
+    const maxY = contentBottom - hMm;
+    for (let y = contentTop; y <= maxY; y += 0.5) {
+      for (let x = margin; x <= maxX; x += 0.5) {
+        const probe = { xMm: x, yMm: y, wMm, hMm } as Box;
+        const overlaps = placed.some((box) => boxesOverlap(probe, box));
+        if (!overlaps) return { xMm: x, yMm: y };
+      }
+    }
+    return null;
+  };
+
+  for (const box of others) {
+    let candidate: Box = { ...box };
+    let slot = findFreeSlot(candidate.wMm, candidate.hMm);
+
+    for (let attempt = 0; !slot && attempt < 8; attempt += 1) {
+      const nextFont = Math.max(minFontPt, candidate.style.fontSizePt - 0.5);
+      candidate = {
+        ...candidate,
+        hMm: Math.max(4, candidate.hMm * 0.93),
+        style: { ...candidate.style, fontSizePt: nextFont }
+      };
+      slot = findFreeSlot(candidate.wMm, candidate.hMm);
+    }
+
+    if (!slot) {
+      slot = {
+        xMm: margin,
+        yMm: Math.min(contentBottom - candidate.hMm, Math.max(contentTop, (placed.at(-1)?.yMm ?? contentTop) + 0.5))
+      };
+    }
+
+    const moved: Box = {
+      ...candidate,
+      xMm: Math.max(margin, Math.min(widthMm - margin - candidate.wMm, slot.xMm)),
+      yMm: Math.max(contentTop, Math.min(contentBottom - candidate.hMm, slot.yMm))
+    };
+    placed.push(moved);
+  }
+
+  const infFont = infBox?.style.fontSizePt ?? 20;
+  const normalized = placed.map((box) => {
+    if (box === infBox || box.fieldId === "inf" || box.id === "hero_inf") return box;
+    if (box.style.fontSizePt >= infFont) {
+      return { ...box, style: { ...box.style, fontSizePt: Math.max(minFontPt, infFont - 1) } };
+    }
+    return box;
+  });
+
+  const byId = new Map(normalized.map((box) => [box.id, box]));
+  return {
+    ...card,
+    boxes: card.boxes.map((box) => byId.get(box.id) ?? box)
+  };
+};
+
 const makeDemoCard = (id: string): Card =>
   normalizeCard({
     id,
@@ -809,7 +886,8 @@ export const useAppStore = create<AppState>()(
           };
         });
 
-        return autoResizeCardBoxes({ ...layoutCard, boxes: merged }, pxPerMm);
+        const resized = autoResizeCardBoxes({ ...layoutCard, boxes: merged }, pxPerMm);
+        return relayoutBoxesNoOverlap(resized, state.layout.widthMm, state.layout.heightMm);
       });
       autoLayoutVariantBySide[side] = ((variant + 1) % 3) as 0 | 1 | 2;
       if (side === "A") {
