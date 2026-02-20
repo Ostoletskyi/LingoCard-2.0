@@ -72,9 +72,12 @@ export const AiControlPanel = () => {
   const [tokenElapsedMs, setTokenElapsedMs] = useState(0);
   const [lastTokenMs, setLastTokenMs] = useState(0);
   const [generationLog, setGenerationLog] = useState<string[]>([]);
-  const [tickerText, setTickerText] = useState("");
+  const [tickerLines, setTickerLines] = useState<string[]>(["", "", ""]);
+  const [streamCollapsed, setStreamCollapsed] = useState(false);
+  const [queuePaused, setQueuePaused] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const tokenStartedAtRef = useRef<number | null>(null);
+  const queuePausedRef = useRef(false);
   const addCard = useAppStore((state) => state.addCard);
   const editModeEnabled = useAppStore((state) => state.editModeEnabled);
   const toggleEditMode = useAppStore((state) => state.toggleEditMode);
@@ -95,6 +98,10 @@ export const AiControlPanel = () => {
 
   const isSending = status === "sending";
 
+  useEffect(() => {
+    queuePausedRef.current = queuePaused;
+  }, [queuePaused]);
+
   const appendLog = (line: string) => {
     setGenerationLog((prev) => [...prev.slice(-80), line]);
   };
@@ -102,22 +109,29 @@ export const AiControlPanel = () => {
 
   useEffect(() => {
     if (status !== "sending") {
-      setTickerText("");
+      setTickerLines(["", "", ""]);
       return;
     }
 
-    const tokenLabel = progressToken || "pending";
-    const loopSource = `${THINKING_TICKER_LINES.join("\n")}\n// token: ${tokenLabel}\n`;
-    let idx = 0;
+    let sourceIndex = 0;
+    let charIndex = 0;
 
     const ticker = window.setInterval(() => {
-      const ch = loopSource[idx % loopSource.length] ?? " ";
-      idx += 1;
-      setTickerText((prev) => {
-        const next = (prev + ch).slice(-2200);
-        return next;
-      });
-    }, 24);
+      if (queuePausedRef.current) return;
+      const source = THINKING_TICKER_LINES[sourceIndex] ?? "";
+      if (!source.length) return;
+
+      if (charIndex >= source.length) {
+        setTickerLines((prev) => [prev[1] ?? "", prev[2] ?? "", source]);
+        sourceIndex = (sourceIndex + 1) % THINKING_TICKER_LINES.length;
+        charIndex = 0;
+        return;
+      }
+
+      charIndex += 1;
+      const partial = source.slice(0, charIndex);
+      setTickerLines((prev) => [prev[0] ?? "", prev[1] ?? "", partial]);
+    }, 20);
 
     const lineTicker = window.setInterval(() => {
       const line = THINKING_TICKER_LINES[Math.floor(Date.now() / 1200) % THINKING_TICKER_LINES.length] ?? "...";
@@ -128,7 +142,7 @@ export const AiControlPanel = () => {
       window.clearInterval(ticker);
       window.clearInterval(lineTicker);
     };
-  }, [status, progressToken]);
+  }, [status]);
 
   const runHealthCheck = async (nextConfig: LmStudioConfig, signal?: AbortSignal) => {
     const health = await healthCheck(nextConfig, signal);
@@ -165,6 +179,7 @@ export const AiControlPanel = () => {
     setTokenElapsedMs(0);
     setLastTokenMs(0);
     setGenerationLog([]);
+    setQueuePaused(false);
     appendLog(`⏳ Запуск генерации: ${tokens.length} токен(ов)`);
 
     try {
@@ -185,6 +200,12 @@ export const AiControlPanel = () => {
       const tokenErrors: string[] = [];
 
       for (let index = 0; index < tokens.length; index += 1) {
+        while (queuePausedRef.current) {
+          setQueueInfo("Paused. Нажмите Resume для продолжения.");
+          await new Promise((resolve) => window.setTimeout(resolve, 180));
+          if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+        }
+
         const token = tokens[index];
         if (!token) continue;
         setProgressIndex(index + 1);
@@ -291,6 +312,7 @@ export const AiControlPanel = () => {
     abortRef.current = null;
     tokenStartedAtRef.current = null;
     setStatus("idle");
+    setQueuePaused(false);
     appendLog("🛑 Отмена");
   };
 
@@ -350,23 +372,53 @@ export const AiControlPanel = () => {
       {status === "sending" && (
         <div className="fixed inset-0 z-40 pointer-events-none">
           <div className="absolute inset-0 bg-slate-900/15 dark:bg-slate-950/30" />
-          <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/85">
-            <div className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Live generation stream</div>
+          <div
+            className="pointer-events-auto absolute bottom-4 left-4 right-4 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-2xl backdrop-blur transition-all duration-300 dark:border-slate-700 dark:bg-slate-900/85"
+            style={{ maxHeight: streamCollapsed ? 56 : 220 }}
+          >
+            <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <span>Live generation stream</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setStreamCollapsed((prev) => !prev)}
+                  className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 dark:border-slate-600 dark:text-slate-200"
+                >
+                  {streamCollapsed ? "Развернуть" : "Свернуть"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQueuePaused((prev) => !prev)}
+                  className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 dark:border-slate-600 dark:text-slate-200"
+                >
+                  {queuePaused ? "Resume" : "Pause"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="rounded-md border border-rose-300 px-2 py-0.5 text-[11px] text-rose-600 dark:border-rose-700 dark:text-rose-300"
+                >
+                  Прервать
+                </button>
+              </div>
+            </div>
+            {!streamCollapsed && (
             <div
-              className="overflow-y-auto rounded-xl bg-slate-50/80 p-2 font-mono text-xs dark:bg-slate-950/60"
-              style={{ minHeight: 120, maxHeight: 320, height: Math.min(320, 120 + generationLog.length * 18) }}
+              className="rounded-xl bg-slate-50/80 p-2 font-mono text-xs dark:bg-slate-950/60"
+              style={{ minHeight: 84 }}
             >
-              <div className="space-y-1">
-                {generationLog.map((line, index) => (
-                  <div key={`${line}-${index}-${generationLog.length}`} className="text-slate-700 dark:text-slate-200">
+              <div className="space-y-1 text-slate-700 dark:text-slate-200">
+                {(tickerLines.length ? tickerLines : ["", "", ""]).map((line, index) => (
+                  <div key={`${index}-${line.length}`} className="whitespace-nowrap overflow-hidden text-ellipsis min-h-[16px]">
                     {line}
                   </div>
                 ))}
               </div>
-              <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-4 text-sky-700/90 dark:text-sky-300/90">
-                {tickerText}
-              </pre>
+              <div className="mt-2 whitespace-nowrap overflow-hidden text-ellipsis text-[11px] leading-4 text-sky-700/90 dark:text-sky-300/90">
+                {generationLog[generationLog.length - 1] || "..."}
+              </div>
             </div>
+            )}
           </div>
         </div>
       )}
