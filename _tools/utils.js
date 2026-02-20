@@ -12,13 +12,40 @@ export const ensureDir = (dir) => {
   }
 };
 
+export const resolveCommand = (command) => {
+  if (process.platform !== "win32") return command;
+  if (command === "npm") return "npm.cmd";
+  if (command === "npx") return "npx.cmd";
+  return command;
+};
+
 export const runCommand = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "inherit", shell: true, ...options });
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`${command} exited with code ${code}`));
-    });
+    const executable = resolveCommand(command);
+    const spawnOptions = { stdio: "inherit", shell: false, ...options };
+
+    const attach = (child) => {
+      child.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`${command} exited with code ${code}`));
+      });
+      child.on("error", (error) => {
+        reject(error);
+      });
+    };
+
+    const spawnWithShellCommand = () => {
+      const quoted = args.map((arg) => `"${String(arg).replace(/"/g, '\\"')}"`).join(" ");
+      const commandLine = quoted ? `${executable} ${quoted}` : executable;
+      attach(spawn(commandLine, [], { ...spawnOptions, shell: true }));
+    };
+
+    if (process.platform === "win32") {
+      spawnWithShellCommand();
+      return;
+    }
+
+    attach(spawn(executable, args, spawnOptions));
   });
 
 export const copyDir = (source, target) => {
