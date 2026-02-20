@@ -14,7 +14,7 @@ foreach ($name in $processes) {
         }
     }
     catch {
-        Write-Host "[UNLOCK] Skip process $name: $($_.Exception.Message)"
+        Write-Host (("[UNLOCK] Skip process {0}: " -f $name) + $_.Exception.Message)
     }
 }
 

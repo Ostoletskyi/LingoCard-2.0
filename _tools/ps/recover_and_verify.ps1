@@ -57,6 +57,39 @@ function Run-CmdSafe {
     }
 }
 
+
+function Remove-NodeModulesSafe {
+    if (-not (Test-Path 'node_modules')) {
+        return
+    }
+
+    for ($attempt = 1; $attempt -le 2; $attempt += 1) {
+        try {
+            Log-Info "Removing node_modules for clean reinstall (attempt $attempt)."
+            Remove-Item -Path 'node_modules' -Recurse -Force
+            return
+        }
+        catch {
+            $message = $_.Exception.Message
+            if ($attempt -eq 1 -and $message -match 'EPERM|EACCES|EBUSY|denied|being used by another process') {
+                Log-Warn 'node_modules removal blocked by locked process. Running unlock helper and retrying.'
+                $unlockScript = Join-Path $PSScriptRoot 'unlock_processes.ps1'
+                if (Test-Path $unlockScript) {
+                    try {
+                        & $unlockScript -ProjectRoot $root | Out-Host
+                    }
+                    catch {
+                        Log-Warn "Unlock helper failed: $($_.Exception.Message)"
+                    }
+                }
+                Start-Sleep -Milliseconds 500
+                continue
+            }
+            throw
+        }
+    }
+}
+
 function Install-Dependencies {
     $ok = Run-CmdSafe -Title 'npm ci' -Command 'npm' -Arguments @('ci')
     if ($ok) {
@@ -105,10 +138,7 @@ try {
         Run-Cmd -Title 'git fetch --all --prune' -Command 'git' -Arguments @('fetch', '--all', '--prune')
         Run-CmdSafe -Title 'git pull --rebase' -Command 'git' -Arguments @('pull', '--rebase') | Out-Null
 
-        if (Test-Path 'node_modules') {
-            Log-Info 'Removing node_modules for clean reinstall.'
-            Remove-Item -Path 'node_modules' -Recurse -Force
-        }
+        Remove-NodeModulesSafe
 
         if (-not (Install-Dependencies)) {
             throw 'Could not install dependencies (npm ci/npm install both failed).'
