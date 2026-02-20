@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import { buildGenerateMessages, buildRepairMessages, type ChatMessage } from "./promptBuilder";
+import { buildGenerateMessages, buildRepairMessages, type AiInputLanguage, type ChatMessage } from "./promptBuilder";
 import { DEFAULT_LM_STUDIO_CONFIG, normalizeLmStudioConfig, type LmStudioConfig } from "./aiConfig";
 
 type LmStudioModelsResponse = {
@@ -196,10 +196,11 @@ export const repairJsonWithLmStudio = async (
 export const requestCardFromLmStudio = async (
   infinitive: string,
   signal: AbortSignal,
-  config: Partial<LmStudioConfig> = {}
+  config: Partial<LmStudioConfig> = {},
+  inputLanguage: AiInputLanguage = "ALL"
 ): Promise<{ payload: unknown; rawContent: string; repaired: boolean }> => {
   try {
-    const firstPass = await requestChatCompletion(buildGenerateMessages(infinitive), config, signal);
+    const firstPass = await requestChatCompletion(buildGenerateMessages(infinitive, inputLanguage), config, signal);
     return { ...firstPass, repaired: false };
   } catch (error) {
     const normalized = normalizeFetchError(error);

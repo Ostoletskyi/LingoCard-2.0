@@ -1,17 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { healthCheck, listModels, repairJsonWithLmStudio, requestCardFromLmStudio, LmStudioClientError } from "../ai/lmStudioClient";
+import {
+  healthCheck,
+  listModels,
+  repairJsonWithLmStudio,
+  requestCardFromLmStudio,
+  LmStudioClientError
+} from "../ai/lmStudioClient";
 import { validateAiPayload } from "../ai/validateAiResponse";
 import { useAppStore } from "../state/store";
-import { loadLmStudioConfig, normalizeLmStudioConfig, saveLmStudioConfig, type LmStudioConfig } from "../ai/aiConfig";
+import {
+  loadLmStudioConfig,
+  normalizeLmStudioConfig,
+  saveLmStudioConfig,
+  type LmStudioConfig
+} from "../ai/aiConfig";
+import type { AiInputLanguage } from "../ai/promptBuilder";
+
+const splitInputTokens = (raw: string) =>
+  raw
+    .split(/\r?\n|,/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 export const AiControlPanel = () => {
   const [infinitives, setInfinitives] = useState("");
   const [mode, setMode] = useState<"generate" | "patch">("generate");
+  const [inputLanguage, setInputLanguage] = useState<AiInputLanguage>("ALL");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [responseJson, setResponseJson] = useState<string>("");
   const [rawResponse, setRawResponse] = useState<string>("");
   const [errorText, setErrorText] = useState<string>("");
   const [healthText, setHealthText] = useState<string>("");
+  const [queueInfo, setQueueInfo] = useState<string>("");
   const [config, setConfig] = useState<LmStudioConfig>(() => loadLmStudioConfig());
   const abortRef = useRef<AbortController | null>(null);
   const addCard = useAppStore((state) => state.addCard);
@@ -33,11 +53,8 @@ export const AiControlPanel = () => {
   };
 
   const handleGenerate = async () => {
-    const rows = infinitives
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (!rows.length) return;
+    const tokens = splitInputTokens(infinitives);
+    if (!tokens.length) return;
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -54,42 +71,61 @@ export const AiControlPanel = () => {
     try {
       await runHealthCheck(activeConfig, controller.signal);
 
+      if (!activeConfig.model || activeConfig.model === "local-model") {
+        const models = await listModels(activeConfig, controller.signal);
+        if (models.length) {
+          activeConfig.model = models[0] || activeConfig.model;
+          setConfig({ ...activeConfig });
+        }
+      }
+
       const payloads: unknown[] = [];
       const rawChunks: string[] = [];
 
-      for (const inf of rows) {
-        const generated = await requestCardFromLmStudio(inf, controller.signal, activeConfig);
-        rawChunks.push(generated.rawContent);
+      for (let index = 0; index < tokens.length; index += 1) {
+        const token = tokens[index];
+        if (!token) continue;
+        setQueueInfo(`Processing ${index + 1}/${tokens.length}: ${token}`);
+
+        const generated = await requestCardFromLmStudio(token, controller.signal, activeConfig, inputLanguage);
+        rawChunks.push(`[${token}]\n${generated.rawContent}`);
 
         let payload = generated.payload;
-        const initialValidation = validateAiPayload(payload, mode);
+        let validation = validateAiPayload(payload, mode);
 
-        if (!initialValidation.success) {
+        if (!validation.success) {
           const repaired = await repairJsonWithLmStudio(generated.rawContent, activeConfig, controller.signal);
-          rawChunks.push(`[repair]\n${repaired.rawContent}`);
+          rawChunks.push(`[repair:${token}]\n${repaired.rawContent}`);
           payload = repaired.payload;
-          const repairedValidation = validateAiPayload(payload, mode);
-          if (!repairedValidation.success) {
-            throw new Error(`Validation failed after repair for "${inf}": ${repairedValidation.error}`);
-          }
+          validation = validateAiPayload(payload, mode);
         }
 
-        payloads.push(payload);
+        if (!validation.success) {
+          throw new Error(`Validation failed for "${token}": ${validation.error}`);
+        }
+
+        payloads.push(validation.data);
+        if (mode === "generate") {
+          addCard(validation.data, "B");
+        }
       }
 
       setRawResponse(rawChunks.join("\n\n"));
       setResponseJson(JSON.stringify(payloads.length === 1 ? payloads[0] : payloads, null, 2));
       setStatus("done");
+      setQueueInfo(`Done: ${payloads.length} card(s).`);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         setStatus("idle");
+        setQueueInfo("Canceled.");
         return;
       }
-      const message = error instanceof LmStudioClientError
-        ? `${error.message}${error.details ? `\n${error.details}` : ""}`
-        : error instanceof Error
-          ? error.message
-          : String(error);
+      const message =
+        error instanceof LmStudioClientError
+          ? `${error.message}${error.details ? `\n${error.details}` : ""}`
+          : error instanceof Error
+            ? error.message
+            : String(error);
       setErrorText(message);
       setStatus("error");
     }
@@ -107,7 +143,7 @@ export const AiControlPanel = () => {
         return;
       }
       if (mode === "generate") {
-        addCard(validation.data, "A");
+        addCard(validation.data, "B");
       }
     }
   };
@@ -159,7 +195,7 @@ export const AiControlPanel = () => {
           <input
             value={config.baseUrl}
             onChange={(event) => setConfig((prev) => ({ ...prev, baseUrl: event.target.value }))}
-            placeholder="http://localhost:1234"
+            placeholder="http://127.0.0.1:1234"
             className="border border-slate-200 rounded-xl px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/70"
           />
           <input
@@ -203,9 +239,23 @@ export const AiControlPanel = () => {
         <textarea
           value={infinitives}
           onChange={(event) => setInfinitives(event.target.value)}
-          placeholder="Infinitiv или список (по одному в строке). Несколько строк = bulk generate"
+          placeholder="Введите глаголы: Enter или запятая. Каждый токен обрабатывается отдельно."
           className="border border-slate-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950/70"
         />
+        <div className="flex items-center gap-3 text-xs text-slate-500">
+          <span>Input lang:</span>
+          <select
+            value={inputLanguage}
+            onChange={(event) => setInputLanguage(event.target.value as AiInputLanguage)}
+            className="rounded-lg border border-slate-200 px-2 py-1 dark:border-slate-700 dark:bg-slate-900"
+          >
+            <option value="ALL">ALL</option>
+            <option value="RU">RU</option>
+            <option value="DE">DE</option>
+            <option value="EN">EN</option>
+          </select>
+          <span>{queueInfo}</span>
+        </div>
       </div>
 
       <div className="grid gap-2 rounded-2xl bg-slate-50/70 p-4 dark:bg-slate-900/60">
@@ -241,7 +291,7 @@ export const AiControlPanel = () => {
             onClick={handleApply}
             className="px-4 py-2 rounded-full border border-slate-200 text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:text-slate-200"
           >
-            Применить
+            Применить повторно из Preview
           </button>
         </div>
         {errorText && <div className="text-xs text-red-500 whitespace-pre-wrap">{errorText}</div>}

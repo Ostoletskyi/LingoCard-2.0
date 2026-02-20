@@ -15,7 +15,9 @@ type Props = {
 
 export const CardListPanel = ({ side }: Props) => {
   type SidebarSection = "data" | "selection" | "export";
+  type SortMode = "default" | "az" | "za";
   const [filter, setFilter] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>("default");
   const storageKey = side === "A" ? "ui.sidebarA.openSection" : "ui.sidebarB.openSection";
   const cardsCollapsedKey = side === "A" ? "ui.cardsPanel.collapsed.left" : "ui.cardsPanel.collapsed.right";
   const [openSection, setOpenSection] = useState<SidebarSection>(() => {
@@ -121,21 +123,32 @@ export const CardListPanel = ({ side }: Props) => {
 
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
-    if (!query) return cards;
-    return cards.filter((card) => {
-      const haystack = [
-        card.inf,
-        card.tr_1_ru,
-        card.tr_2_ru,
-        card.tr_3_ru,
-        card.tr_4_ru,
-        ...card.tags
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [cards, filter]);
+    const base = !query
+      ? [...cards]
+      : cards.filter((card) => {
+        const haystack = [
+          card.inf,
+          card.tr_1_ru,
+          card.tr_2_ru,
+          card.tr_3_ru,
+          card.tr_4_ru,
+          ...card.tags
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(query);
+      });
+
+    if (sortMode === "default") return base;
+    const dir = sortMode === "az" ? 1 : -1;
+    return base.sort((a, b) => dir * a.inf.localeCompare(b.inf, "de", { sensitivity: "base" }));
+  }, [cards, filter, sortMode]);
+
+  const cycleSortMode = () => {
+    setSortMode((prev) => (prev === "default" ? "az" : prev === "az" ? "za" : "default"));
+  };
+
+  const sortLabel = sortMode === "default" ? "Sort: Default" : sortMode === "az" ? "Sort: A→Z" : "Sort: Z→A";
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!editModeEnabled) return;
@@ -391,12 +404,22 @@ export const CardListPanel = ({ side }: Props) => {
             Список {side}
           </span>
         </div>
-        <input
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder="Поиск"
-          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900/60"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Поиск"
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900/60"
+          />
+          <button
+            type="button"
+            onClick={cycleSortMode}
+            className="lc-btnOutline rounded-lg px-3 py-2 text-xs font-semibold"
+            title="Cycle sorting: Default -> A→Z -> Z→A"
+          >
+            {sortLabel}
+          </button>
+        </div>
       </div>
       {!cardsPanelCollapsed && (
       <div
