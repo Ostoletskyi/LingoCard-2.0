@@ -253,6 +253,21 @@ export const AiControlPanel = () => {
     }
   };
 
+  const handleLoadModels = async () => {
+    try {
+      const models = await listModels(config);
+      if (!models.length) {
+        setHealthText("LM Studio API online, but no models found in /v1/models.");
+        return;
+      }
+      setConfig((prev) => ({ ...prev, model: models[0] || prev.model }));
+      setHealthText(`Models detected: ${models.join(", ")}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setHealthText(message);
+    }
+  };
+
   const statusLabel = useMemo(() => {
     if (status === "sending") return "sending";
     if (status === "done") return "done";
