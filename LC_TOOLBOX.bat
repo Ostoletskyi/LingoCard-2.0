@@ -472,7 +472,7 @@ exit /b 0
 
 :SET_LANG_TEXTS
 if /I "%LANG%"=="ru" (
-    set "MENU1=Git    - Обновить проект (pull --rebase)"
+    set "MENU1=Git    - Обновить проект ^(pull --rebase^)"
     set "MENU2=Git    - Отправить изменения в remote"
     set "MENU3=Backup - Создать/восстановить"
     set "MENU4=Tests  - Запустить smoke тест"
@@ -496,7 +496,7 @@ if /I "%LANG%"=="ru" (
     set "HELP_BACK=Назад к справке"
     set "HELP_TO_MAIN=В главное меню"
 ) else if /I "%LANG%"=="de" (
-    set "MENU1=Git    - Projekt aktualisieren (pull --rebase)"
+    set "MENU1=Git    - Projekt aktualisieren ^(pull --rebase^)"
     set "MENU2=Git    - Lokale Commits in Remote pushen"
     set "MENU3=Backup - Erstellen/Wiederherstellen"
     set "MENU4=Tests  - Smoke-Test starten"
@@ -520,7 +520,7 @@ if /I "%LANG%"=="ru" (
     set "HELP_BACK=Zurueck zur Hilfe"
     set "HELP_TO_MAIN=Zum Hauptmenue"
 ) else (
-    set "MENU1=Git    - Update local project (pull --rebase)"
+    set "MENU1=Git    - Update local project ^(pull --rebase^)"
     set "MENU2=Git    - Push project state to remote"
     set "MENU3=Backup - Create/Restore"
     set "MENU4=Tests  - Run smoke test"
