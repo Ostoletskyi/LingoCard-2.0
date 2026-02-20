@@ -231,7 +231,7 @@ export const AiControlPanel = () => {
           />
           <input
             type="number"
-            min={5000}
+            min={30000}
             max={120000}
             step={1000}
             value={config.timeoutMs}

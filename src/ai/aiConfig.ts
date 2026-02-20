@@ -21,8 +21,16 @@ export const normalizeLmStudioConfig = (input: Partial<LmStudioConfig> | null | 
   return {
     baseUrl: baseUrl || DEFAULT_LM_STUDIO_CONFIG.baseUrl,
     model: (input?.model || DEFAULT_LM_STUDIO_CONFIG.model).trim() || DEFAULT_LM_STUDIO_CONFIG.model,
-    temperature: clamp(Number.isFinite(input?.temperature) ? Number(input?.temperature) : DEFAULT_LM_STUDIO_CONFIG.temperature, 0, 1.5),
-    timeoutMs: clamp(Number.isFinite(input?.timeoutMs) ? Number(input?.timeoutMs) : DEFAULT_LM_STUDIO_CONFIG.timeoutMs, 5000, 120000)
+    temperature: clamp(
+      Number.isFinite(input?.temperature) ? Number(input?.temperature) : DEFAULT_LM_STUDIO_CONFIG.temperature,
+      0,
+      1.5
+    ),
+    timeoutMs: clamp(
+      Number.isFinite(input?.timeoutMs) ? Number(input?.timeoutMs) : DEFAULT_LM_STUDIO_CONFIG.timeoutMs,
+      30000,
+      120000
+    )
   };
 };
 
@@ -31,7 +39,13 @@ export const loadLmStudioConfig = (): LmStudioConfig => {
   try {
     const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
     if (!raw) return DEFAULT_LM_STUDIO_CONFIG;
-    return normalizeLmStudioConfig(JSON.parse(raw) as Partial<LmStudioConfig>);
+    const parsed = JSON.parse(raw) as Partial<LmStudioConfig>;
+    const migrated = {
+      ...parsed,
+      // Migrate old low timeout values that often fail on local 13B models.
+      timeoutMs: Math.max(90000, Number(parsed.timeoutMs || 0))
+    };
+    return normalizeLmStudioConfig(migrated);
   } catch {
     return DEFAULT_LM_STUDIO_CONFIG;
   }
