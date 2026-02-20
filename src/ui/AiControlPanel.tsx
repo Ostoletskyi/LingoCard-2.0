@@ -22,6 +22,15 @@ const splitInputTokens = (raw: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const formatClock = (ms: number) => {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const min = Math.floor(totalSec / 60)
+    .toString()
+    .padStart(2, "0");
+  const sec = (totalSec % 60).toString().padStart(2, "0");
+  return `${min}:${sec}`;
+};
+
 export const AiControlPanel = () => {
   const [infinitives, setInfinitives] = useState("");
   const [mode, setMode] = useState<"generate" | "patch">("generate");
@@ -33,12 +42,30 @@ export const AiControlPanel = () => {
   const [healthText, setHealthText] = useState<string>("");
   const [queueInfo, setQueueInfo] = useState<string>("");
   const [config, setConfig] = useState<LmStudioConfig>(() => loadLmStudioConfig());
+  const [progressToken, setProgressToken] = useState("");
+  const [progressIndex, setProgressIndex] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const [tokenElapsedMs, setTokenElapsedMs] = useState(0);
+  const [lastTokenMs, setLastTokenMs] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  const tokenStartedAtRef = useRef<number | null>(null);
   const addCard = useAppStore((state) => state.addCard);
+  const editModeEnabled = useAppStore((state) => state.editModeEnabled);
+  const toggleEditMode = useAppStore((state) => state.toggleEditMode);
 
   useEffect(() => {
     saveLmStudioConfig(config);
   }, [config]);
+
+  useEffect(() => {
+    if (status !== "sending") return;
+    const timer = window.setInterval(() => {
+      const started = tokenStartedAtRef.current;
+      if (!started) return;
+      setTokenElapsedMs(Date.now() - started);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [status]);
 
   const isSending = status === "sending";
 
@@ -56,6 +83,10 @@ export const AiControlPanel = () => {
     const tokens = splitInputTokens(infinitives);
     if (!tokens.length) return;
 
+    if (!editModeEnabled) {
+      toggleEditMode();
+    }
+
     if (abortRef.current) {
       abortRef.current.abort();
     }
@@ -67,6 +98,11 @@ export const AiControlPanel = () => {
     setConfig(activeConfig);
     setErrorText("");
     setStatus("sending");
+    setProgressTotal(tokens.length);
+    setProgressIndex(0);
+    setProgressToken("");
+    setTokenElapsedMs(0);
+    setLastTokenMs(0);
 
     try {
       await runHealthCheck(activeConfig, controller.signal);
@@ -86,6 +122,10 @@ export const AiControlPanel = () => {
       for (let index = 0; index < tokens.length; index += 1) {
         const token = tokens[index];
         if (!token) continue;
+        setProgressIndex(index + 1);
+        setProgressToken(token);
+        tokenStartedAtRef.current = Date.now();
+        setTokenElapsedMs(0);
         setQueueInfo(`Processing ${index + 1}/${tokens.length}: ${token}`);
 
         try {
@@ -114,6 +154,10 @@ export const AiControlPanel = () => {
         } catch (tokenError) {
           const message = tokenError instanceof Error ? tokenError.message : String(tokenError);
           tokenErrors.push(`${token}: ${message}`);
+        } finally {
+          const started = tokenStartedAtRef.current;
+          setLastTokenMs(started ? Date.now() - started : 0);
+          tokenStartedAtRef.current = null;
         }
       }
 
@@ -143,6 +187,11 @@ export const AiControlPanel = () => {
             : String(error);
       setErrorText(message);
       setStatus("error");
+    } finally {
+      abortRef.current = null;
+      tokenStartedAtRef.current = null;
+      setProgressToken("");
+      setTokenElapsedMs(0);
     }
   };
 
@@ -166,6 +215,7 @@ export const AiControlPanel = () => {
   const handleCancel = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    tokenStartedAtRef.current = null;
     setStatus("idle");
   };
 
@@ -191,8 +241,37 @@ export const AiControlPanel = () => {
     return "idle";
   }, [status]);
 
+  const secondAngle = ((tokenElapsedMs / 1000) % 60) * 6;
+  const minuteAngle = ((tokenElapsedMs / 60000) % 60) * 6 + secondAngle / 60;
+
   return (
     <div className="rounded-2xl bg-white p-5 shadow-soft flex flex-col gap-4 dark:bg-slate-900/80">
+      {status === "sending" && (
+        <div className="fixed right-4 top-4 z-50 w-72 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Генерация</div>
+              <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                {progressIndex}/{progressTotal} · {progressToken || "подготовка..."}
+              </div>
+            </div>
+            <div className="relative h-14 w-14 rounded-full border-2 border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800">
+              <div
+                className="absolute left-1/2 top-1/2 h-5 w-[2px] -translate-x-1/2 -translate-y-full bg-slate-700 origin-bottom dark:bg-slate-100"
+                style={{ transform: `translateX(-50%) translateY(-100%) rotate(${minuteAngle}deg)` }}
+              />
+              <div
+                className="absolute left-1/2 top-1/2 h-6 w-[1px] -translate-x-1/2 -translate-y-full bg-red-500 origin-bottom"
+                style={{ transform: `translateX(-50%) translateY(-100%) rotate(${secondAngle}deg)` }}
+              />
+              <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-700 dark:bg-slate-100" />
+            </div>
+          </div>
+          <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">Текущий глагол: {formatClock(tokenElapsedMs)}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">Предыдущий: {formatClock(lastTokenMs)}</div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">ИИ-панель</h3>
