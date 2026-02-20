@@ -238,22 +238,7 @@ export const AiControlPanel = () => {
     appendLog("🛑 Отмена");
   };
 
-  const handleLoadModels = async () => {
-    try {
-      const models = await listModels(config);
-      if (!models.length) {
-        setHealthText("LM Studio API online, but no models found in /v1/models.");
-        return;
-      }
-      setConfig((prev) => ({ ...prev, model: models[0] || prev.model }));
-      setHealthText(`Models detected: ${models.join(", ")}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setHealthText(message);
-    }
-  };
-
-  const handleLoadModels = async () => {
+  const handleLoadModelsClick = async () => {
     try {
       const models = await listModels(config);
       if (!models.length) {
@@ -381,7 +366,7 @@ export const AiControlPanel = () => {
           </button>
           <button
             type="button"
-            onClick={handleLoadModels}
+            onClick={handleLoadModelsClick}
             className="px-3 py-1.5 rounded-full bg-slate-200 hover:bg-slate-300 dark:bg-slate-800"
           >
             Load models
