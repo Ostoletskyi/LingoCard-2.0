@@ -160,7 +160,12 @@ const collectPairLines = (card: Card, prefix: "syn" | "ex" | "rek", max: number)
       const de = card[`ex_${i}_de` as keyof Card] as string;
       const ru = card[`ex_${i}_ru` as keyof Card] as string;
       const tag = card[`ex_${i}_tag` as keyof Card] as string;
-      const line = joinPresent([de, ru, tag ? `[${tag}]` : ""], " | ");
+      const line = [
+        joinPresent([tag ? `[${tag}]` : "", de], " "),
+        ru ? `— ${ru}` : ""
+      ]
+        .filter(Boolean)
+        .join("\n");
       if (hasText(line)) out.push({ fieldId: `ex_${i}_de`, text: line });
       continue;
     }
@@ -172,13 +177,18 @@ const collectPairLines = (card: Card, prefix: "syn" | "ex" | "rek", max: number)
   return out;
 };
 
-const collectFormLines = (card: Card) =>
-  [
+const collectFormLines = (card: Card) => {
+  const perfekt = joinPresent([card.forms_aux, card.forms_p2], " ");
+  const compact = joinPresent([card.forms_p3, card.forms_prat, perfekt], " - ");
+  if (hasText(compact)) return [{ fieldId: "forms_p3", text: compact }];
+
+  return [
     { fieldId: "forms_p3", text: joinPresent(["P3", card.forms_p3], ": ") },
     { fieldId: "forms_prat", text: joinPresent(["Prät", card.forms_prat], ": ") },
     { fieldId: "forms_p2", text: joinPresent(["P2", card.forms_p2], ": ") },
     { fieldId: "forms_aux", text: joinPresent(["Aux", card.forms_aux], ": ") }
   ].filter((line) => hasText(line.text));
+};
 
 const buildTemplateZones = (widthMm: number, heightMm: number, variant: 0 | 1 | 2) => {
   const margin = 4;
@@ -263,11 +273,12 @@ export const buildSemanticLayoutBoxes = (card: Card, widthMm: number, heightMm: 
     ? trLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
     : "—";
   const exText = exLines.length
-    ? exLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
+    ? exLines
+        .map((line, index) => `${index + 1}. ${line}`)
+        .join("\n")
+        .replace(/\n(\d+\.)/g, "\n\n$1")
     : "—";
-  const formsText = formsLines.length
-    ? formsLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
-    : "—";
+  const formsText = formsLines.length ? formsLines.join("\n") : "—";
   const synText = synLines.length
     ? synLines.map((line, index) => `${index + 1}. ${line}`).join("\n")
     : "—";
