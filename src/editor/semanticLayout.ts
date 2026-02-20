@@ -8,6 +8,8 @@ const MM_PER_PT = 0.3528;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const hasText = (value: string | undefined | null) => Boolean(value && value.trim().length > 0);
 
+const sanitizeInline = (value: string | undefined | null) => (value ?? "").replace(/\s+/g, " ").trim();
+
 const joinPresent = (parts: Array<string | undefined | null>, separator = " · ") =>
   parts
     .map((part) => (part ?? "").trim())
@@ -138,8 +140,8 @@ const makeBox = (params: {
 const collectTrLines = (card: Card) => {
   const out: Array<{ fieldId: string; text: string }> = [];
   for (let i = 1; i <= 4; i += 1) {
-    const ru = card[`tr_${i}_ru` as keyof Card] as string;
-    const ctx = card[`tr_${i}_ctx` as keyof Card] as string;
+    const ru = sanitizeInline(card[`tr_${i}_ru` as keyof Card] as string);
+    const ctx = sanitizeInline(card[`tr_${i}_ctx` as keyof Card] as string);
     const line = joinPresent([ru, ctx ? `(${ctx})` : ""], " ");
     if (hasText(line)) out.push({ fieldId: `tr_${i}_ru`, text: line });
   }
@@ -150,15 +152,15 @@ const collectPairLines = (card: Card, prefix: "syn" | "ex" | "rek", max: number)
   const out: Array<{ fieldId: string; text: string }> = [];
   for (let i = 1; i <= max; i += 1) {
     if (prefix === "syn") {
-      const de = card[`syn_${i}_de` as keyof Card] as string;
-      const ru = card[`syn_${i}_ru` as keyof Card] as string;
+      const de = sanitizeInline(card[`syn_${i}_de` as keyof Card] as string);
+      const ru = sanitizeInline(card[`syn_${i}_ru` as keyof Card] as string);
       const line = joinPresent([de, ru], " — ");
       if (hasText(line)) out.push({ fieldId: `syn_${i}_de`, text: line });
       continue;
     }
     if (prefix === "ex") {
-      const de = ((card[`ex_${i}_de` as keyof Card] as string) || "").replace(/\s+/g, " ").trim();
-      const ru = ((card[`ex_${i}_ru` as keyof Card] as string) || "").replace(/\s+/g, " ").trim();
+      const de = sanitizeInline(card[`ex_${i}_de` as keyof Card] as string);
+      const ru = sanitizeInline(card[`ex_${i}_ru` as keyof Card] as string);
       const tag = card[`ex_${i}_tag` as keyof Card] as string;
       const line = [
         joinPresent([tag ? `[${tag}]` : "", de], " "),
@@ -169,8 +171,8 @@ const collectPairLines = (card: Card, prefix: "syn" | "ex" | "rek", max: number)
       if (hasText(line)) out.push({ fieldId: `ex_${i}_de`, text: line });
       continue;
     }
-    const de = card[`rek_${i}_de` as keyof Card] as string;
-    const ru = card[`rek_${i}_ru` as keyof Card] as string;
+    const de = sanitizeInline(card[`rek_${i}_de` as keyof Card] as string);
+    const ru = sanitizeInline(card[`rek_${i}_ru` as keyof Card] as string);
     const line = joinPresent([de, ru], " → ");
     if (hasText(line)) out.push({ fieldId: `rek_${i}_de`, text: line });
   }
@@ -178,15 +180,19 @@ const collectPairLines = (card: Card, prefix: "syn" | "ex" | "rek", max: number)
 };
 
 const collectFormLines = (card: Card) => {
-  const perfekt = joinPresent([card.forms_aux, card.forms_p2], " ");
-  const compact = joinPresent([card.forms_p3, card.forms_prat, perfekt], " - ");
+  const p3 = sanitizeInline(card.forms_p3);
+  const prat = sanitizeInline(card.forms_prat);
+  const p2 = sanitizeInline(card.forms_p2);
+  const aux = sanitizeInline(card.forms_aux);
+  const perfekt = joinPresent([aux, p2], " ");
+  const compact = joinPresent([p3, prat, perfekt], " - ");
   if (hasText(compact)) return [{ fieldId: "forms_p3", text: compact }];
 
   return [
-    { fieldId: "forms_p3", text: joinPresent(["P3", card.forms_p3], ": ") },
-    { fieldId: "forms_prat", text: joinPresent(["Prät", card.forms_prat], ": ") },
-    { fieldId: "forms_p2", text: joinPresent(["P2", card.forms_p2], ": ") },
-    { fieldId: "forms_aux", text: joinPresent(["Aux", card.forms_aux], ": ") }
+    { fieldId: "forms_p3", text: joinPresent(["P3", p3], ": ") },
+    { fieldId: "forms_prat", text: joinPresent(["Prät", prat], ": ") },
+    { fieldId: "forms_p2", text: joinPresent(["P2", p2], ": ") },
+    { fieldId: "forms_aux", text: joinPresent(["Aux", aux], ": ") }
   ].filter((line) => hasText(line.text));
 };
 

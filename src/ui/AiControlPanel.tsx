@@ -31,6 +31,30 @@ const formatClock = (ms: number) => {
   return `${min}:${sec}`;
 };
 
+const THINKING_TICKER_LINES = [
+  '{ "task": "build-card", "stage": "tokenize", "status": "running" }',
+  'const prompt = buildPrompt(infinitive, inputLanguage);',
+  "fetch('/v1/chat/completions', { model, temperature, stream: false });",
+  'validateAiPayload(payload, mode) // schema guard',
+  'repairJsonWithLmStudio(rawContent) // retry once',
+  'card.examples = normalizeLines(card.examples);',
+  'persist(queueState); render(progressUI);',
+  '// thinking... composing German + RU context',
+  '{ "next": "emit-card", "confidence": 0.82 }'
+];
+
+const sanitizeCardTextPayload = (payload: unknown) => {
+  if (!payload || typeof payload !== "object") return payload;
+  const clone = { ...(payload as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(clone)) {
+    if (typeof value !== "string") continue;
+    if (/^(inf|forms_|tr_\d+_|syn_\d+_|rek_\d+_|ex_\d+_)/.test(key)) {
+      clone[key] = value.replace(/\s+/g, " ").trim();
+    }
+  }
+  return clone;
+};
+
 export const AiControlPanel = () => {
   const [infinitives, setInfinitives] = useState("");
   const [mode, setMode] = useState<"generate" | "patch">("generate");
@@ -48,6 +72,7 @@ export const AiControlPanel = () => {
   const [tokenElapsedMs, setTokenElapsedMs] = useState(0);
   const [lastTokenMs, setLastTokenMs] = useState(0);
   const [generationLog, setGenerationLog] = useState<string[]>([]);
+  const [tickerText, setTickerText] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const tokenStartedAtRef = useRef<number | null>(null);
   const addCard = useAppStore((state) => state.addCard);
@@ -71,8 +96,39 @@ export const AiControlPanel = () => {
   const isSending = status === "sending";
 
   const appendLog = (line: string) => {
-    setGenerationLog((prev) => [...prev.slice(-12), line]);
+    setGenerationLog((prev) => [...prev.slice(-80), line]);
   };
+
+
+  useEffect(() => {
+    if (status !== "sending") {
+      setTickerText("");
+      return;
+    }
+
+    const tokenLabel = progressToken || "pending";
+    const loopSource = `${THINKING_TICKER_LINES.join("\n")}\n// token: ${tokenLabel}\n`;
+    let idx = 0;
+
+    const ticker = window.setInterval(() => {
+      const ch = loopSource[idx % loopSource.length] ?? " ";
+      idx += 1;
+      setTickerText((prev) => {
+        const next = (prev + ch).slice(-2200);
+        return next;
+      });
+    }, 24);
+
+    const lineTicker = window.setInterval(() => {
+      const line = THINKING_TICKER_LINES[Math.floor(Date.now() / 1200) % THINKING_TICKER_LINES.length] ?? "...";
+      appendLog(`💻 ${line}`);
+    }, 2200);
+
+    return () => {
+      window.clearInterval(ticker);
+      window.clearInterval(lineTicker);
+    };
+  }, [status, progressToken]);
 
   const runHealthCheck = async (nextConfig: LmStudioConfig, signal?: AbortSignal) => {
     const health = await healthCheck(nextConfig, signal);
@@ -142,13 +198,13 @@ export const AiControlPanel = () => {
           const generated = await requestCardFromLmStudio(token, controller.signal, activeConfig, inputLanguage);
           rawChunks.push(`[${token}]\n${generated.rawContent}`);
 
-          let payload = generated.payload;
+          let payload = sanitizeCardTextPayload(generated.payload);
           let validation = validateAiPayload(payload, mode);
 
           if (!validation.success) {
             const repaired = await repairJsonWithLmStudio(generated.rawContent, activeConfig, controller.signal);
             rawChunks.push(`[repair:${token}]\n${repaired.rawContent}`);
-            payload = repaired.payload;
+            payload = sanitizeCardTextPayload(repaired.payload);
             validation = validateAiPayload(payload, mode);
           }
 
@@ -296,14 +352,20 @@ export const AiControlPanel = () => {
           <div className="absolute inset-0 bg-slate-900/15 dark:bg-slate-950/30" />
           <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/85">
             <div className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Live generation stream</div>
-            <div className="h-24 overflow-hidden rounded-xl bg-slate-50/80 p-2 font-mono text-xs dark:bg-slate-950/60">
-              <div className="animate-pulse space-y-1">
-                {generationLog.slice(-6).map((line, index) => (
-                  <div key={`${line}-${index}`} className="truncate text-slate-700 dark:text-slate-200">
+            <div
+              className="overflow-y-auto rounded-xl bg-slate-50/80 p-2 font-mono text-xs dark:bg-slate-950/60"
+              style={{ minHeight: 120, maxHeight: 320, height: Math.min(320, 120 + generationLog.length * 18) }}
+            >
+              <div className="space-y-1">
+                {generationLog.map((line, index) => (
+                  <div key={`${line}-${index}-${generationLog.length}`} className="text-slate-700 dark:text-slate-200">
                     {line}
                   </div>
                 ))}
               </div>
+              <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-4 text-sky-700/90 dark:text-sky-300/90">
+                {tickerText}
+              </pre>
             </div>
           </div>
         </div>
