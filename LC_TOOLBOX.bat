@@ -583,6 +583,19 @@ echo -----------------------------------------------
 "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PATH%" -ProjectRoot "%PROJECT_ROOT%"
 set "RC=%ERRORLEVEL%"
 
+if not "%RC%"=="0" (
+  echo.
+  echo [WARN] Script failed with exit code %RC%.
+  echo [INFO] Trying to unlock blocked processes and retry once...
+  if exist "%TOOLS_DIR%\unlock_processes.ps1" (
+    "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%TOOLS_DIR%\unlock_processes.ps1" -ProjectRoot "%PROJECT_ROOT%"
+    "%PS_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PATH%" -ProjectRoot "%PROJECT_ROOT%"
+    set "RC=%ERRORLEVEL%"
+  ) else (
+    echo [WARN] unlock_processes.ps1 not found. Skipping retry unlock step.
+  )
+)
+
 echo.
 if "%RC%"=="0" (
   echo Result: SUCCESS

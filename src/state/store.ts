@@ -296,69 +296,124 @@ const boxesOverlap = (a: Box, b: Box) =>
 
 const relayoutBoxesNoOverlap = (card: Card, widthMm: number, heightMm: number): Card => {
   if (!card.boxes?.length) return card;
+
   const margin = 4;
   const contentTop = margin + 22;
   const contentBottom = heightMm - margin;
-  const minFontPt = 6;
+  const contentRight = widthMm - margin;
+  const minFontPt = 7;
 
   const infBox = card.boxes.find((box) => box.fieldId === "inf" || box.id === "hero_inf") ?? null;
-  const others = card.boxes.filter((box) => box !== infBox).sort((a, b) => (a.yMm - b.yMm) || (a.xMm - b.xMm));
+  const infFont = Math.max(14, infBox?.style.fontSizePt ?? 20);
+
+  const estimateMinHeightMm = (box: Box) => {
+    const raw = (box.staticText || box.text || "").trim();
+    const chars = raw.length;
+    if (!chars) return Math.max(4, box.hMm);
+
+    const font = Math.max(minFontPt, Math.min(infFont - 1, box.style.fontSizePt || 10));
+    const lineHeight = box.style.lineHeight || 1.2;
+    const innerWidthMm = Math.max(4, box.wMm - (box.style.paddingMm || 0.8) * 2);
+    const charsPerLine = Math.max(10, Math.floor((innerWidthMm * 2.2) / Math.max(6, font)));
+    const lines = Math.max(1, Math.ceil(chars / charsPerLine));
+    const lineMm = font * 0.3528 * lineHeight;
+    return Math.max(4.5, Math.min(contentBottom - contentTop, lines * lineMm + (box.style.paddingMm || 0.8) * 2));
+  };
+
+  const normalizeBox = (box: Box): Box => {
+    const maxW = Math.max(12, contentRight - margin);
+    const maxH = Math.max(4, contentBottom - contentTop);
+    const nextFont = box === infBox
+      ? Math.max(infFont, box.style.fontSizePt)
+      : Math.max(minFontPt, Math.min(infFont - 1, box.style.fontSizePt));
+    const base: Box = {
+      ...box,
+      wMm: Math.max(12, Math.min(maxW, box.wMm)),
+      hMm: Math.max(4, Math.min(maxH, box.hMm)),
+      style: { ...box.style, fontSizePt: nextFont }
+    };
+    if (base === infBox || base.fieldId === "inf" || base.id === "hero_inf") return base;
+    return { ...base, hMm: Math.max(base.hMm, estimateMinHeightMm(base)) };
+  };
+
+  const boxesOverlapStrict = (a: Box, b: Box) =>
+    a.xMm < b.xMm + b.wMm &&
+    a.xMm + a.wMm > b.xMm &&
+    a.yMm < b.yMm + b.hMm &&
+    a.yMm + a.hMm > b.yMm;
+
+  const others = card.boxes
+    .filter((box) => box !== infBox)
+    .map(normalizeBox)
+    .sort((a, b) => (b.hMm * b.wMm) - (a.hMm * a.wMm));
 
   const placed: Box[] = [];
-  if (infBox) placed.push(infBox);
+  if (infBox) {
+    placed.push(normalizeBox(infBox));
+  }
 
   const findFreeSlot = (wMm: number, hMm: number) => {
-    const maxX = widthMm - margin - wMm;
+    const maxX = contentRight - wMm;
     const maxY = contentBottom - hMm;
     for (let y = contentTop; y <= maxY; y += 0.5) {
       for (let x = margin; x <= maxX; x += 0.5) {
         const probe = { xMm: x, yMm: y, wMm, hMm } as Box;
-        const overlaps = placed.some((box) => boxesOverlap(probe, box));
-        if (!overlaps) return { xMm: x, yMm: y };
+        if (!placed.some((box) => boxesOverlapStrict(probe, box))) {
+          return { xMm: x, yMm: y };
+        }
       }
     }
     return null;
   };
 
-  for (const box of others) {
-    let candidate: Box = { ...box };
+  for (const original of others) {
+    let candidate: Box = { ...original };
     let slot = findFreeSlot(candidate.wMm, candidate.hMm);
 
-    for (let attempt = 0; !slot && attempt < 8; attempt += 1) {
+    for (let attempt = 0; !slot && attempt < 14; attempt += 1) {
+      const shrinkFactor = attempt < 6 ? 0.94 : 0.9;
       const nextFont = Math.max(minFontPt, candidate.style.fontSizePt - 0.5);
       candidate = {
         ...candidate,
-        hMm: Math.max(4, candidate.hMm * 0.93),
+        wMm: Math.max(10, candidate.wMm * shrinkFactor),
+        hMm: Math.max(4, candidate.hMm * shrinkFactor),
         style: { ...candidate.style, fontSizePt: nextFont }
       };
       slot = findFreeSlot(candidate.wMm, candidate.hMm);
     }
 
     if (!slot) {
-      slot = {
-        xMm: margin,
-        yMm: Math.min(contentBottom - candidate.hMm, Math.max(contentTop, (placed.at(-1)?.yMm ?? contentTop) + 0.5))
-      };
+      const fallbackY = Math.min(
+        contentBottom - candidate.hMm,
+        Math.max(contentTop, (placed.at(-1)?.yMm ?? contentTop) + (placed.at(-1)?.hMm ?? 0) + 0.4)
+      );
+      slot = { xMm: margin, yMm: fallbackY };
     }
 
     const moved: Box = {
       ...candidate,
-      xMm: Math.max(margin, Math.min(widthMm - margin - candidate.wMm, slot.xMm)),
+      xMm: Math.max(margin, Math.min(contentRight - candidate.wMm, slot.xMm)),
       yMm: Math.max(contentTop, Math.min(contentBottom - candidate.hMm, slot.yMm))
     };
     placed.push(moved);
   }
 
-  const infFont = infBox?.style.fontSizePt ?? 20;
-  const normalized = placed.map((box) => {
-    if (box === infBox || box.fieldId === "inf" || box.id === "hero_inf") return box;
-    if (box.style.fontSizePt >= infFont) {
-      return { ...box, style: { ...box.style, fontSizePt: Math.max(minFontPt, infFont - 1) } };
+  const deOverlapped = placed.map((box, index) => {
+    if (index === 0 && infBox && (box.id === infBox.id)) return box;
+    let next = { ...box };
+    let guard = 0;
+    while (placed.some((other, j) => j !== index && boxesOverlapStrict(next, other)) && guard < 20) {
+      next = {
+        ...next,
+        yMm: Math.min(contentBottom - next.hMm, next.yMm + 0.6),
+        xMm: Math.min(contentRight - next.wMm, next.xMm + 0.3)
+      };
+      guard += 1;
     }
-    return box;
+    return next;
   });
 
-  const byId = new Map(normalized.map((box) => [box.id, box]));
+  const byId = new Map(deOverlapped.map((box) => [box.id, box]));
   return {
     ...card,
     boxes: card.boxes.map((box) => byId.get(box.id) ?? box)
@@ -965,6 +1020,52 @@ export const useAppStore = create<AppState>()(
         state.cardsA = next;
       } else {
         state.cardsB = next;
+      }
+    }),
+    updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
+      if (!state.editModeEnabled) return;
+      const list = side === "A" ? state.cardsA : state.cardsB;
+      let changed = false;
+      const next = list.map((card) => {
+        if (!card.boxes?.length) {
+          return card;
+        }
+        const target = card.boxes.find((box) => box.id === boxId);
+        if (!target) {
+          return card;
+        }
+        const hasChanges = Object.entries(update).some(([key, value]) => target[key as keyof Box] !== value);
+        if (!hasChanges) {
+          return card;
+        }
+        changed = true;
+        return {
+          ...card,
+          boxes: card.boxes.map((box) => (box.id === boxId ? { ...box, ...update } : box))
+        };
+      });
+      if (!changed) return;
+
+      const sourceCandidate =
+        state.selectedSide === side && state.selectedId
+          ? next.find((card) => card.id === state.selectedId)
+          : undefined;
+      const templateSource = sourceCandidate ?? next.find((card) => card.boxes?.some((box) => box.id === boxId));
+      if (templateSource) {
+        state.activeTemplate = extractLayoutTemplate(templateSource, {
+          widthMm: state.layout.widthMm,
+          heightMm: state.layout.heightMm
+        });
+        persistActiveTemplate(state.activeTemplate);
+      }
+
+      if (side === "A") {
+        state.cardsA = next;
+      } else {
+        state.cardsB = next;
+      }
+      if (reason) {
+        trackStateEvent(state, snapshotState(get()), reason);
       }
     }),
     updateBoxAcrossColumn: ({ side, boxId, update, reason }) => set((state) => {
