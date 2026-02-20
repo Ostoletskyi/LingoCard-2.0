@@ -1,45 +1,50 @@
-﻿param(
-    [string]$ProjectRoot,
-    [string]$LogPath
-)
+param([string]$ProjectRoot)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 $root = Get-ProjectRoot $ProjectRoot
-Ensure-ToolDirectories $root
-$log = Resolve-LogPaths -ProjectRoot $root -LogPath $LogPath -Prefix 'smoke_run'
-$action = 'smoke_run'
+Ensure-ToolDirs $root
+$log = New-LogPath -ProjectRoot $root -Prefix 'smoke_run'
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Log-Info([string]$Message) {
+    Write-Host "[INFO] $Message" -ForegroundColor Cyan
+    Write-Log -LogPath $log -Message "INFO $Message"
+}
+
+function Log-Ok([string]$Message) {
+    Write-Host "[OK] $Message" -ForegroundColor Green
+    Write-Log -LogPath $log -Message "OK $Message"
+}
+
+function Log-Err([string]$Message) {
+    Write-Host "[ERR] $Message" -ForegroundColor Red
+    Write-Log -LogPath $log -Message "ERR $Message"
+}
 
 try {
-    if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'node is not installed.' }
-    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw 'npm is not installed.' }
+    Assert-Command node
+    Assert-Command npm
 
     Push-Location $root
     try {
-        if (Test-Path (Join-Path $root 'package-lock.json')) {
-            npm ci 2>&1 | Tee-Object -FilePath $log.Md -Append
-        } else {
-            npm install 2>&1 | Tee-Object -FilePath $log.Md -Append
+        if (-not (Test-Path 'node_modules')) {
+            Log-Info 'node_modules is missing. Installing dependencies.'
+            npm install | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'npm install failed.' }
         }
 
-        npm run tools:smoke 2>&1 | Tee-Object -FilePath $log.Md -Append
-        if ($LASTEXITCODE -ne 0) { throw 'tools:smoke returned non-zero exit code.' }
+        Log-Info 'Running smoke pipeline.'
+        npm run tools:smoke | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw 'tools:smoke failed.' }
 
-        $report = Join-Path $root '_tools\logs\smoke_report.md'
-        $source = Join-Path $root '_tools\reports\smoke_report.md'
-        if (Test-Path $source) { Copy-Item -Path $source -Destination $report -Force }
-
-        Write-Host 'Smoke test passed.'
-        if (Test-Path $report) { Write-Host "Smoke report copy: $report" }
-        Write-ToolLog -LogPaths $log -Action $action -Command 'npm ci/install + npm run tools:smoke' -Result 'success' -ExitCode 0
-        Show-LogHint -LogPaths $log
+        Log-Ok 'Smoke run completed successfully.'
         exit 0
     }
     finally { Pop-Location }
 }
 catch {
-    Write-Host 'Smoke test failed.' -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-ToolLog -LogPaths $log -Action $action -Command 'smoke pipeline' -Result 'error' -ExitCode 1 -Details $_.Exception.Message
-    Show-LogHint -LogPaths $log
+    Log-Err $_.Exception.Message
     exit 1
 }
