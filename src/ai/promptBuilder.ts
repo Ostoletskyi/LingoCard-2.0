@@ -14,7 +14,7 @@ const CARD_SCHEMA_GUIDE = `{
   "tr_2_ru": "string", "tr_2_ctx": "string",
   "tr_3_ru": "string", "tr_3_ctx": "string",
   "tr_4_ru": "string", "tr_4_ctx": "string",
-  "forms_p3": "string", "forms_prat": "string", "forms_p2": "string", "forms_aux": "haben|sein|\"\"", "forms_service": "string (er/sie/es <P3> - ich <Prat> - hat/ist <P2>)",
+  "forms_p3": "string", "forms_prat": "string", "forms_p2": "string", "forms_aux": "haben|sein|empty", "forms_service": "string (er/sie/es <P3> - ich <Prat> - hat/ist <P2>)",
   "syn_1_de": "string", "syn_1_ru": "string",
   "syn_2_de": "string", "syn_2_ru": "string",
   "syn_3_de": "string", "syn_3_ru": "string",

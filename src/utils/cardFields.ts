@@ -76,6 +76,12 @@ export const getFieldEditValue = (card: Card | null, fieldId: string): string =>
     return resolved.isPlaceholder ? "" : resolved.text;
   }
 
+  const aggregatedEditableFields = new Set(["forms_rek", "synonyms", "recommendations", "examples", "forms"]);
+  if (aggregatedEditableFields.has(normalizedFieldId)) {
+    const resolved = getFieldText(card, normalizedFieldId);
+    return resolved.isPlaceholder ? "" : resolved.text;
+  }
+
   if (normalizedFieldId in card) {
     const value = card[normalizedFieldId as keyof Card];
     return typeof value === "string" ? value : "";
@@ -128,6 +134,15 @@ export const getFieldText = (card: Card | null, fieldId: string): FieldTextResul
     return {
       text: tags.length ? tags.join(", ") : "Теги…",
       isPlaceholder: tags.length === 0
+    };
+  }
+  if (normalizedFieldId === "hero_inf") {
+    return { text: card.inf || "—", isPlaceholder: !card.inf };
+  }
+  if (normalizedFieldId === "meta") {
+    return {
+      text: card.tags.length ? card.tags.join(", ") : "Теги…",
+      isPlaceholder: card.tags.length === 0
     };
   }
   if (normalizedFieldId === "hero_inf") {
