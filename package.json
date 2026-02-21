@@ -4,16 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node _tools/clearViteCache.js && vite",
+    "dev": "node _tools/repairKnownDupes.js && node _tools/clearViteCache.js && vite",
     "build": "vite build",
     "preview": "vite preview",
     "tsc": "tsc --noEmit",
     "lint": "eslint .",
     "tools:backup": "node _tools/backup.js",
     "tools:restore": "node _tools/restore.js",
-    "tools:smoke": "node _tools/smoke.runner.js",
+    "tools:smoke": "node _tools/repairKnownDupes.js && node _tools/smoke.runner.js",
     "tools:dev": "node _tools/dev.js",
-    "tools:preflight": "node _tools/preflight.js"
+    "tools:preflight": "node _tools/repairKnownDupes.js && node _tools/preflight.js"
   },
   "dependencies": {
     "immer": "^10.1.1",
