@@ -73,11 +73,11 @@ const fitTextToBox = (
     measured = measure(fontPt);
   }
 
-  const fittedLines = measured.lines;
-
   return {
     fontPt: clamp(fontPt, minFontPt, maxFontPt),
-    text: fittedLines.join("\n")
+    // Keep semantic text lines intact (DE and RU stay whole lines).
+    // Let CSS/box bounds wrap visually instead of baking hard line breaks into staticText.
+    text
   };
 };
 
