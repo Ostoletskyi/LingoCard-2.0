@@ -23,16 +23,25 @@ const FIELD_ALIASES: Record<string, string> = {
   frequency: "freq",
 
   // LingoCard semantic box aliases
-  tr: "custom_text",
-  translations: "custom_text",
-  translation: "custom_text",
-  forms: "forms_rek",
-  form: "forms_rek",
+  tr: "hero_translations",
+  translations: "hero_translations",
+  translation: "hero_translations",
+  forms: "forms",
+  form: "forms",
   syn: "synonyms",
   synonym: "synonyms",
   synonyms: "synonyms",
   ex: "examples",
   examples: "examples",
+
+  recommendation: "recommendations",
+  recommendations: "recommendations",
+  rektion: "recommendations",
+  collocations: "recommendations",
+  prefix: "meta",
+  prefixes: "meta",
+  trennbar: "meta",
+  meta_info: "meta",
 };
 
 export const normalizeFieldId = (input: string) => {

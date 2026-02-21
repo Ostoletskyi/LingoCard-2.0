@@ -29,7 +29,19 @@ try {
             }
         }
 
-        git push | Out-Host
+        $branch = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+        if ($branch -eq 'HEAD' -or [string]::IsNullOrWhiteSpace($branch)) {
+            throw 'Detached HEAD state. Cannot push without branch.'
+        }
+
+        $upstream = (& git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null)
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($upstream)) {
+            git push | Out-Host
+        } else {
+            Write-Host 'Upstream is missing. Trying: git push --set-upstream origin <branch>' -ForegroundColor Yellow
+            git push --set-upstream origin $branch | Out-Host
+        }
+
         if ($LASTEXITCODE -ne 0) {
             Write-Host 'Push failed. Check authentication and remote access.' -ForegroundColor Yellow
             throw 'git push failed.'
