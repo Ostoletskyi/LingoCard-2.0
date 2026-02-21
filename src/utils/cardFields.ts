@@ -76,12 +76,6 @@ export const getFieldEditValue = (card: Card | null, fieldId: string): string =>
     return resolved.isPlaceholder ? "" : resolved.text;
   }
 
-  const aggregatedEditableFields = new Set(["forms_rek", "synonyms", "recommendations", "examples", "forms"]);
-  if (aggregatedEditableFields.has(normalizedFieldId)) {
-    const resolved = getFieldText(card, normalizedFieldId);
-    return resolved.isPlaceholder ? "" : resolved.text;
-  }
-
   if (normalizedFieldId in card) {
     const value = card[normalizedFieldId as keyof Card];
     return typeof value === "string" ? value : "";
