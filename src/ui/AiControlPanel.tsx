@@ -402,28 +402,30 @@ export const AiControlPanel = () => {
   return (
     <div className="rounded-2xl bg-white p-5 shadow-soft flex flex-col gap-4 dark:bg-slate-900/80">
       {status === "sending" && (
-        <div className="fixed right-4 top-4 z-50 w-72 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+        <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center">
+          <div className="w-[min(92vw,54rem)] rounded-2xl border border-slate-200 bg-white/95 p-8 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Генерация</div>
-              <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+              <div className="text-2xl font-semibold text-slate-500 dark:text-slate-400">Генерация</div>
+              <div className="text-4xl font-medium text-slate-800 dark:text-slate-100">
                 {progressIndex}/{progressTotal} · {progressToken || "подготовка..."}
               </div>
             </div>
-            <div className="relative h-14 w-14 rounded-full border-2 border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800">
+            <div className="relative h-24 w-24 rounded-full border-2 border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800">
               <div
-                className="absolute left-1/2 top-1/2 h-5 w-[2px] -translate-x-1/2 -translate-y-full bg-slate-700 origin-bottom dark:bg-slate-100"
+                className="absolute left-1/2 top-1/2 h-8 w-[3px] -translate-x-1/2 -translate-y-full bg-slate-700 origin-bottom dark:bg-slate-100"
                 style={{ transform: `translateX(-50%) translateY(-100%) rotate(${minuteAngle}deg)` }}
               />
               <div
-                className="absolute left-1/2 top-1/2 h-6 w-[1px] -translate-x-1/2 -translate-y-full bg-red-500 origin-bottom"
+                className="absolute left-1/2 top-1/2 h-10 w-[2px] -translate-x-1/2 -translate-y-full bg-red-500 origin-bottom"
                 style={{ transform: `translateX(-50%) translateY(-100%) rotate(${secondAngle}deg)` }}
               />
               <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-700 dark:bg-slate-100" />
             </div>
           </div>
-          <div className="mt-2 text-sm text-slate-700 dark:text-slate-200">Текущий глагол: {formatClock(tokenElapsedMs)}</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">Предыдущий: {formatClock(lastTokenMs)}</div>
+          <div className="mt-3 text-2xl text-slate-700 dark:text-slate-200">Текущий глагол: {formatClock(tokenElapsedMs)}</div>
+          <div className="text-lg text-slate-500 dark:text-slate-400">Предыдущий: {formatClock(lastTokenMs)}</div>
+          </div>
         </div>
       )}
 

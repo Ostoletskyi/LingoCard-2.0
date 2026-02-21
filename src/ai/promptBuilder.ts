@@ -13,7 +13,7 @@ const CARD_SCHEMA_GUIDE = `{
   "tr_2_ru": "string", "tr_2_ctx": "string",
   "tr_3_ru": "string", "tr_3_ctx": "string",
   "tr_4_ru": "string", "tr_4_ctx": "string",
-  "forms_p3": "string", "forms_prat": "string", "forms_p2": "string", "forms_aux": "haben|sein|\"\"", "forms_service": "string",
+  "forms_p3": "string", "forms_prat": "string", "forms_p2": "string", "forms_aux": "haben|sein|\"\"", "forms_service": "string (er/sie/es <P3> - ich <Prat> - hat/ist <P2>)",
   "syn_1_de": "string", "syn_1_ru": "string",
   "syn_2_de": "string", "syn_2_ru": "string",
   "syn_3_de": "string", "syn_3_ru": "string",
@@ -53,7 +53,9 @@ export const buildGenerateMessages = (inputVerb: string, inputLanguage: AiInputL
       `- freq in range 1..5.\n` +
       `- tags must include \"praesens\" and add others only when applicable.\n` +
       `- Provide 3-4 RU translations with contexts (tr_1..tr_4 + ctx).\n` +
-      `- Provide forms: forms_p3, forms_prat, forms_p2, forms_aux (haben/sein).\n` +
+      `- Provide forms: forms_p3, forms_prat, forms_p2, forms_aux (haben/sein for schema).\n` +
+      `- forms_service must be strictly: er/sie/es <P3> - ich <Prat> - hat/ist <P2>. Never write haben/sein in forms_service.\n` +
+      `- All string fields must be single-line values (no embedded line breaks).\n` +
       `- Provide 3 synonyms (DE+RU).\n` +
       `- Provide examples: ex_1=Praesens, ex_2=Modalverb, ex_3=Praeteritum, ex_4=Perfekt, B2-level DE with RU translation.\n` +
       `- Fill remaining schema keys with \"\" where needed.\n` +

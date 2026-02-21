@@ -184,7 +184,8 @@ const collectFormLines = (card: Card) => {
   const prat = sanitizeInline(card.forms_prat);
   const p2 = sanitizeInline(card.forms_p2);
   const aux = sanitizeInline(card.forms_aux);
-  const perfekt = joinPresent([aux, p2], " ");
+  const auxFinite = aux === "haben" ? "hat" : aux === "sein" ? "ist" : aux;
+  const perfekt = joinPresent([auxFinite, p2], " ");
   const compact = joinPresent([p3, prat, perfekt], " - ");
   if (hasText(compact)) return [{ fieldId: "forms_p3", text: compact }];
 
