@@ -43,6 +43,37 @@ const THINKING_TICKER_LINES = [
   '{ "next": "emit-card", "confidence": 0.82 }'
 ];
 
+
+const SEPARABLE_PREFIXES = [
+  "auseinander", "zusammen", "zurecht", "zuruck", "zurück", "vorbei", "weiter", "wieder", "hinunter", "herunter",
+  "hinaus", "heraus", "hinauf", "herauf", "hinein", "herein", "hinweg", "herbei", "hinzu", "herzu",
+  "durch", "uber", "über", "unter", "um", "ab", "an", "auf", "aus", "bei", "ein", "fest", "fort",
+  "frei", "gegen", "heim", "her", "hin", "los", "mit", "nach", "nieder", "statt", "teil", "vor", "weg", "zu", "zuruck", "zurück"
+].sort((a, b) => b.length - a.length);
+
+const INSEPARABLE_PREFIXES = ["miss", "ver", "zer", "be", "emp", "ent", "er", "ge"];
+
+const resolvePrefixStatusTag = (infinitiveRaw: unknown): string => {
+  if (typeof infinitiveRaw !== "string") return "приставки нет";
+  const infinitive = infinitiveRaw.trim().toLowerCase();
+  if (!infinitive) return "приставки нет";
+
+  for (const prefix of SEPARABLE_PREFIXES) {
+    if (infinitive.startsWith(prefix) && infinitive.length > prefix.length + 1) {
+      const normalizedPrefix = prefix.replace("zuruck", "zurück").replace("uber", "über");
+      return `приставка ${normalizedPrefix} — отделяемая`;
+    }
+  }
+
+  for (const prefix of INSEPARABLE_PREFIXES) {
+    if (infinitive.startsWith(prefix) && infinitive.length > prefix.length + 1) {
+      return `приставка ${prefix} — неотделяемая`;
+    }
+  }
+
+  return "приставки нет";
+};
+
 const sanitizeCardTextPayload = (payload: unknown) => {
   if (!payload || typeof payload !== "object") return payload;
   const clone = { ...(payload as Record<string, unknown>) };
@@ -71,7 +102,7 @@ const sanitizeCardTextPayload = (payload: unknown) => {
   if (clone.forms_aux !== "haben" && clone.forms_aux !== "sein" && clone.forms_aux !== "") {
     clone.forms_aux = "";
   }
-  if (!Array.isArray(clone.tags)) clone.tags = [];
+  clone.tags = [resolvePrefixStatusTag(clone.inf)];
   if (typeof clone.freq !== "number" || !Number.isFinite(clone.freq)) clone.freq = 0;
 
   return clone;
