@@ -100,6 +100,7 @@ export const AiControlPanel = () => {
   const abortRef = useRef<AbortController | null>(null);
   const tokenStartedAtRef = useRef<number | null>(null);
   const queuePausedRef = useRef(false);
+  const adaptiveTokenTimeoutRef = useRef<number | null>(null);
   const addCard = useAppStore((state) => state.addCard);
   const editModeEnabled = useAppStore((state) => state.editModeEnabled);
   const toggleEditMode = useAppStore((state) => state.toggleEditMode);
@@ -202,6 +203,7 @@ export const AiControlPanel = () => {
     setLastTokenMs(0);
     setGenerationLog([]);
     setQueuePaused(false);
+    adaptiveTokenTimeoutRef.current = null;
     appendLog(`⏳ Запуск генерации: ${tokens.length} токен(ов)`);
 
     try {
@@ -238,14 +240,48 @@ export const AiControlPanel = () => {
         appendLog(`▶️ ${index + 1}/${tokens.length}: ${token}`);
 
         try {
-          const generated = await requestCardFromLmStudio(token, controller.signal, activeConfig, inputLanguage);
+          const configuredTimeout = activeConfig.timeoutMs;
+          const adaptiveTimeout = adaptiveTokenTimeoutRef.current !== null
+            ? adaptiveTokenTimeoutRef.current + 5000
+            : configuredTimeout;
+          const firstAttemptConfig = { ...activeConfig, timeoutMs: adaptiveTimeout };
+          const requestStartedAt = Date.now();
+
+          let generated;
+          try {
+            generated = await requestCardFromLmStudio(token, controller.signal, firstAttemptConfig, inputLanguage);
+          } catch (requestError) {
+            const normalized = requestError instanceof LmStudioClientError ? requestError : null;
+            if (normalized?.code !== "TIMEOUT") throw requestError;
+
+            const retryTimeout = Math.min(adaptiveTimeout + 10000, 120000);
+            appendLog(`⏳ ${token}: timeout, retry +10s (${Math.round(retryTimeout / 1000)}s)`);
+            generated = await requestCardFromLmStudio(
+              token,
+              controller.signal,
+              { ...activeConfig, timeoutMs: retryTimeout },
+              inputLanguage
+            );
+          }
+
+          const measuredMs = Date.now() - requestStartedAt;
+          if (adaptiveTokenTimeoutRef.current === null && measuredMs > 0) {
+            adaptiveTokenTimeoutRef.current = measuredMs;
+            appendLog(`⏱️ baseline timeout: ${Math.round(measuredMs / 1000)}s`);
+          }
+
           rawChunks.push(`[${token}]\n${generated.rawContent}`);
 
           let payload = sanitizeCardTextPayload(generated.payload);
           let validation = validateAiPayload(payload, mode);
 
           if (!validation.success) {
-            const repaired = await repairJsonWithLmStudio(generated.rawContent, activeConfig, controller.signal);
+            const repairTimeout = Math.min((adaptiveTokenTimeoutRef.current ?? activeConfig.timeoutMs) + 5000, 120000);
+            const repaired = await repairJsonWithLmStudio(
+              generated.rawContent,
+              { ...activeConfig, timeoutMs: repairTimeout },
+              controller.signal
+            );
             rawChunks.push(`[repair:${token}]\n${repaired.rawContent}`);
             payload = sanitizeCardTextPayload(repaired.payload);
             validation = validateAiPayload(payload, mode);
