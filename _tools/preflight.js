@@ -176,6 +176,8 @@ const writePreflightReports = () => {
 const main = async () => {
   await runExportChecks();
   checkDuplicateDeclarations("src/state/store.ts", ["migratePersistedState", "PERSISTENCE_CHUNK_KEYS"]);
+  checkDuplicateDeclarations("src/ai/promptBuilder.ts", ["buildGenerateMessages", "buildRepairMessages"]);
+  checkDuplicateDeclarations("src/utils/cardFields.ts", ["aggregatedEditableFields"]);
   checkStoreContracts("src/state/store.ts");
   await runTypeScriptCheck();
 
